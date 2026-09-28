@@ -27,9 +27,10 @@ from typing import AsyncIterator, Optional
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Header, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -52,6 +53,14 @@ from agents.appointments.db import (
     delete_proxy,
     reset_proxy_cooldowns,
     clear_all_proxies,
+    authenticate_user,
+    create_session,
+    get_user_by_session,
+    delete_session,
+    get_all_users,
+    create_user,
+    delete_user,
+    update_user_status,
 )
 from agents.appointments.monitor import slot_monitor
 from agents.appointments.schemas import ClientProfile
@@ -73,12 +82,68 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+# ── Authentication & RBAC Dependencies ────────────────────────────────────────
+
+async def get_current_user(
+    session_token: Optional[str] = Cookie(None),
+    auth_header: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+) -> dict:
+    """Validate session from Cookie or Bearer token."""
+    auth_cfg = get_settings().auth
+    if not auth_cfg.enabled:
+        return {"id": 1, "username": "admin", "role": "admin", "full_name": "Admin", "is_active": True}
+
+    token = session_token or (auth_header.credentials if auth_header else None)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please log in.",
+        )
+
+    user = get_user_by_session(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session. Please log in again.",
+        )
+    return user
+
+
+async def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """Ensure user has admin role."""
+    if user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Admin privileges required for this action.",
+        )
+    return user
+
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+    role: str = "staff"
+    full_name: str = ""
+
+
+class UserStatusRequest(BaseModel):
+    is_active: bool
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -95,6 +160,104 @@ class AgentResponse(BaseModel):
 class MonitorToggleRequest(BaseModel):
     action: str  # "start" or "stop"
     interval_seconds: Optional[int] = 45
+
+
+# ── Authentication REST Endpoints ─────────────────────────────────────────────
+
+@app.post("/api/auth/login")
+async def login_endpoint(req: LoginRequest, response: Response):
+    """Authenticate user with username and password, set session cookie."""
+    user = authenticate_user(req.username, req.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password.",
+        )
+    auth_cfg = get_settings().auth
+    token = create_session(user["id"], days_valid=auth_cfg.session_expire_days)
+
+    # Set HttpOnly Session Cookie
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        max_age=auth_cfg.session_expire_days * 86400,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+    )
+
+    return {
+        "success": True,
+        "token": token,
+        "user": user,
+        "message": f"Welcome back, {user.get('full_name') or user['username']}!",
+    }
+
+
+@app.post("/api/auth/logout")
+async def logout_endpoint(
+    response: Response,
+    session_token: Optional[str] = Cookie(None),
+    auth_header: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+):
+    """Log out current user and invalidate session."""
+    token = session_token or (auth_header.credentials if auth_header else None)
+    if token:
+        delete_session(token)
+    response.delete_cookie("session_token")
+    return {"success": True, "message": "Logged out successfully."}
+
+
+@app.get("/api/auth/me")
+async def get_me_endpoint(user: dict = Depends(get_current_user)):
+    """Return currently logged-in user profile & permissions."""
+    return {"authenticated": True, "user": user}
+
+
+# ── User & Staff Management (Admin Only) ──────────────────────────────────────
+
+@app.get("/api/users")
+async def list_users_endpoint(admin: dict = Depends(require_admin)):
+    """List all users (Admin only)."""
+    users = get_all_users()
+    return {"total": len(users), "users": users}
+
+
+@app.post("/api/users")
+async def create_user_endpoint(req: UserCreateRequest, admin: dict = Depends(require_admin)):
+    """Create a new staff or admin user (Admin only)."""
+    try:
+        new_user = create_user(
+            username=req.username,
+            password=req.password,
+            role=req.role,
+            full_name=req.full_name,
+        )
+        return {"success": True, "user": new_user, "message": f"User '{new_user['username']}' created successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_user_endpoint(user_id: int, admin: dict = Depends(require_admin)):
+    """Delete a user account (Admin only)."""
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account.")
+    deleted = delete_user(user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {"success": True, "message": f"User #{user_id} deleted."}
+
+
+@app.patch("/api/users/{user_id}/status")
+async def update_user_status_endpoint(user_id: int, req: UserStatusRequest, admin: dict = Depends(require_admin)):
+    """Enable or disable a user account (Admin only)."""
+    if user_id == admin["id"] and not req.is_active:
+        raise HTTPException(status_code=400, detail="Cannot disable your own admin account.")
+    updated = update_user_status(user_id, req.is_active)
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {"success": True, "message": f"User #{user_id} status updated."}
 
 
 # ── Streaming helper ──────────────────────────────────────────────────────────
@@ -116,7 +279,7 @@ async def stream_agent(agent, messages: list) -> AsyncIterator[str]:
 # ── Chat Endpoints ────────────────────────────────────────────────────────────
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     """Main orchestrator endpoint with real-time SSE streaming."""
     messages = [
         HumanMessage(content=m["content"])
@@ -133,7 +296,7 @@ async def chat(req: ChatRequest):
 
 
 @app.post("/visa", response_model=AgentResponse)
-async def visa_endpoint(req: ChatRequest):
+async def visa_endpoint(req: ChatRequest, user: dict = Depends(get_current_user)):
     """Direct visa agent endpoint."""
     messages = [HumanMessage(content=req.message)]
     result = await visa_agent.ainvoke({"messages": messages})
@@ -146,7 +309,7 @@ async def visa_endpoint(req: ChatRequest):
 
 
 @app.post("/appointments", response_model=AgentResponse)
-async def appointments_endpoint(req: ChatRequest):
+async def appointments_endpoint(req: ChatRequest, user: dict = Depends(get_current_user)):
     """Direct appointments agent endpoint."""
     messages = [HumanMessage(content=req.message)]
     result = await appointments_agent.ainvoke({"messages": messages})
@@ -161,7 +324,7 @@ async def appointments_endpoint(req: ChatRequest):
 # ── Client Queue REST Endpoints ───────────────────────────────────────────────
 
 @app.get("/api/clients")
-async def list_clients(status: Optional[str] = Query(None)):
+async def list_clients(status: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
     """Retrieve all clients in the queue with statistics."""
     clients = get_all_clients(status=status)
     stats = get_queue_stats()
@@ -173,7 +336,7 @@ async def list_clients(status: Optional[str] = Query(None)):
 
 
 @app.post("/api/clients")
-async def create_client(client: ClientProfile):
+async def create_client(client: ClientProfile, user: dict = Depends(get_current_user)):
     """Add or update a client in the queue database."""
     client_id = add_client(client)
     return {
@@ -184,7 +347,7 @@ async def create_client(client: ClientProfile):
 
 
 @app.get("/api/clients/{client_id}")
-async def get_client(client_id: int):
+async def get_client(client_id: int, user: dict = Depends(get_current_user)):
     """Get single client by ID."""
     client = get_client_by_id(client_id)
     if not client:
@@ -193,8 +356,8 @@ async def get_client(client_id: int):
 
 
 @app.delete("/api/clients/{client_id}")
-async def remove_client(client_id: int):
-    """Remove a client from the queue database."""
+async def remove_client(client_id: int, admin: dict = Depends(require_admin)):
+    """Remove a client from the queue database (Admin only)."""
     deleted = delete_client(client_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -208,6 +371,7 @@ async def search_slots(
     vac_id: str = Query("138", description="VAC ID: 138 (ISB), 137 (KHI), 139 (LHE)"),
     visa_type: str = Query("26", description="Visa Type: 26 (Work/Seasonal), 0 (Schengen C), 2 (Type D)"),
     date_from: Optional[str] = Query(None, description="Start date DD/MM/YYYY"),
+    user: dict = Depends(get_current_user),
 ):
     """Search live appointment slots on Greece GVC World."""
     slots = await gvc_driver.search_slots(
@@ -228,14 +392,14 @@ async def search_slots(
 
 
 @app.get("/api/monitor/status")
-async def monitor_status():
+async def monitor_status(user: dict = Depends(get_current_user)):
     """Get real-time telemetry from autonomous slot monitor."""
     return slot_monitor.get_status()
 
 
 @app.post("/api/monitor/toggle")
-async def toggle_monitor(req: MonitorToggleRequest):
-    """Start or stop the background slot monitor."""
+async def toggle_monitor(req: MonitorToggleRequest, admin: dict = Depends(require_admin)):
+    """Start or stop the background slot monitor (Admin only)."""
     if req.action.lower() == "start":
         if req.interval_seconds:
             slot_monitor.interval_seconds = max(10, req.interval_seconds)
@@ -260,13 +424,18 @@ OTP_STORE: dict[str, dict] = {}
 
 
 @app.post("/api/otp/webhook")
-async def receive_otp_webhook(payload: OTPWebhookPayload):
+async def receive_otp_webhook(payload: OTPWebhookPayload, x_webhook_secret: Optional[str] = Header(None)):
     """
     Webhook endpoint to ingest SMS/WhatsApp OTPs forwarded from mobile devices.
     Auto-extracts 6-digit verification codes from message texts.
     """
     import re
     import time
+
+    auth_cfg = get_settings().auth
+    if auth_cfg.webhook_secret and x_webhook_secret != auth_cfg.webhook_secret:
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
     phone = (payload.phone or "").lstrip("+").lstrip("0")
     code = payload.otp_code
 
@@ -292,7 +461,7 @@ async def receive_otp_webhook(payload: OTPWebhookPayload):
 
 
 @app.get("/api/otp/latest")
-async def get_latest_otp(phone: Optional[str] = Query(None)):
+async def get_latest_otp(phone: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
     """Retrieve the latest valid OTP from cache (expires after 3 minutes)."""
     import time
     clean_phone = (phone or "").lstrip("+").lstrip("0")
@@ -320,7 +489,7 @@ class ProxyBulkInput(BaseModel):
 
 
 @app.get("/api/proxies")
-async def list_proxies(status: Optional[str] = Query(None)):
+async def list_proxies(status: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
     """List all proxies in the SQLite pool with live health metrics."""
     proxies = get_all_proxies(status=status)
     stats = get_proxy_stats()
@@ -332,8 +501,8 @@ async def list_proxies(status: Optional[str] = Query(None)):
 
 
 @app.post("/api/proxies/bulk")
-async def add_proxies_endpoint(req: ProxyBulkInput):
-    """Paste 10, 30, 50+ proxy lines and save to SQLite table."""
+async def add_proxies_endpoint(req: ProxyBulkInput, admin: dict = Depends(require_admin)):
+    """Paste 10, 30, 50+ proxy lines and save to SQLite table (Admin only)."""
     lines = req.proxies_text.strip().splitlines()
     added = add_proxies_bulk(lines)
     stats = get_proxy_stats()
@@ -347,15 +516,15 @@ async def add_proxies_endpoint(req: ProxyBulkInput):
 
 
 @app.post("/api/proxies/reset-cooldowns")
-async def reset_cooldowns_endpoint():
-    """Reset all quarantined proxies back to ACTIVE."""
+async def reset_cooldowns_endpoint(admin: dict = Depends(require_admin)):
+    """Reset all quarantined proxies back to ACTIVE (Admin only)."""
     reset_count = reset_proxy_cooldowns()
     return {"success": True, "reset_count": reset_count, "message": f"Reset {reset_count} proxies back to active."}
 
 
 @app.delete("/api/proxies/{proxy_id}")
-async def delete_proxy_endpoint(proxy_id: int):
-    """Delete a single proxy by ID."""
+async def delete_proxy_endpoint(proxy_id: int, admin: dict = Depends(require_admin)):
+    """Delete a single proxy by ID (Admin only)."""
     deleted = delete_proxy(proxy_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Proxy not found")
@@ -363,8 +532,8 @@ async def delete_proxy_endpoint(proxy_id: int):
 
 
 @app.delete("/api/proxies")
-async def clear_proxies_endpoint():
-    """Clear all proxies from SQLite."""
+async def clear_proxies_endpoint(admin: dict = Depends(require_admin)):
+    """Clear all proxies from SQLite (Admin only)."""
     clear_all_proxies()
     return {"success": True, "message": "All proxies cleared from database."}
 

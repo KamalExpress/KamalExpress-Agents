@@ -7,11 +7,14 @@ and atomic worker lock dispatching for parallel booking execution.
 """
 from __future__ import annotations
 
+import datetime as dt
+import hashlib
 import json
 import logging
+import secrets
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
@@ -31,6 +34,7 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA busy_timeout=5000;")
+    conn.execute("PRAGMA foreign_keys=ON;")
     return conn
 
 
@@ -95,6 +99,33 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_proxy_status ON proxies(status, quarantined_until);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        salt TEXT NOT NULL,
+                        role TEXT NOT NULL DEFAULT 'staff',
+                        full_name TEXT DEFAULT '',
+                        is_active INTEGER DEFAULT 1,
+                        created_at TEXT NOT NULL,
+                        last_login_at TEXT
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS sessions (
+                        session_token TEXT PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token, expires_at);")
+
             logger.info(f"[db] Initialized SQLite database tables at {db_path}")
         finally:
             conn.close()
@@ -522,5 +553,241 @@ def get_proxy_stats(db_path: Path = DB_PATH) -> dict:
         conn.close()
 
 
-# Ensure tables are created on module import
+# ── User Authentication & Role Management ─────────────────────────────────────
+
+def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
+    """Generate PBKDF2-HMAC-SHA256 hash and salt."""
+    if not salt:
+        salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        100000,
+    )
+    return key.hex(), salt
+
+
+def verify_password(password: str, password_hash: str, salt: str) -> bool:
+    """Verify password against PBKDF2 hash using constant-time comparison."""
+    calc_hash, _ = hash_password(password, salt)
+    return secrets.compare_digest(calc_hash, password_hash)
+
+
+def seed_default_users(db_path: Path = DB_PATH) -> None:
+    """Seed default admin and staff accounts if users table is empty."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+                if count == 0:
+                    from config.settings import get_settings
+                    auth_cfg = get_settings().auth
+
+                    # Create Default Admin
+                    admin_hash, admin_salt = hash_password(auth_cfg.default_admin_password)
+                    conn.execute("""
+                        INSERT INTO users (username, password_hash, salt, role, full_name, is_active, created_at)
+                        VALUES (?, ?, ?, 'admin', 'System Administrator', 1, ?)
+                    """, (auth_cfg.default_admin_username, admin_hash, admin_salt, datetime.utcnow().isoformat()))
+
+                    # Create Default Staff
+                    staff_hash, staff_salt = hash_password(auth_cfg.default_staff_password)
+                    conn.execute("""
+                        INSERT INTO users (username, password_hash, salt, role, full_name, is_active, created_at)
+                        VALUES (?, ?, ?, 'staff', 'Kamal Staff Member', 1, ?)
+                    """, (auth_cfg.default_staff_username, staff_hash, staff_salt, datetime.utcnow().isoformat()))
+
+                    logger.info(f"[auth] ✓ Initialized default admin ('{auth_cfg.default_admin_username}') and staff ('{auth_cfg.default_staff_username}') accounts.")
+        finally:
+            conn.close()
+
+
+def create_user(
+    username: str,
+    password: str,
+    role: str = "staff",
+    full_name: str = "",
+    db_path: Path = DB_PATH,
+) -> dict:
+    """Create a new staff or admin user in SQLite."""
+    role = role.lower()
+    if role not in ("admin", "staff"):
+        raise ValueError("Role must be 'admin' or 'staff'")
+
+    pwd_hash, salt = hash_password(password)
+    now_str = datetime.utcnow().isoformat()
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("""
+                    INSERT INTO users (username, password_hash, salt, role, full_name, is_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?)
+                """, (username.strip().lower(), pwd_hash, salt, role, full_name.strip(), now_str))
+                user_id = cursor.lastrowid
+                return {
+                    "id": user_id,
+                    "username": username.strip().lower(),
+                    "role": role,
+                    "full_name": full_name.strip(),
+                    "is_active": True,
+                    "created_at": now_str,
+                }
+        finally:
+            conn.close()
+
+
+def authenticate_user(
+    username: str,
+    password: str,
+    db_path: Path = DB_PATH,
+) -> Optional[dict]:
+    """Authenticate username & password, returns user dict on success or None."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            row = conn.execute(
+                "SELECT * FROM users WHERE username = ? AND is_active = 1",
+                (username.strip().lower(),),
+            ).fetchone()
+
+            if not row:
+                return None
+
+            if verify_password(password, row["password_hash"], row["salt"]):
+                # Update last login timestamp
+                now_str = datetime.utcnow().isoformat()
+                with conn:
+                    conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now_str, row["id"]))
+
+                return {
+                    "id": row["id"],
+                    "username": row["username"],
+                    "role": row["role"],
+                    "full_name": row["full_name"],
+                    "is_active": bool(row["is_active"]),
+                    "created_at": row["created_at"],
+                    "last_login_at": now_str,
+                }
+            return None
+        finally:
+            conn.close()
+
+
+def create_session(user_id: int, days_valid: int = 7, db_path: Path = DB_PATH) -> str:
+    """Create a persistent session token for an authenticated user."""
+    session_token = secrets.token_urlsafe(32)
+    now = datetime.utcnow()
+    expires_at = (now + timedelta(days=days_valid)).isoformat()
+    now_str = now.isoformat()
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                conn.execute("""
+                    INSERT INTO sessions (session_token, user_id, expires_at, created_at)
+                    VALUES (?, ?, ?, ?)
+                """, (session_token, user_id, expires_at, now_str))
+            return session_token
+        finally:
+            conn.close()
+
+
+def get_user_by_session(session_token: str, db_path: Path = DB_PATH) -> Optional[dict]:
+    """Look up active user from session token."""
+    if not session_token:
+        return None
+
+    now_str = datetime.utcnow().isoformat()
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute("""
+            SELECT u.id, u.username, u.role, u.full_name, u.is_active, u.created_at, u.last_login_at, s.expires_at
+            FROM sessions s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.session_token = ? AND s.expires_at > ? AND u.is_active = 1
+        """, (session_token, now_str)).fetchone()
+
+        if row:
+            return {
+                "id": row["id"],
+                "username": row["username"],
+                "role": row["role"],
+                "full_name": row["full_name"],
+                "is_active": bool(row["is_active"]),
+                "created_at": row["created_at"],
+                "last_login_at": row["last_login_at"],
+            }
+        return None
+    finally:
+        conn.close()
+
+
+def delete_session(session_token: str, db_path: Path = DB_PATH) -> bool:
+    """Invalidate a session on logout."""
+    if not session_token:
+        return False
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("DELETE FROM sessions WHERE session_token = ?", (session_token,))
+                return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+def cleanup_expired_sessions(db_path: Path = DB_PATH) -> int:
+    """Remove expired sessions from SQLite."""
+    now_str = datetime.utcnow().isoformat()
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (now_str,))
+                return cursor.rowcount
+        finally:
+            conn.close()
+
+
+def get_all_users(db_path: Path = DB_PATH) -> list[dict]:
+    """List all registered system users (admin only)."""
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute("SELECT id, username, role, full_name, is_active, created_at, last_login_at FROM users ORDER BY id ASC").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_user(user_id: int, db_path: Path = DB_PATH) -> bool:
+    """Delete a user account by ID."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+def update_user_status(user_id: int, is_active: bool, db_path: Path = DB_PATH) -> bool:
+    """Enable or disable a user account."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("UPDATE users SET is_active = ? WHERE id = ?", (1 if is_active else 0, user_id))
+                return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+# Ensure tables are created and default accounts seeded on module import
 init_db()
+seed_default_users()

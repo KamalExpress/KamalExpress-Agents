@@ -387,6 +387,12 @@
     <div class="header-stat-pill">
       <span>Booked: <b id="hdr-booked-count" style="color:var(--badge-booked)">0</b></span>
     </div>
+    <div class="header-stat-pill" id="user-profile-pill" style="display:none; background:#ffffff; border:1.5px solid var(--primary-l); padding:4px 10px;">
+      <span style="font-size:13px;">👤</span>
+      <span id="hdr-user-name" style="font-weight:700; color:var(--primary-d);">User</span>
+      <span class="badge" id="hdr-user-role" style="background:var(--primary); font-size:10px; padding:2px 7px;">STAFF</span>
+      <button class="btn btn-outline" onclick="logout()" style="padding:2px 8px; font-size:11px; margin-left:4px; border-color:#d3e2ee;">Logout</button>
+    </div>
   </div>
 </header>
 
@@ -395,7 +401,8 @@
   <button class="nav-tab active" data-view="chat-view">💬 Conversational AI</button>
   <button class="nav-tab" data-view="queue-view">📋 Multi-Client Queue & Auto-Booker</button>
   <button class="nav-tab" data-view="slot-search-view">🔍 GVC Greece Slot Inspector</button>
-  <button class="nav-tab" data-view="proxy-view">🌐 Residential Proxies</button>
+  <button class="nav-tab" data-view="proxy-view" id="tab-proxy-view">🌐 Residential Proxies</button>
+  <button class="nav-tab" data-view="users-view" id="tab-users-view" style="display:none;">👥 Staff & Roles</button>
 </div>
 
 <!-- ── VIEW 1: CHAT VIEW ── -->
@@ -651,6 +658,97 @@ How can I assist you right now?</div>
   </div>
 </div>
 
+<!-- ── VIEW 5: USER & ROLE MANAGEMENT (ADMIN ONLY) ── -->
+<div class="view-container" id="users-view" style="padding:16px; overflow-y:auto;">
+  <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
+    
+    <div style="display:grid; grid-template-columns: 1fr 1.6fr; gap:16px;">
+      
+      <!-- Create User Card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">➕ Create Staff / Admin Account</div>
+        </div>
+        <form onsubmit="event.preventDefault(); submitCreateUser();">
+          <div class="form-group">
+            <label>Username *</label>
+            <input type="text" id="u-username" required placeholder="e.g. zeeshan" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="u-fullname" placeholder="e.g. Zeeshan Ali">
+          </div>
+          <div class="form-group">
+            <label>Role</label>
+            <select id="u-role">
+              <option value="staff">Staff (Queue & Search Access)</option>
+              <option value="admin">Administrator (Full System Access)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Password *</label>
+            <input type="password" id="u-password" required placeholder="••••••••••••" autocomplete="new-password">
+          </div>
+          <button type="submit" id="btn-create-user" class="btn btn-primary" style="width:100%; margin-top:8px;">Create Account</button>
+        </form>
+      </div>
+
+      <!-- Registered Users Table -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">👥 Registered Staff & Administrators</div>
+          <button class="btn btn-outline" onclick="loadUsers()" style="font-size:11px; padding:4px 8px;">🔄 Refresh</button>
+        </div>
+
+        <div class="queue-table-wrap" style="max-height:420px;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Full Name</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="users-table-body">
+              <tr><td colspan="6" style="text-align:center; color:var(--muted); padding:20px;">Loading users...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- ── LOGIN OVERLAY MODAL ── -->
+<div class="modal active" id="login-modal" style="z-index: 9999; background: rgba(8, 75, 122, 0.7); backdrop-filter: blur(8px);">
+  <div class="modal-content" style="width: 380px; text-align: center; border: 2px solid var(--primary-l); box-shadow: 0 16px 40px rgba(0,0,0,0.3);">
+    <img src="/static/logo.jpeg" alt="Logo" style="height: 54px; object-fit: contain; margin-bottom: 8px; border-radius: 6px;" />
+    <h2 style="font-size: 18px; font-weight: 800; color: var(--primary-d); margin-bottom: 2px;">Kamal Express Platform</h2>
+    <p style="font-size: 12px; color: var(--muted); margin-bottom: 16px;">Staff & Administrator Sign In</p>
+
+    <div id="login-error" style="display:none; background:#fde8e8; border:1px solid #f8b4b4; color:#9b1c1c; padding:8px 12px; border-radius:6px; font-size:12px; margin-bottom:12px; text-align:left;"></div>
+
+    <form onsubmit="event.preventDefault(); submitLogin();" style="text-align: left;">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="login-username" required placeholder="admin or staff" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="login-password" required placeholder="••••••••••••" autocomplete="current-password">
+      </div>
+      <button type="submit" id="btn-login-submit" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 14px; margin-top: 8px;">
+        Sign In Securely
+      </button>
+    </form>
+  </div>
+</div>
+
 <!-- ── ADD CLIENT MODAL ── -->
 <div class="modal" id="add-modal">
   <div class="modal-content">
@@ -724,6 +822,7 @@ How can I assist you right now?</div>
   let activeAgent = 'orchestrator';
   let history = [];
   let streaming = false;
+  let currentUser = null;
 
   // Format initial message
   window.addEventListener('DOMContentLoaded', () => {
@@ -731,7 +830,96 @@ How can I assist you right now?</div>
     if (initBubble && window.marked && window.marked.parse) {
       initBubble.innerHTML = marked.parse(initBubble.textContent);
     }
+    checkAuth();
   });
+
+  // ── Authentication & RBAC Handlers ───────────────────────────
+  async function checkAuth() {
+    try {
+      const resp = await fetch('/api/auth/me');
+      if (resp.ok) {
+        const data = await resp.json();
+        currentUser = data.user;
+        renderUserInterface();
+      } else {
+        currentUser = null;
+        showLogin();
+      }
+    } catch (e) {
+      currentUser = null;
+      showLogin();
+    }
+  }
+
+  function renderUserInterface() {
+    if (!currentUser) return;
+    document.getElementById('login-modal').classList.remove('active');
+    document.getElementById('user-profile-pill').style.display = 'flex';
+    document.getElementById('hdr-user-name').textContent = currentUser.full_name || currentUser.username;
+
+    const rolePill = document.getElementById('hdr-user-role');
+    rolePill.textContent = currentUser.role.toUpperCase();
+    if (currentUser.role === 'admin') {
+      rolePill.style.background = 'var(--primary)';
+      document.getElementById('tab-users-view').style.display = 'inline-flex';
+    } else {
+      rolePill.style.background = 'var(--accent-teal)';
+      document.getElementById('tab-users-view').style.display = 'none';
+    }
+
+    refreshQueue();
+    refreshTelemetry();
+    loadProxies();
+  }
+
+  function showLogin() {
+    document.getElementById('login-modal').classList.add('active');
+    document.getElementById('user-profile-pill').style.display = 'none';
+    document.getElementById('tab-users-view').style.display = 'none';
+  }
+
+  async function submitLogin() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errBox = document.getElementById('login-error');
+    const submitBtn = document.getElementById('btn-login-submit');
+
+    errBox.style.display = 'none';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing In...';
+
+    try {
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await resp.json();
+
+      if (resp.ok && data.success) {
+        currentUser = data.user;
+        renderUserInterface();
+      } else {
+        errBox.textContent = data.detail || 'Invalid username or password.';
+        errBox.style.display = 'block';
+      }
+    } catch (err) {
+      errBox.textContent = `Connection error: ${err.message}`;
+      errBox.style.display = 'block';
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In Securely';
+    }
+  }
+
+  async function logout() {
+    if (!confirm('Are you sure you want to log out?')) return;
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) {}
+    currentUser = null;
+    showLogin();
+  }
 
   // ── Navigation Tabs ──────────────────────────────────────────
   document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -746,6 +934,8 @@ How can I assist you right now?</div>
         refreshTelemetry();
       } else if (tab.dataset.view === 'proxy-view') {
         loadProxies();
+      } else if (tab.dataset.view === 'users-view') {
+        loadUsers();
       }
     });
   });
@@ -802,6 +992,11 @@ How can I assist you right now?</div>
         body: JSON.stringify({ message: text, history, session_id: 'default' }),
       });
 
+      if (resp.status === 401) {
+        showLogin();
+        return;
+      }
+
       bubbleEl.innerHTML = '';
       let fullText = '';
       const reader = resp.body.getReader();
@@ -848,6 +1043,7 @@ How can I assist you right now?</div>
   async function refreshQueue() {
     try {
       const resp = await fetch('/api/clients');
+      if (resp.status === 401) { showLogin(); return; }
       const data = await resp.json();
       
       document.getElementById('hdr-queued-count').textContent = (data.stats && data.stats.QUEUED) || 0;
@@ -861,6 +1057,8 @@ How can I assist you right now?</div>
         return;
       }
 
+      const isAdmin = currentUser && currentUser.role === 'admin';
+
       data.clients.forEach(c => {
         const tr = document.createElement('tr');
         const badgeClass = `badge-${c.status.toLowerCase()}`;
@@ -872,7 +1070,7 @@ How can I assist you right now?</div>
           <td>${c.vac_city}</td>
           <td><span class="badge ${badgeClass}">${c.status}</span></td>
           <td>${c.booking_reference ? `<b>${c.booking_reference}</b><br><small>${c.booked_date || ''} ${c.booked_time || ''}</small>` : '<span style="color:var(--muted)">—</span>'}</td>
-          <td><button class="btn btn-danger" onclick="deleteClient(${c.id})">Delete</button></td>
+          <td>${isAdmin ? `<button class="btn btn-danger" onclick="deleteClient(${c.id})">Delete</button>` : '<span style="color:var(--muted); font-size:11px;">Staff View</span>'}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -883,7 +1081,8 @@ How can I assist you right now?</div>
 
   async function deleteClient(id) {
     if (!confirm(`Are you sure you want to remove client #${id}?`)) return;
-    await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+    const resp = await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+    if (resp.status === 401) { showLogin(); return; }
     refreshQueue();
   }
 
@@ -934,6 +1133,7 @@ How can I assist you right now?</div>
       let url = `/api/slots/search?vac_id=${vac_id}&visa_type=${visa_type}`;
       if (date_from) url += `&date_from=${encodeURIComponent(date_from)}`;
       const resp = await fetch(url);
+      if (resp.status === 401) { showLogin(); return; }
       const data = await resp.json();
 
       tbody.innerHTML = '';
@@ -974,6 +1174,10 @@ How can I assist you right now?</div>
 
   // ── Monitor Controls & Telemetry ─────────────────────────────
   async function toggleMonitor() {
+    if (!currentUser || currentUser.role !== 'admin') {
+      alert("⚠️ Administrator access is required to control the autonomous monitor.");
+      return;
+    }
     const btn = document.getElementById('btn-toggle-monitor');
     const isRunning = btn.textContent.includes('Stop');
     const action = isRunning ? 'stop' : 'start';
@@ -983,13 +1187,16 @@ How can I assist you right now?</div>
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, interval_seconds: 45 }),
     });
+    if (resp.status === 401) { showLogin(); return; }
     const res = await resp.json();
     refreshTelemetry();
   }
 
   async function refreshTelemetry() {
+    if (!currentUser) return;
     try {
       const resp = await fetch('/api/monitor/status');
+      if (resp.status === 401) { return; }
       const data = await resp.json();
 
       const btn = document.getElementById('btn-toggle-monitor');
@@ -1034,14 +1241,12 @@ How can I assist you right now?</div>
     } catch (e) {}
   }
 
-  function escapeHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
   // ── Proxy Operations ────────────────────────────────────────
   async function loadProxies() {
+    if (!currentUser) return;
     try {
       const resp = await fetch('/api/proxies');
+      if (resp.status === 401) { showLogin(); return; }
       const data = await resp.json();
 
       const stats = data.stats || {};
@@ -1059,6 +1264,8 @@ How can I assist you right now?</div>
         tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted); padding:20px;">No proxies currently in SQLite pool. Paste proxy strings above to add them.</td></tr>`;
         return;
       }
+
+      const isAdmin = currentUser && currentUser.role === 'admin';
 
       data.proxies.forEach(p => {
         const tr = document.createElement('tr');
@@ -1081,7 +1288,7 @@ How can I assist you right now?</div>
           <td><b style="color:var(--badge-booked)">${p.success_count}</b> / <b style="color:var(--badge-fail)">${p.fail_count}</b></td>
           <td><small>${quarantInfo}</small></td>
           <td><small>${lastUsedInfo}</small></td>
-          <td><button class="btn btn-danger" onclick="deleteProxy(${p.id})">Delete</button></td>
+          <td>${isAdmin ? `<button class="btn btn-danger" onclick="deleteProxy(${p.id})">Delete</button>` : '<span style="color:var(--muted); font-size:11px;">Read-Only</span>'}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -1091,6 +1298,10 @@ How can I assist you right now?</div>
   }
 
   async function submitBulkProxies() {
+    if (!currentUser || currentUser.role !== 'admin') {
+      alert("⚠️ Administrator access is required to add proxies.");
+      return;
+    }
     const inputEl = document.getElementById('bulk-proxy-input');
     const text = inputEl.value.trim();
     if (!text) {
@@ -1125,6 +1336,10 @@ How can I assist you right now?</div>
   }
 
   async function resetProxyCooldowns() {
+    if (!currentUser || currentUser.role !== 'admin') {
+      alert("⚠️ Administrator access is required.");
+      return;
+    }
     try {
       const resp = await fetch('/api/proxies/reset-cooldowns', { method: 'POST' });
       const data = await resp.json();
@@ -1136,6 +1351,7 @@ How can I assist you right now?</div>
   }
 
   async function deleteProxy(id) {
+    if (!currentUser || currentUser.role !== 'admin') return;
     if (!confirm(`Are you sure you want to remove proxy #${id}?`)) return;
     try {
       const resp = await fetch(`/api/proxies/${id}`, { method: 'DELETE' });
@@ -1147,6 +1363,7 @@ How can I assist you right now?</div>
   }
 
   async function clearAllProxies() {
+    if (!currentUser || currentUser.role !== 'admin') return;
     if (!confirm("⚠️ Are you sure you want to CLEAR ALL PROXIES from the database?")) return;
     try {
       const resp = await fetch('/api/proxies', { method: 'DELETE' });
@@ -1158,10 +1375,132 @@ How can I assist you right now?</div>
     }
   }
 
-  // Initial load
-  refreshQueue();
-  refreshTelemetry();
-  loadProxies();
+  // ── User Management Operations (Admin Only) ──────────────────
+  async function loadUsers() {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    try {
+      const resp = await fetch('/api/users');
+      if (resp.status === 401) { showLogin(); return; }
+      const data = await resp.json();
+      const tbody = document.getElementById('users-table-body');
+      tbody.innerHTML = '';
+
+      if (!data.users || data.users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted); padding:20px;">No users found.</td></tr>';
+        return;
+      }
+
+      data.users.forEach(u => {
+        const tr = document.createElement('tr');
+        const isSelf = currentUser && currentUser.id === u.id;
+        const roleBadge = u.role === 'admin' 
+          ? '<span class="badge" style="background:var(--primary);">ADMIN</span>'
+          : '<span class="badge" style="background:var(--accent-teal);">STAFF</span>';
+
+        const statusBadge = u.is_active 
+          ? '<span class="badge badge-booked">ACTIVE</span>'
+          : '<span class="badge badge-failed">DISABLED</span>';
+
+        tr.innerHTML = `
+          <td><b>#${u.id}</b></td>
+          <td><code>${escapeHtml(u.username)}</code> ${isSelf ? '<small style="color:var(--primary); font-weight:bold;">(You)</small>' : ''}</td>
+          <td>${escapeHtml(u.full_name || '—')}</td>
+          <td>${roleBadge}</td>
+          <td>${statusBadge}</td>
+          <td>
+            ${!isSelf ? `
+              <button class="btn btn-outline" style="padding:3px 7px; font-size:11px;" onclick="toggleUserStatus(${u.id}, ${!u.is_active})">
+                ${u.is_active ? 'Disable' : 'Enable'}
+              </button>
+              <button class="btn btn-danger" style="padding:3px 7px; font-size:11px; margin-left:4px;" onclick="deleteUserAccount(${u.id}, '${escapeHtml(u.username)}')">
+                Delete
+              </button>
+            ` : '<span style="color:var(--muted); font-size:11px;">Active Account</span>'}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (err) {
+      console.error('Failed to load users:', err);
+    }
+  }
+
+  async function submitCreateUser() {
+    const username = document.getElementById('u-username').value.trim();
+    const fullName = document.getElementById('u-fullname').value.trim();
+    const role = document.getElementById('u-role').value;
+    const password = document.getElementById('u-password').value;
+
+    if (!username || !password) {
+      alert('Username and password are required.');
+      return;
+    }
+
+    const btn = document.getElementById('btn-create-user');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+
+    try {
+      const resp = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, role, full_name: fullName }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`✅ ${data.message}`);
+        document.getElementById('u-username').value = '';
+        document.getElementById('u-fullname').value = '';
+        document.getElementById('u-password').value = '';
+        loadUsers();
+      } else {
+        alert(`⚠️ Failed to create user: ${data.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert(`⚠️ Error: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Account';
+    }
+  }
+
+  async function toggleUserStatus(userId, newStatus) {
+    try {
+      const resp = await fetch(`/api/users/${userId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: newStatus }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        loadUsers();
+      } else {
+        alert(`⚠️ ${data.detail}`);
+      }
+    } catch (err) {
+      alert(`⚠️ Error: ${err.message}`);
+    }
+  }
+
+  async function deleteUserAccount(userId, username) {
+    if (!confirm(`Are you sure you want to permanently delete user '${username}'?`)) return;
+    try {
+      const resp = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (resp.ok) {
+        loadUsers();
+      } else {
+        alert(`⚠️ ${data.detail}`);
+      }
+    } catch (err) {
+      alert(`⚠️ Error: ${err.message}`);
+    }
+  }
+
+  function escapeHtml(str) {
+    return (str || '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   setInterval(refreshTelemetry, 4000);
 </script>
 </body>

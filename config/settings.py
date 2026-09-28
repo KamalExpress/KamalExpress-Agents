@@ -159,6 +159,18 @@ class RagSettings(BaseSettings):
     embed_base_url: str = "http://localhost:11434/v1"
 
 
+class AuthSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="AUTH_", env_file=".env", extra="ignore")
+
+    enabled: bool = True
+    default_admin_username: str = "admin"
+    default_admin_password: str = "KamalAdmin2026!"
+    default_staff_username: str = "staff"
+    default_staff_password: str = "KamalStaff2026!"
+    session_expire_days: int = 7
+    webhook_secret: str = ""
+
+
 # ─────────────────────────────────────────────────────────────
 # Root settings
 # ─────────────────────────────────────────────────────────────
@@ -224,6 +236,10 @@ class Settings(BaseSettings):
     @property
     def rag(self) -> RagSettings:
         return RagSettings()
+
+    @property
+    def auth(self) -> AuthSettings:
+        return AuthSettings()
 
 
 @lru_cache(maxsize=1)
