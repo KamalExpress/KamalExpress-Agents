@@ -32,6 +32,15 @@ services:
       - BITNET_SERVER_URL=${BITNET_SERVER_URL:-https://ai.alamiaconnect.com/v1}
       - BITNET_API_KEY=${BITNET_API_KEY:-51129693340}
 
+      # Authentication & RBAC
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
+      - AUTH_DEFAULT_ADMIN_USERNAME=${AUTH_DEFAULT_ADMIN_USERNAME:-admin}
+      - AUTH_DEFAULT_ADMIN_PASSWORD=${AUTH_DEFAULT_ADMIN_PASSWORD:-KamalAdmin2026!}
+      - AUTH_DEFAULT_STAFF_USERNAME=${AUTH_DEFAULT_STAFF_USERNAME:-staff}
+      - AUTH_DEFAULT_STAFF_PASSWORD=${AUTH_DEFAULT_STAFF_PASSWORD:-KamalStaff2026!}
+      - AUTH_SESSION_EXPIRE_DAYS=${AUTH_SESSION_EXPIRE_DAYS:-7}
+      - AUTH_WEBHOOK_SECRET=${AUTH_WEBHOOK_SECRET:-}
+
       # Captcha Solving
       - CAPTCHA_PROVIDER=${CAPTCHA_PROVIDER:-none}
       - CAPTCHA_API_KEY=${CAPTCHA_API_KEY:-}
@@ -42,7 +51,7 @@ services:
       - BROWSER_TIMEOUT_MS=30000
 
       # Logging
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - kamal_data:/app/data
       - browser_profiles:/app/browser_profiles
