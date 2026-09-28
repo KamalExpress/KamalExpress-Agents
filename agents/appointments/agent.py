@@ -308,6 +308,31 @@ def book_gvc_slot_now(
 
 
 @tool
+def trigger_client_otp(passport_number: str) -> dict:
+    """
+    Trigger GVC World to send an SMS/WhatsApp OTP to the applicant's registered phone number.
+
+    Args:
+        passport_number: Passport number of the applicant in the queue.
+
+    Returns:
+        Status indicating whether the OTP dispatch was triggered successfully.
+    """
+    client = get_client_by_passport(passport_number)
+    if not client:
+        return {
+            "success": False,
+            "message": f"Client with passport '{passport_number}' not found in database.",
+        }
+
+    res = run_sync(gvc_driver.trigger_booking_otp(
+        phone_number=client.phone_number,
+        prefix_id=client.phone_prefix_id or "197",
+    ))
+    return res
+
+
+@tool
 def start_slot_monitor(interval_seconds: int = 45) -> dict:
     """
     Start the autonomous background slot monitoring & auto-booking engine.
@@ -375,6 +400,7 @@ TOOLS = [
     intake_client,
     list_client_queue,
     search_gvc_slots,
+    trigger_client_otp,
     book_gvc_slot_now,
     start_slot_monitor,
     stop_slot_monitor,
