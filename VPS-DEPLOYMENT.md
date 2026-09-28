@@ -102,10 +102,11 @@ If you wish to access the Web Dashboard from your local laptop instead of inside
 
 ---
 
-## 🔄 Updating the VPS Code
+## 🔄 Automatic Code Updates
 
-Whenever you push new changes to GitHub:
+[`Start-KamalExpress.bat`](file:///E:/Alamia/KamalExpress-Agents/Start-KamalExpress.bat) and [`start-vps.ps1`](file:///E:/Alamia/KamalExpress-Agents/start-vps.ps1) **automatically run `git pull` on startup** to fetch the latest code from GitHub whenever launched.
 
+To update manually:
 ```powershell
 cd C:\KamalExpress-Agents
 git pull origin main

@@ -1,7 +1,7 @@
 # ==============================================================================
 # Kamal Express AI Platform — Windows Server VPS Turnkey Setup Script
 # ==============================================================================
-# Run on Windows Server VPS to configure Python, Chrome, Virtual Environment,
+# Run on Windows Server VPS to configure Git, Python, Chrome, Virtual Environment,
 # Playwright, and all AI dependencies with a single command.
 #
 # Usage:
@@ -20,9 +20,38 @@ Write-Host "====================================================================
 Write-Host ""
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. Check & Install Google Chrome
+# 1. Check & Install Git
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "[1/6] Checking Google Chrome installation..." -ForegroundColor Yellow
+Write-Host "[1/7] Checking Git installation..." -ForegroundColor Yellow
+$GitCmd = Get-Command git -ErrorAction SilentlyContinue
+
+if ($GitCmd) {
+    Write-Host "  [OK] Git is installed: $(& git --version)" -ForegroundColor Green
+} else {
+    Write-Host "  [DOWNLOAD] Git not found. Downloading Git 64-bit installer..." -ForegroundColor Yellow
+    $GitInstaller = Join-Path $env:TEMP "Git-64-bit.exe"
+    $GitUrl = "https://github.com/git-for-windows/git/releases/download/v2.44.0.windows.1/Git-2.44.0-64-bit.exe"
+    
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $GitUrl -OutFile $GitInstaller -UseBasicParsing
+    
+    Write-Host "  [INSTALL] Installing Git silently..." -ForegroundColor Yellow
+    Start-Process $GitInstaller -ArgumentList "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS" -Wait
+    
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $GitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($GitCmd) {
+        Write-Host "  [OK] Git installed successfully: $(& git --version)" -ForegroundColor Green
+    } else {
+        Write-Warning "Git installed. You may need to reopen PowerShell to refresh PATH."
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Check & Install Google Chrome
+# ─────────────────────────────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "[2/7] Checking Google Chrome installation..." -ForegroundColor Yellow
 
 $ChromePaths = @(
     "C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -53,10 +82,10 @@ if ($ChromeExe) {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. Check & Install Python 3.12
+# 3. Check & Install Python 3.12
 # ─────────────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "[2/6] Checking Python installation..." -ForegroundColor Yellow
+Write-Host "[3/7] Checking Python installation..." -ForegroundColor Yellow
 
 $PythonCmd = Get-Command python -ErrorAction SilentlyContinue
 $PythonOk = $false
@@ -70,9 +99,9 @@ if ($PythonCmd) {
 }
 
 if (-not $PythonOk) {
-    Write-Host "  [DOWNLOAD] Compatible Python (>=3.10) not found. Downloading Python 3.12.7 64-bit..." -ForegroundColor Yellow
-    $PyInstaller = Join-Path $env:TEMP "python-3.12.7-amd64.exe"
-    $PyUrl = "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe"
+    Write-Host "  [DOWNLOAD] Python 3.10+ not found. Downloading Python 3.12.2 64-bit installer..." -ForegroundColor Yellow
+    $PyInstaller = Join-Path $env:TEMP "python-3.12.2-amd64.exe"
+    $PyUrl = "https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe"
     
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -Uri $PyUrl -OutFile $PyInstaller -UseBasicParsing
@@ -92,10 +121,10 @@ if (-not $PythonOk) {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. Setup Virtual Environment
+# 4. Setup Virtual Environment
 # ─────────────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "[3/6] Configuring Python Virtual Environment (venv)..." -ForegroundColor Yellow
+Write-Host "[4/7] Configuring Python Virtual Environment (venv)..." -ForegroundColor Yellow
 
 $VenvDir = Join-Path $PSScriptRoot "venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
@@ -110,10 +139,10 @@ Write-Host "  Upgrading pip, setuptools, and wheel..." -ForegroundColor Cyan
 & $VenvPython -m pip install --upgrade pip setuptools wheel --quiet
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. Install Dependencies & Playwright
+# 5. Install Dependencies & Playwright
 # ─────────────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "[4/6] Installing Python dependencies from requirements.txt..." -ForegroundColor Yellow
+Write-Host "[5/7] Installing Python dependencies from requirements.txt..." -ForegroundColor Yellow
 
 $ReqFile = Join-Path $PSScriptRoot "requirements.txt"
 if (Test-Path $ReqFile) {
@@ -132,10 +161,10 @@ if (Test-Path $PlaywrightExe) {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. Initialize Configuration & Data Directories
+# 6. Initialize Configuration & Data Directories
 # ─────────────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "[5/6] Verifying configuration and data directories..." -ForegroundColor Yellow
+Write-Host "[6/7] Verifying configuration and data directories..." -ForegroundColor Yellow
 
 $EnvFile = Join-Path $PSScriptRoot ".env"
 $EnvExample = Join-Path $PSScriptRoot ".env.example"
@@ -144,6 +173,7 @@ if (-not (Test-Path $EnvFile)) {
     if (Test-Path $EnvExample) {
         Copy-Item $EnvExample $EnvFile
         Write-Host "  [OK] Created .env from .env.example" -ForegroundColor Green
+    } else {
         $DefaultEnv = @(
             "AI_PROVIDER=bitnet",
             "BITNET_SERVER_URL=https://ai.alamiaconnect.com/v1",
@@ -185,10 +215,10 @@ if (-not (Test-Path $ProxyFile)) {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6. Run System Self-Verification
+# 7. Run System Self-Verification
 # ─────────────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "[6/6] Running system verification test..." -ForegroundColor Yellow
+Write-Host "[7/7] Running system verification test..." -ForegroundColor Yellow
 
 $TestScript = Join-Path $PSScriptRoot "test_end_to_end.py"
 if (Test-Path $TestScript) {
@@ -205,6 +235,6 @@ Write-Host "    1. Launch Chrome CDP:  .\Launch-Chrome-CDP.ps1 -RealProfile -NoP
 Write-Host "    2. Start API Server:   .\venv\Scripts\uvicorn api.main:app --host 0.0.0.0 --port 8080" -ForegroundColor Yellow
 Write-Host "    3. Access Dashboard:   http://localhost:8080" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  Or simply double-click: Start-KamalExpress.bat" -ForegroundColor Green
+Write-Host "  Or simply double-click: Start-KamalExpress.bat (auto-updates code on launch)" -ForegroundColor Green
 Write-Host "==============================================================================" -ForegroundColor Green
 Write-Host ""

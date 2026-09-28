@@ -2,7 +2,8 @@
 # Kamal Express — 1-Click Startup Script for Windows Server VPS
 # ==============================================================================
 param(
-    [switch]$NoBrowser = $false
+    [switch]$NoBrowser = $false,
+    [switch]$NoGitPull = $false
 )
 
 $Host.UI.RawUI.WindowTitle = "Kamal Express AI Platform"
@@ -11,6 +12,20 @@ Write-Host ""
 Write-Host "===========================================================" -ForegroundColor Cyan
 Write-Host "  🚀 Launching Kamal Express AI Platform on VPS" -ForegroundColor Green
 Write-Host "===========================================================" -ForegroundColor Cyan
+
+# 0. Auto-fetch latest code from GitHub (if in a git repository)
+if (-not $NoGitPull -and (Test-Path (Join-Path $PSScriptRoot ".git"))) {
+    $GitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($GitCmd) {
+        Write-Host "  [0/3] Fetching latest updates from GitHub..." -ForegroundColor Cyan
+        try {
+            $PullOutput = & git -C $PSScriptRoot pull 2>&1
+            Write-Host "        $PullOutput" -ForegroundColor DarkGray
+        } catch {
+            Write-Host "        [!] Git pull skipped: $_" -ForegroundColor DarkYellow
+        }
+    }
+}
 
 # 1. Start Chrome CDP in Background (if not already running on 9222)
 $CdpRunning = $false
