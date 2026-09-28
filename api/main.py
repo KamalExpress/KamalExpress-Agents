@@ -240,6 +240,73 @@ async def toggle_monitor(req: MonitorToggleRequest):
         return {"status": res["status"], "running": False}
 
 
+# ── OTP Ingestion Webhook Endpoints ───────────────────────────────────────────
+
+class OTPWebhookPayload(BaseModel):
+    phone: Optional[str] = None
+    otp_code: Optional[str] = None
+    message: Optional[str] = None
+    sender: Optional[str] = None
+
+
+# In-memory OTP cache: phone -> {"code": "123456", "timestamp": float, ...}
+OTP_STORE: dict[str, dict] = {}
+
+
+@app.post("/api/otp/webhook")
+async def receive_otp_webhook(payload: OTPWebhookPayload):
+    """
+    Webhook endpoint to ingest SMS/WhatsApp OTPs forwarded from mobile devices.
+    Auto-extracts 6-digit verification codes from message texts.
+    """
+    import re
+    import time
+    phone = (payload.phone or "").lstrip("+").lstrip("0")
+    code = payload.otp_code
+
+    if not code and payload.message:
+        match = re.search(r"\b\d{6}\b", payload.message)
+        if match:
+            code = match.group(0)
+
+    if not code:
+        raise HTTPException(status_code=400, detail="No 6-digit OTP code detected in payload")
+
+    record = {
+        "code": code,
+        "phone": phone,
+        "timestamp": time.time(),
+        "sender": payload.sender or "SMS_FORWARDER",
+    }
+    OTP_STORE[phone] = record
+    OTP_STORE["latest"] = record
+
+    logger.info(f"[otp-webhook] ✓ Received OTP {code} for phone +92-{phone}")
+    return {"success": True, "message": f"OTP {code} received and cached", "phone": phone, "code": code}
+
+
+@app.get("/api/otp/latest")
+async def get_latest_otp(phone: Optional[str] = Query(None)):
+    """Retrieve the latest valid OTP from cache (expires after 3 minutes)."""
+    import time
+    clean_phone = (phone or "").lstrip("+").lstrip("0")
+    record = OTP_STORE.get(clean_phone) or OTP_STORE.get("latest")
+
+    if not record:
+        return {"found": False, "message": "No active OTP in cache"}
+
+    age = time.time() - record["timestamp"]
+    if age > 180:
+        return {"found": False, "message": "OTP expired (> 3 mins old)"}
+
+    return {
+        "found": True,
+        "code": record["code"],
+        "phone": record["phone"],
+        "age_seconds": int(age),
+    }
+
+
 # ── Health & UI ───────────────────────────────────────────────────────────────
 
 @app.get("/health")

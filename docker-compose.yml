@@ -1,97 +1,63 @@
 # ─────────────────────────────────────────────────────────────
-# Kamal Express AI Agents — Docker Compose
+# Kamal Express AI Platform — Portainer Production Stack
 # ─────────────────────────────────────────────────────────────
-# Services:
-#   api        — FastAPI agents server
-#   chromadb   — Vector store for RAG
-#   redis      — Session / queue storage
-#
-# Ollama runs on the HOST (localhost:11434) — not in Docker.
-# The api container reaches it via host.docker.internal.
+# Deploy directly from Portainer:
+#   Repository: https://github.com/KamalExpress/KamalExpress-Agents.git
+#   Reference:  refs/heads/main
+#   Path:       docker-compose.yml
 # ─────────────────────────────────────────────────────────────
+version: "3.8"
 
 services:
-
-  # ── FastAPI Agent API ──────────────────────────────────────
-  api:
+  kamal-agents:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: kamal-agents-api
+    container_name: kamal-express-agents
     restart: unless-stopped
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "8080:8080"
     environment:
-      # Override Ollama URL to reach host machine from inside container
-      OLLAMA_BASE_URL: http://host.docker.internal:11434/v1
-      # ChromaDB: host port 8001 → container port 8000
-      CHROMA_HOST: chromadb
-      CHROMA_PORT: 8000    # internal port inside Docker network
-      # Redis inside Docker
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      chromadb:
-        condition: service_started   # chromadb image has no healthcheck binary
-      redis:
-        condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"  # Linux host resolution
+      # API Server
+      - API_HOST=0.0.0.0
+      - API_PORT=8080
+      - API_RELOAD=false
+      
+      # AI Provider (groq | sambanova | bitnet | openrouter | openai | anthropic)
+      - AI_PROVIDER=${AI_PROVIDER:-groq}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_DEFAULT_MODEL=${GROQ_DEFAULT_MODEL:-qwen/qwen3.8-27b}
+      - SAMBANOVA_API_KEY=${SAMBANOVA_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - BITNET_SERVER_URL=${BITNET_SERVER_URL:-https://ai.alamiaconnect.com/v1}
+      - BITNET_API_KEY=${BITNET_API_KEY:-51129693340}
+
+      # Captcha Solving
+      - CAPTCHA_PROVIDER=${CAPTCHA_PROVIDER:-none}
+      - CAPTCHA_API_KEY=${CAPTCHA_API_KEY:-}
+
+      # Browser Automation
+      - BROWSER_MODE=local
+      - BROWSER_HEADLESS=true
+      - BROWSER_TIMEOUT_MS=30000
+
+      # Logging
+      - LOG_LEVEL=INFO
     volumes:
-      - ./rag/documents:/app/rag/documents:ro
+      - kamal_data:/app/data
       - browser_profiles:/app/browser_profiles
-    networks:
-      - kamal-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # ── ChromaDB vector store ──────────────────────────────────
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: kamal-chromadb
-    restart: unless-stopped
-    ports:
-      - "8001:8000"           # host:8001 → container:8000
-    environment:
-      IS_PERSISTENT: "TRUE"
-      PERSIST_DIRECTORY: /data
-      ANONYMIZED_TELEMETRY: "FALSE"
-    volumes:
-      - chroma_data:/data
     networks:
       - kamal-net
-    # Note: chromadb image ships no curl/wget/python/bash — no healthcheck possible.
-    # The api service uses service_started + its own retry logic.
 
-  # ── Redis (sessions / task queue) ─────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: kamal-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    command: redis-server --save 60 1 --loglevel warning
-    volumes:
-      - redis_data:/data
-    networks:
-      - kamal-net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-# ── Volumes ────────────────────────────────────────────────
 volumes:
-  chroma_data:
-  redis_data:
+  kamal_data:
   browser_profiles:
 
-# ── Network ────────────────────────────────────────────────
 networks:
   kamal-net:
     driver: bridge
