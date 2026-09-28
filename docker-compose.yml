@@ -1,0 +1,97 @@
+# ─────────────────────────────────────────────────────────────
+# Kamal Express AI Agents — Docker Compose
+# ─────────────────────────────────────────────────────────────
+# Services:
+#   api        — FastAPI agents server
+#   chromadb   — Vector store for RAG
+#   redis      — Session / queue storage
+#
+# Ollama runs on the HOST (localhost:11434) — not in Docker.
+# The api container reaches it via host.docker.internal.
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── FastAPI Agent API ──────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kamal-agents-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override Ollama URL to reach host machine from inside container
+      OLLAMA_BASE_URL: http://host.docker.internal:11434/v1
+      # ChromaDB: host port 8001 → container port 8000
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000    # internal port inside Docker network
+      # Redis inside Docker
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      chromadb:
+        condition: service_started   # chromadb image has no healthcheck binary
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Linux host resolution
+    volumes:
+      - ./rag/documents:/app/rag/documents:ro
+      - browser_profiles:/app/browser_profiles
+    networks:
+      - kamal-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── ChromaDB vector store ──────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: kamal-chromadb
+    restart: unless-stopped
+    ports:
+      - "8001:8000"           # host:8001 → container:8000
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /data
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - chroma_data:/data
+    networks:
+      - kamal-net
+    # Note: chromadb image ships no curl/wget/python/bash — no healthcheck possible.
+    # The api service uses service_started + its own retry logic.
+
+  # ── Redis (sessions / task queue) ─────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: kamal-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - kamal-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ── Volumes ────────────────────────────────────────────────
+volumes:
+  chroma_data:
+  redis_data:
+  browser_profiles:
+
+# ── Network ────────────────────────────────────────────────
+networks:
+  kamal-net:
+    driver: bridge
