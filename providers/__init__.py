@@ -23,7 +23,13 @@ def get_provider() -> AIServiceProvider:
     """
     provider_name = get_settings().ai_provider
 
-    if provider_name == "bitnet":
+    if provider_name == "groq":
+        from .groq_provider import GroqProvider
+        return GroqProvider()
+    elif provider_name == "sambanova":
+        from .sambanova_provider import SambaNovaProvider
+        return SambaNovaProvider()
+    elif provider_name == "bitnet":
         from .bitnet_provider import BitNetProvider
         return BitNetProvider()
     elif provider_name == "ollama":
@@ -41,7 +47,7 @@ def get_provider() -> AIServiceProvider:
     else:
         raise ValueError(
             f"Unknown AI_PROVIDER='{provider_name}'. "
-            "Valid options: bitnet | ollama | openrouter | openai | anthropic"
+            "Valid options: groq | sambanova | bitnet | ollama | openrouter | openai | anthropic"
         )
 
 

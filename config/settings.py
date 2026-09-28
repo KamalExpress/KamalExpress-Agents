@@ -5,7 +5,9 @@ Central configuration loaded from environment variables / .env file.
 All runtime config lives here — never import raw os.environ elsewhere.
 
 Supported AI_PROVIDER values:
-  bitnet      — Alamia Connect Cloud (default, no local GPU/Ollama required)
+  groq        — Groq Cloud LPU (ultra-fast sub-second responses, recommended)
+  sambanova   — SambaNova Cloud (SN40L high-speed inference)
+  bitnet      — Alamia Connect Cloud (no local GPU/Ollama required)
   ollama      — local Ollama (local GPU/CPU)
   openrouter  — openrouter.ai (cheap, multi-model, pay-per-token)
   openai      — OpenAI directly
@@ -23,6 +25,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # ─────────────────────────────────────────────────────────────
 # Sub-settings groups
 # ─────────────────────────────────────────────────────────────
+
+class GroqSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="GROQ_", env_file=".env", extra="ignore")
+
+    api_key: str = "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"
+    base_url: str = "https://api.groq.com/openai/v1"
+    default_model: str = "qwen/qwen3.8-27b"
+    orchestrator_model: str = "qwen/qwen3.8-27b"
+    visa_model: str = "qwen/qwen3.8-27b"
+    appointments_model: str = "qwen/qwen3.8-27b"
+
+
+class SambaNovaSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="SAMBANOVA_", env_file=".env", extra="ignore")
+
+    api_key: str = "33e23656-b8df-47b4-bcd8-1e4468b46f04"
+    base_url: str = "https://api.sambanova.ai/v1"
+    default_model: str = "Meta-Llama-3.3-70B-Instruct"
+    orchestrator_model: str = "Meta-Llama-3.3-70B-Instruct"
+    visa_model: str = "Meta-Llama-3.3-70B-Instruct"
+    appointments_model: str = "Meta-Llama-3.3-70B-Instruct"
+
 
 class BitNetSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BITNET_", env_file=".env", extra="ignore")
@@ -143,7 +167,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Provider selector
-    ai_provider: Literal["bitnet", "ollama", "openai", "anthropic", "openrouter"] = "bitnet"
+    ai_provider: Literal["groq", "sambanova", "bitnet", "ollama", "openai", "anthropic", "openrouter"] = "groq"
 
     # API server
     api_host: str = "0.0.0.0"
@@ -157,6 +181,14 @@ class Settings(BaseSettings):
     langchain_project: str = "kamal-express"
 
     # Nested settings (instantiated on first access)
+    @property
+    def groq(self) -> GroqSettings:
+        return GroqSettings()
+
+    @property
+    def sambanova(self) -> SambaNovaSettings:
+        return SambaNovaSettings()
+
     @property
     def bitnet(self) -> BitNetSettings:
         return BitNetSettings()
