@@ -29,7 +29,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class GroqSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="GROQ_", env_file=".env", extra="ignore")
 
-    api_key: str = "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"
+    api_key: str = ""
     base_url: str = "https://api.groq.com/openai/v1"
     default_model: str = "qwen/qwen3.8-27b"
     orchestrator_model: str = "qwen/qwen3.8-27b"
@@ -40,7 +40,7 @@ class GroqSettings(BaseSettings):
 class SambaNovaSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SAMBANOVA_", env_file=".env", extra="ignore")
 
-    api_key: str = "33e23656-b8df-47b4-bcd8-1e4468b46f04"
+    api_key: str = ""
     base_url: str = "https://api.sambanova.ai/v1"
     default_model: str = "Meta-Llama-3.3-70B-Instruct"
     orchestrator_model: str = "Meta-Llama-3.3-70B-Instruct"

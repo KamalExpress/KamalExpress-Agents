@@ -173,12 +173,13 @@ if (-not (Test-Path $EnvFile)) {
     if (Test-Path $EnvExample) {
         Copy-Item $EnvExample $EnvFile
         Write-Host "  [OK] Created .env from .env.example" -ForegroundColor Green
+    } else {
         $DefaultEnv = @(
             "AI_PROVIDER=groq",
-            "GROQ_API_KEY=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",
+            "GROQ_API_KEY=",
             "GROQ_DEFAULT_MODEL=qwen/qwen3.8-27b",
-            "SAMBANOVA_API_KEY=33e23656-b8df-47b4-bcd8-1e4468b46f04",
-            "OPENROUTER_API_KEY=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",
+            "SAMBANOVA_API_KEY=",
+            "OPENROUTER_API_KEY=",
             "BITNET_SERVER_URL=https://ai.alamiaconnect.com/v1",
             "BITNET_API_KEY=51129693340",
             "API_HOST=0.0.0.0",
@@ -188,7 +189,7 @@ if (-not (Test-Path $EnvFile)) {
             "BROWSER_CDP_URL=http://localhost:9222"
         )
         $DefaultEnv -join "`n" | Set-Content $EnvFile
-        Write-Host "  [OK] Generated default .env file with ultra-fast Groq LPU & SambaNova providers" -ForegroundColor Green
+        Write-Host "  [OK] Generated default .env file" -ForegroundColor Green
     }
 } else {
     Write-Host "  [OK] Existing .env file found." -ForegroundColor Green
