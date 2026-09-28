@@ -24,11 +24,13 @@ from langgraph.graph.message import add_messages
 from providers import get_provider
 from agents.visa.agent import visa_agent
 from agents.appointments.agent import appointments_agent
+from agents.umrah.agent import umrah_agent
+from agents.hotels.agent import hotel_agent
 from .prompts import ORCHESTRATOR_SYSTEM_PROMPT, ROUTER_PROMPT
 
 logger = logging.getLogger(__name__)
 
-Intent = Literal["visa", "appointments", "general", "unclear"]
+Intent = Literal["visa", "appointments", "umrah", "hotels", "general", "unclear"]
 
 
 # ── State ──────────────────────────────────────────────────────────────────────
@@ -52,8 +54,18 @@ def classify_intent(state: OrchestratorState) -> dict:
     ).lower()
 
     # Fast deterministic routing
-    appointment_keywords = ["cdp", "portal", "gvc", "slot", "intake", "queue", "appointment", "book", "monitor", "islamabad", "karachi", "lahore"]
-    visa_keywords = ["requirement", "checklist", "document", "fee", "eligibility", "how to apply"]
+    appointment_keywords = ["cdp", "portal", "gvc", "slot", "intake", "queue", "appointment", "monitor", "islamabad vac", "karachi vac", "lahore vac"]
+    visa_keywords = ["requirement", "checklist", "document", "schengen", "greece type", "work permit", "greek", "embassy fee", "eligibility", "how to apply"]
+    umrah_keywords = ["umrah", "hajj", "nusuk", "rawdah", "riyadul jannah", "ziyarat", "tasheer", "makkah package", "madinah package", "pilgrim", "zamzam", "makkah hotel package"]
+    hotel_keywords = ["hotel", "room", "stay", "clock tower", "fairmont", "swissotel", "oberoi", "shuttle hotel", "accommodation", "booking hold", "voucher", "quad room", "double room"]
+
+    if any(k in last_user_msg for k in umrah_keywords):
+        logger.info(f"[orchestrator] Fast keyword match → umrah")
+        return {"intent": "umrah"}
+
+    if any(k in last_user_msg for k in hotel_keywords):
+        logger.info(f"[orchestrator] Fast keyword match → hotels")
+        return {"intent": "hotels"}
 
     if any(k in last_user_msg for k in appointment_keywords):
         logger.info(f"[orchestrator] Fast keyword match → appointments")
@@ -69,8 +81,12 @@ def classify_intent(state: OrchestratorState) -> dict:
         response = fast_llm.invoke([HumanMessage(content=prompt)])
         raw = response.content.strip().lower()
 
-        if "appointment" in raw or "slot" in raw or "gvc" in raw:
-            intent: Intent = "appointments"
+        if "umrah" in raw or "hajj" in raw:
+            intent: Intent = "umrah"
+        elif "hotel" in raw or "room" in raw:
+            intent = "hotels"
+        elif "appointment" in raw or "slot" in raw or "gvc" in raw:
+            intent = "appointments"
         elif "visa" in raw:
             intent = "visa"
         elif "general" in raw:
@@ -93,6 +109,8 @@ def route_to_agent(state: OrchestratorState) -> str:
     routes = {
         "visa":         "visa_agent",
         "appointments": "appointments_agent",
+        "umrah":        "umrah_agent",
+        "hotels":       "hotel_agent",
         "general":      "general_response",
         "unclear":      "clarify",
     }
@@ -123,6 +141,28 @@ def call_appointments_agent(state: OrchestratorState) -> dict:
     }
 
 
+def call_umrah_agent(state: OrchestratorState) -> dict:
+    logger.info("[orchestrator] Routing to Hajj & Umrah Agent")
+    result = umrah_agent.invoke({"messages": state["messages"]})
+    last = result["messages"][-1]
+    return {
+        "messages": [last],
+        "routed_to": "umrah_agent",
+        "sub_agent_response": last.content,
+    }
+
+
+def call_hotel_agent(state: OrchestratorState) -> dict:
+    logger.info("[orchestrator] Routing to Hotel Agent")
+    result = hotel_agent.invoke({"messages": state["messages"]})
+    last = result["messages"][-1]
+    return {
+        "messages": [last],
+        "routed_to": "hotel_agent",
+        "sub_agent_response": last.content,
+    }
+
+
 def general_response(state: OrchestratorState) -> dict:
     """Handle general queries directly without routing to a specialist."""
     llm = get_provider().get_llm("orchestrator")
@@ -137,12 +177,11 @@ def clarify(state: OrchestratorState) -> dict:
     """Ask the user to clarify their intent."""
     clarification = AIMessage(
         content=(
-            "I'm here to help with **visa applications**, **appointment booking**, "
-            "and other travel services. Could you tell me more about what you need?\n\n"
-            "For example:\n"
-            "- 'I need a UK tourist visa'\n"
-            "- 'Book a VFS appointment for my Schengen visa'\n"
-            "- 'What documents do I need for a UAE visa?'"
+            "Welcome to **Kamal Express**! How can I assist your journey today?\n\n"
+            "- 📅 **Visa Appointments**: Greece GVC World slot discovery & automated queue\n"
+            "- 🛂 **Visa Requirements**: Checklists for Greece (Type 26 / Schengen), Saudi, UAE, UK\n"
+            "- 🕋 **Hajj & Umrah**: Custom packages, Nusuk Rawdah permits, Tasheer rules & Ziyarat\n"
+            "- 🏨 **Hotel Bookings**: Top hotels in Makkah (Clock Tower), Madinah, Athens, Dubai"
         )
     )
     return {"messages": [clarification], "routed_to": "clarify"}
@@ -156,6 +195,8 @@ def build_orchestrator():
     graph.add_node("classify",            classify_intent)
     graph.add_node("visa_agent",          call_visa_agent)
     graph.add_node("appointments_agent",  call_appointments_agent)
+    graph.add_node("umrah_agent",         call_umrah_agent)
+    graph.add_node("hotel_agent",         call_hotel_agent)
     graph.add_node("general_response",    general_response)
     graph.add_node("clarify",             clarify)
 
@@ -164,6 +205,8 @@ def build_orchestrator():
 
     graph.add_edge("visa_agent",         END)
     graph.add_edge("appointments_agent", END)
+    graph.add_edge("umrah_agent",        END)
+    graph.add_edge("hotel_agent",        END)
     graph.add_edge("general_response",   END)
     graph.add_edge("clarify",            END)
 
@@ -171,3 +214,4 @@ def build_orchestrator():
 
 
 orchestrator = build_orchestrator()
+

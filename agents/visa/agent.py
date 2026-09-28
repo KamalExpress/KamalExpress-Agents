@@ -43,66 +43,57 @@ def get_visa_requirements(nationality: str, destination_country: str, visa_type:
 
     Args:
         nationality:         Applicant's nationality, e.g. "Pakistani"
-        destination_country: Country they want to visit, e.g. "United Kingdom"
-        visa_type:           Type of visa, e.g. "tourist", "business", "student", "work"
+        destination_country: Country they want to visit, e.g. "Greece", "Saudi Arabia", "United Arab Emirates", "United Kingdom"
+        visa_type:           Type of visa, e.g. "26" (Seasonal Work), "0" (Schengen C), "tourist", "umrah", "standard_visitor"
 
     Returns:
         dict with: documents (list), fees, processing_time, validity, notes
     """
-    logger.info(f"[visa] Requirements: {nationality} → {destination_country} ({visa_type})")
+    logger.info(f"[visa] Requirements query: {nationality} → {destination_country} ({visa_type})")
+    from agents.appointments.db import query_visa_rules
 
-    # TODO: connect to real database / RAG knowledge base
-    requirements_db = {
-        ("Pakistani", "United Kingdom", "tourist"): {
-            "documents": [
-                "Valid passport (6+ months validity)",
-                "Completed online application (UK Visas and Immigration)",
-                "Biometric enrollment",
-                "Bank statements (last 6 months)",
-                "Employment letter / proof of income",
-                "Travel itinerary",
-                "Hotel bookings",
-                "Travel insurance",
-                "Previous UK/US/Schengen visas (if any)",
-            ],
-            "fees": {"application": "GBP 115", "priority": "GBP 500", "super_priority": "GBP 1000"},
-            "processing_time": "15-20 working days (standard), 5 days (priority)",
-            "validity": "Up to 6 months",
-            "appointment_required": True,
-            "appointment_portal": "vfs_global_uk",
-            "notes": "Apply at least 3 months before travel date.",
-        },
-        ("Pakistani", "United Arab Emirates", "tourist"): {
-            "documents": [
-                "Valid passport (6+ months validity)",
-                "Passport-size photos (white background)",
-                "Bank statement (last 3 months)",
-                "Confirmed return ticket",
-                "Hotel booking confirmation",
-            ],
-            "fees": {"30_day": "AED 300", "90_day": "AED 650"},
-            "processing_time": "3-5 working days",
-            "validity": "30 or 90 days",
-            "appointment_required": False,
-            "notes": "UAE visa can be obtained on arrival for most Pakistani passport holders with valid US/UK/Schengen visa.",
-        },
-    }
-
-    key = (nationality, destination_country, visa_type)
-    data = requirements_db.get(key)
-
-    if not data:
+    rules = query_visa_rules(country=destination_country, visa_type=visa_type, nationality=nationality)
+    if rules:
+        r = rules[0]
         return {
-            "found": False,
-            "message": f"Detailed requirements for {nationality} → {destination_country} ({visa_type}) not in local database. Checking general guidelines...",
-            "general_documents": [
-                "Valid passport", "Application form", "Passport photos",
-                "Financial proof", "Travel itinerary",
-            ],
+            "found": True,
+            "destination_country": r["destination_country"],
+            "visa_category": r["visa_category"],
+            "nationality": r["nationality"],
+            "embassy_fee": r["embassy_fee"],
+            "vac_fee": r["vac_fee"],
+            "processing_time": r["processing_time"],
+            "validity": r["validity"],
+            "stay_duration": r["stay_duration"],
+            "appointment_required": bool(r["appointment_required"]),
+            "appointment_portal": r["appointment_portal"],
+            "required_documents": r["required_documents"],
+            "financial_requirements": r["financial_requirements"],
+            "special_notes": r["special_notes"],
         }
 
-    data["found"] = True
-    return data
+    # Fallback to general query for country
+    country_rules = query_visa_rules(country=destination_country, nationality=nationality)
+    if country_rules:
+        r = country_rules[0]
+        return {
+            "found": True,
+            "destination_country": r["destination_country"],
+            "visa_category": r["visa_category"],
+            "nationality": r["nationality"],
+            "embassy_fee": r["embassy_fee"],
+            "vac_fee": r["vac_fee"],
+            "processing_time": r["processing_time"],
+            "validity": r["validity"],
+            "required_documents": r["required_documents"],
+            "financial_requirements": r["financial_requirements"],
+            "special_notes": r["special_notes"],
+        }
+
+    return {
+        "found": False,
+        "message": f"Detailed checklist for {nationality} → {destination_country} ({visa_type}) not found in SQLite knowledge base. Standard Schengen/International documents apply: valid passport (6m+), photographs, bank statement (6m), return ticket, hotel booking, and travel insurance.",
+    }
 
 
 @tool

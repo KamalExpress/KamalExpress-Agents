@@ -411,6 +411,8 @@
     <button class="agent-pill active" data-agent="orchestrator">🤖 Orchestrator (Auto)</button>
     <button class="agent-pill" data-agent="appointments">📅 Appointments Specialist</button>
     <button class="agent-pill" data-agent="visa">🛂 Visa Specialist</button>
+    <button class="agent-pill" data-agent="umrah">🕋 Hajj & Umrah Specialist</button>
+    <button class="agent-pill" data-agent="hotels">🏨 Hotel Booking Specialist</button>
   </div>
 
   <div id="chat">
@@ -420,10 +422,11 @@
         <div class="agent-badge">Kamal Express Concierge</div>
         <div class="bubble">Welcome to **Kamal Express AI Platform**!
 
-I can help you:
-- **Intake multiple applicants** and queue them for automated booking.
-- **Search live appointment slots** on Greece GVC World (Islamabad, Karachi, Lahore).
-- **Control the autonomous background watcher** to grab slots the instant they open.
+I can assist you across all travel & pilgrimage operations:
+- **🛂 Visa Requirements & Guidance:** Document checklists for Greece (Type 26 / Schengen), Saudi Arabia, UAE, UK, and Turkey.
+- **📅 Appointment Operations:** Intake applicants into queue and search live Greece GVC World slots.
+- **🕋 Hajj & Umrah Packages:** Custom packages, Nusuk Rawdah permit guidelines, Tasheer biometric rules, and Makkah/Madinah Ziyarat.
+- **🏨 Hotel Reservations:** Instant hotel discovery and confirmed voucher holds in Makkah (Clock Tower), Madinah (Markaziyah), Athens, and Dubai.
 
 How can I assist you right now?</div>
       </div>
@@ -431,10 +434,11 @@ How can I assist you right now?</div>
   </div>
 
   <div class="suggestions">
-    <button class="chip" onclick="quickSend('Check portal and CDP connection')">🌐 Check CDP & Portal Connection</button>
-    <button class="chip" onclick="quickSend('Search GVC slots in Islamabad for Type 26')">🇬🇷 Search Islamabad Slots (Type 26)</button>
-    <button class="chip" onclick="quickSend('List all queued clients')">📋 List Client Queue</button>
-    <button class="chip" onclick="quickSend('Start autonomous slot monitor')">⏰ Start Auto-Monitor</button>
+    <button class="chip" onclick="quickSend('What are the exact requirements for Greece Type 26 Seasonal Visa for Pakistani passport?')">🇬🇷 Greece Type 26 Requirements</button>
+    <button class="chip" onclick="quickSend('Calculate a 10-day 4-star Umrah package for 4 pilgrims with Haramain train')">🕋 10-Day Umrah Package (4 Pax)</button>
+    <button class="chip" onclick="quickSend('Find 5-star hotels in Makkah near Haram with Kaaba view')">🏨 Makkah Clock Tower Hotels</button>
+    <button class="chip" onclick="quickSend('How do I book Rawdah permit on Nusuk app?')">🕌 Nusuk Rawdah Permit Guide</button>
+    <button class="chip" onclick="quickSend('Search GVC slots in Islamabad for Type 26')">📅 Search Islamabad GVC Slots</button>
   </div>
 
   <div class="input-bar">
@@ -985,8 +989,10 @@ How can I assist you right now?</div>
 
     const bubbleEl = botMsg.querySelector('.bubble');
 
+    const endpoint = activeAgent === 'orchestrator' ? '/chat' : `/${activeAgent}`;
+
     try {
-      const resp = await fetch('/chat', {
+      const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, history, session_id: 'default' }),
@@ -999,28 +1005,35 @@ How can I assist you right now?</div>
 
       bubbleEl.innerHTML = '';
       let fullText = '';
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(l => l.startsWith('data: '));
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.delta) {
-              fullText += data.delta;
-              if (window.marked && window.marked.parse) {
-                bubbleEl.innerHTML = marked.parse(fullText);
-              } else {
-                bubbleEl.textContent = fullText;
+      const contentType = resp.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream')) {
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(l => l.startsWith('data: '));
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.delta) {
+                fullText += data.delta;
+                if (window.marked && window.marked.parse) {
+                  bubbleEl.innerHTML = marked.parse(fullText);
+                } else {
+                  bubbleEl.textContent = fullText;
+                }
+                chatEl.scrollTop = chatEl.scrollHeight;
               }
-              chatEl.scrollTop = chatEl.scrollHeight;
-            }
-          } catch {}
+            } catch {}
+          }
         }
+      } else {
+        const data = await resp.json();
+        fullText = data.response || data.message || JSON.stringify(data);
       }
 
       if (window.marked && window.marked.parse) {

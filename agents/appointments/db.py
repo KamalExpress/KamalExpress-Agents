@@ -126,6 +126,68 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token, expires_at);")
 
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS visa_rules (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        destination_country TEXT NOT NULL,
+                        visa_type TEXT NOT NULL,
+                        visa_category TEXT NOT NULL,
+                        nationality TEXT DEFAULT 'Pakistani',
+                        embassy_fee TEXT,
+                        vac_fee TEXT,
+                        processing_time TEXT,
+                        validity TEXT,
+                        stay_duration TEXT,
+                        appointment_required INTEGER DEFAULT 1,
+                        appointment_portal TEXT,
+                        required_documents_json TEXT NOT NULL,
+                        financial_requirements TEXT,
+                        special_notes TEXT,
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_visa_lookup ON visa_rules(destination_country, visa_type, nationality);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS hotels (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        city TEXT NOT NULL,
+                        country TEXT NOT NULL,
+                        stars INTEGER NOT NULL,
+                        area TEXT NOT NULL,
+                        distance_to_center_m INTEGER NOT NULL,
+                        shuttle_service INTEGER DEFAULT 0,
+                        price_per_night_pkr INTEGER NOT NULL,
+                        price_per_night_sar INTEGER DEFAULT 0,
+                        rating REAL DEFAULT 4.5,
+                        amenities_json TEXT,
+                        room_types_json TEXT,
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_hotels_city ON hotels(city, stars, price_per_night_pkr);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS hotel_bookings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        booking_ref TEXT UNIQUE NOT NULL,
+                        hotel_id INTEGER NOT NULL,
+                        hotel_name TEXT NOT NULL,
+                        guest_name TEXT NOT NULL,
+                        guest_phone TEXT NOT NULL,
+                        checkin_date TEXT NOT NULL,
+                        checkout_date TEXT NOT NULL,
+                        room_type TEXT NOT NULL,
+                        meal_plan TEXT DEFAULT 'RO',
+                        total_nights INTEGER NOT NULL,
+                        total_price_pkr INTEGER NOT NULL,
+                        status TEXT DEFAULT 'CONFIRMED',
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_hotel_bookings_ref ON hotel_bookings(booking_ref);")
+
             logger.info(f"[db] Initialized SQLite database tables at {db_path}")
         finally:
             conn.close()
@@ -788,6 +850,379 @@ def update_user_status(user_id: int, is_active: bool, db_path: Path = DB_PATH) -
             conn.close()
 
 
+# ── Visa Rules Knowledge Engine ───────────────────────────────────────────────
+
+def seed_visa_rules(db_path: Path = DB_PATH) -> None:
+    """Seed comprehensive visa requirements for Greece, Saudi Arabia, UAE, UK, and Turkey."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                count = conn.execute("SELECT COUNT(*) FROM visa_rules").fetchone()[0]
+                if count == 0:
+                    now_str = datetime.utcnow().isoformat()
+                    rules = [
+                        # 1. Greece Type 26 (Seasonal / Dependent Long-Term D)
+                        (
+                            "Greece",
+                            "26",
+                            "National Long-Term D (Seasonal / Dependent Employment)",
+                            "Pakistani",
+                            "€180 (Embassy Visa Fee)",
+                            "€35 (GVC World Service Fee)",
+                            "15-30 working days after biometric submission",
+                            "Up to 1 Year (Extendable upon residence permit)",
+                            "Seasonal / Contract Duration",
+                            1,
+                            "GVC World (Islamabad, Karachi, Lahore)",
+                            json.dumps([
+                                "Original Passport valid for at least 3 months beyond intended stay with at least 2 blank pages",
+                                "National Identity Card (CNIC) original & color copy",
+                                "Approved Work Permit / Approval Decree (Egrisi) from Greek Ministry of Migration & Asylum",
+                                "Employment Contract signed by Greek Employer and certified by Greek Labor Inspectorate",
+                                "Police Character Clearance Certificate with Ministry of Foreign Affairs (MOFA) Apostille / Attestation",
+                                "Medical Fitness Certificate from approved lab (Free from communicable diseases)",
+                                "Travel Health Insurance with minimum €30,000 emergency medical & repatriation coverage",
+                                "2 Recent Biometric Photographs (3.5 x 4.5 cm, white background, 80% face)",
+                                "Family Registration Certificate (FRC) issued by NADRA (for dependents)"
+                            ]),
+                            "Bank statement not strictly mandatory if employer covers accommodation & minimum Greek wage (€830/month); otherwise 6 months bank statement showing PKR 1,500,000+",
+                            "Applicants must strictly attend biometrics in person at GVC World VAC in Islamabad, Karachi, or Lahore. Prior appointment booking required.",
+                            now_str,
+                        ),
+                        # 2. Greece Type 0 (Schengen Short-Term C - Tourist / Business)
+                        (
+                            "Greece",
+                            "0",
+                            "Short-Term Schengen C (Tourism / Business / Visit)",
+                            "Pakistani",
+                            "€90 (Adults), €45 (Children 6-12), Free (<6)",
+                            "€35 (GVC World Service Fee)",
+                            "15-21 calendar days",
+                            "Up to 90 days within 180-day period",
+                            "Max 90 days",
+                            1,
+                            "GVC World (Islamabad, Karachi, Lahore)",
+                            json.dumps([
+                                "Original Passport valid for at least 3 months past travel date with 2 blank pages",
+                                "Completed & signed Schengen Application Form",
+                                "2 Passport photos (35x45mm, white background, neutral expression)",
+                                "Bank Statements for last 6 months stamped by bank (Minimum closing balance: PKR 1,800,000+ for single, PKR 3,000,000+ for family)",
+                                "Account Maintenance Certificate from bank",
+                                "Employment Letter (NOC, salary slips of last 3 months) or Business NTN / Tax Returns of last 2 years / Chamber Certificate",
+                                "Confirmed Return Flight Itinerary (Reservation)",
+                                "Confirmed Hotel Booking covering entire stay across Schengen zone",
+                                "Schengen Travel Health Insurance with minimum €30,000 coverage valid across all Schengen countries",
+                                "NADRA Family Registration Certificate (FRC) & Marriage Registration Certificate (MRC) if applicable"
+                            ]),
+                            "Proof of financial ties: 6 months bank statement, property ownership deeds (optional but recommended), tax returns.",
+                            "Submission must be done at GVC World VAC. Biometrics taken on appointment day.",
+                            now_str,
+                        ),
+                        # 3. Saudi Arabia Tourist eVisa & Umrah Permit
+                        (
+                            "Saudi Arabia",
+                            "tourist_evisa",
+                            "1-Year Multiple Entry Tourist Visa (Includes Umrah Permit)",
+                            "Pakistani",
+                            "SAR 395 (Visa + Mandatory COVID/Medical Insurance)",
+                            "None (Applied 100% online or on arrival for valid US/UK/Schengen visa holders)",
+                            "Instant to 24 hours online",
+                            "1 Year Multiple Entry",
+                            "Up to 90 days per stay",
+                            0,
+                            "KSA MoFA / VisitSaudi / Tasheer",
+                            json.dumps([
+                                "Original Passport with minimum 6 months validity",
+                                "Valid US, UK, or Schengen Tourist/Business visa with at least one entry stamp (or GCC residency)",
+                                "Credit/Debit Card for online fee payment",
+                                "Digital passport photo (200x200px, white background)",
+                                "Confirmed return ticket and hotel accommodation"
+                            ]),
+                            "No bank statement required for online eVisa if holding valid US/UK/Schengen visa.",
+                            "Permits performing Umrah anytime outside Hajj season. Rawdah permit must be booked via Nusuk App.",
+                            now_str,
+                        ),
+                        # 4. Saudi Arabia Standard Umrah Visa (via Tasheer)
+                        (
+                            "Saudi Arabia",
+                            "umrah_standard",
+                            "Official Umrah Visa (via Tasheer VFS / Ministry of Hajj)",
+                            "Pakistani",
+                            "SAR 300 (Embassy Visa) + SAR 105 (Health Insurance)",
+                            "PKR 14,500 (Tasheer Biometric & Service Fee)",
+                            "3 to 5 working days after Tasheer biometrics",
+                            "90 Days Single Entry",
+                            "90 Days (Valid in Makkah, Madinah, Jeddah, and all KSA cities)",
+                            1,
+                            "Tasheer KSA Visa Center (Islamabad, Lahore, Karachi, Peshawar, Quetta, Sukkur)",
+                            json.dumps([
+                                "Original Passport valid for 6+ months",
+                                "NADRA CNIC copy",
+                                "2 Passport size photographs with white background",
+                                "Tasheer Biometric Appointment Confirmation slip",
+                                "Meningococcal Meningitis ACWY Vaccination Certificate (mandatory)",
+                                "Polio Vaccination Card (for applicants from Pakistan)",
+                                "Confirmed Return Air Ticket",
+                                "Approved Hotel Booking & Transportation voucher via licensed Umrah agency"
+                            ]),
+                            "No minimum bank balance required for standard Umrah visa package.",
+                            "Women under 45 are now permitted to perform Umrah without a Mahram according to updated Saudi Ministry of Hajj rules.",
+                            now_str,
+                        ),
+                        # 5. United Arab Emirates (Dubai 30/60 Days Tourist Visa)
+                        (
+                            "United Arab Emirates",
+                            "dubai_tourist",
+                            "30-Day / 60-Day Tourist Visa (Single & Multiple Entry)",
+                            "Pakistani",
+                            "AED 350 (30 Days Single) / AED 650 (60 Days)",
+                            "None (Processed electronically via GDRFA / ICP)",
+                            "24 to 72 hours",
+                            "60 days from issuance to enter UAE",
+                            "30 or 60 days from date of entry",
+                            0,
+                            "GDRFA Dubai / ICP Smart Services",
+                            json.dumps([
+                                "High-resolution color scan of Passport First & Last Page (6+ months validity)",
+                                "Passport-size photograph with white background (Studio quality)",
+                                "NADRA CNIC color scan",
+                                "Confirmed Return Airline Ticket (Emirates, Flydubai, Air Arabia, or PIA)",
+                                "Hotel Booking Voucher in Dubai / UAE",
+                                "PKR 100,000+ or equivalent AED show money upon airport arrival"
+                            ]),
+                            "Bank statement usually not required for standard tourism, but show money / credit card may be verified by Dubai Immigration at airport.",
+                            "Overstay penalty in UAE is AED 50 per day plus exit permit fee.",
+                            now_str,
+                        ),
+                        # 6. United Kingdom Standard Visitor Visa
+                        (
+                            "United Kingdom",
+                            "standard_visitor",
+                            "Standard Visitor Visa (Tourism, Family Visit, Business)",
+                            "Pakistani",
+                            "GBP 115 (6 Months) / GBP 400 (2 Years)",
+                            "PKR 8,500 (VFS Global Appointment & Scanning Fee)",
+                            "15-20 working days (Standard) / 5 days (Priority GBP 500)",
+                            "6 Months (Multiple Entry)",
+                            "Up to 180 days per visit",
+                            1,
+                            "VFS Global UK (Islamabad, Karachi, Lahore, Mirpur)",
+                            json.dumps([
+                                "Current Passport and previous passports showing travel history",
+                                "UKVI Online Application Form & Fee Payment Receipt",
+                                "Bank Statements for past 6 months showing legitimate source of funds (Suggested balance: PKR 2,500,000+)",
+                                "Employment Letter stating salary, role, length of service, and approved leave",
+                                "Salary Slips for last 6 months matching bank statement deposits",
+                                "Business Tax Returns (FBR), Active Taxpayer Certificate (ATL), NTN (if self-employed)",
+                                "Detailed Travel Itinerary and Hotel Reservation",
+                                "Proof of ties to Pakistan (Property documents, family FRC certificate)",
+                                "Invitation Letter & UK sponsor's passport/utility bill (if visiting family/friends)"
+                            ]),
+                            "Crucial: Bank deposits must have clear paper trail. Unexplained lump-sum deposits often cause refusal.",
+                            "Biometrics submission mandatory at VFS Global center in Pakistan.",
+                            now_str,
+                        )
+                    ]
+
+                    conn.executemany("""
+                        INSERT INTO visa_rules (
+                            destination_country, visa_type, visa_category, nationality,
+                            embassy_fee, vac_fee, processing_time, validity, stay_duration,
+                            appointment_required, appointment_portal, required_documents_json,
+                            financial_requirements, special_notes, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, rules)
+                    logger.info(f"[db] ✓ Seeded {len(rules)} comprehensive visa requirement profiles.")
+        finally:
+            conn.close()
+
+
+def query_visa_rules(
+    country: str,
+    visa_type: Optional[str] = None,
+    nationality: str = "Pakistani",
+    db_path: Path = DB_PATH,
+) -> list[dict]:
+    """Query visa rules from SQLite by country and visa type."""
+    conn = get_connection(db_path)
+    try:
+        query = "SELECT * FROM visa_rules WHERE LOWER(destination_country) LIKE LOWER(?) AND LOWER(nationality) = LOWER(?)"
+        params = [f"%{country.strip()}%", nationality.strip()]
+
+        if visa_type:
+            query += " AND (LOWER(visa_type) = LOWER(?) OR LOWER(visa_category) LIKE LOWER(?))"
+            params.extend([visa_type.strip(), f"%{visa_type.strip()}%"])
+
+        rows = conn.execute(query, params).fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["required_documents"] = json.loads(d["required_documents_json"])
+            except Exception:
+                d["required_documents"] = []
+            results.append(d)
+        return results
+    finally:
+        conn.close()
+
+
+# ── Hotels Knowledge & Inventory ──────────────────────────────────────────────
+
+def seed_hotels(db_path: Path = DB_PATH) -> None:
+    """Seed hotel catalog for Makkah, Madinah, Athens, and Dubai."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                count = conn.execute("SELECT COUNT(*) FROM hotels").fetchone()[0]
+                if count == 0:
+                    now_str = datetime.utcnow().isoformat()
+                    hotels = [
+                        # Makkah 5-Star & 4-Star
+                        ("Fairmont Makkah Clock Royal Tower", "Makkah", "Saudi Arabia", 5, "Abraj Al Bait Complex", 0, 0, 85000, 1150, 4.8, json.dumps(["Kaaba View", "Direct Elevator to Haram", "Free WiFi", "Breakfast Buffet", "24/7 Concierge"]), json.dumps(["Deluxe Haram View", "Kaaba View Suite", "Signature Twin Room", "Quad Family Room"]), now_str),
+                        ("Swissotel Al Maqam Makkah", "Makkah", "Saudi Arabia", 5, "Abraj Al Bait Complex", 20, 0, 65000, 880, 4.7, json.dumps(["Direct Haram Entrance", "Fine Dining", "Air Conditioned", "Room Service"]), json.dumps(["Classic City View", "Premier Haram View", "Family Suite"]), now_str),
+                        ("Makkah Hotel & Towers", "Makkah", "Saudi Arabia", 5, "Ibrahim Al Khalil Road", 50, 0, 52000, 700, 4.6, json.dumps(["Footsteps from King Fahd Gate", "Shopping Mall", "Prayer Hall with Haram Audio"]), json.dumps(["Double Standard", "Triple Room", "Executive Suite"]), now_str),
+                        ("Anjum Hotel Makkah", "Makkah", "Saudi Arabia", 5, "Umm Al Qura Road (Shubaika)", 350, 0, 38000, 510, 4.5, json.dumps(["Walking distance to New Expansion", "Spacious Lobbies", "Kids Area", "Buffet Restaurant"]), json.dumps(["Standard Twin", "Triple City View", "Quad Room"]), now_str),
+                        ("Al Kiswah Towers Hotel", "Makkah", "Saudi Arabia", 4, "At Taysir District", 900, 1, 14500, 195, 4.2, json.dumps(["24/7 Free AC Shuttle to Haram", "Budget Friendly", "Mini Market", "Clean Modern Rooms"]), json.dumps(["Standard Double", "Triple Economy", "Quad Family", "5-Bed Room"]), now_str),
+                        ("Elaf Kinda Hotel", "Makkah", "Saudi Arabia", 4, "Al Mesfeleh (Near Clock Tower)", 100, 0, 32000, 430, 4.4, json.dumps(["Steps from King Abdulaziz Gate", "Breakfast Included", "Free High-Speed WiFi"]), json.dumps(["Standard Room", "Deluxe Twin", "Triple Room"]), now_str),
+
+                        # Madinah 5-Star & 4-Star
+                        ("The Oberoi Madinah", "Madinah", "Saudi Arabia", 5, "Northern Central Markaziyah", 0, 0, 95000, 1280, 4.9, json.dumps(["Directly Opposite Prophet's Mosque", "Women's & Men's Gate Proximity", "Luxury VIP Service", "Moghul Restaurant"]), json.dumps(["Deluxe City Room", "Haram View Suite", "Executive Suite"]), now_str),
+                        ("Dar Al Taqwa Hotel", "Madinah", "Saudi Arabia", 5, "Northern Central Area", 20, 0, 68000, 920, 4.8, json.dumps(["Facing Ladies Gate 25 & Bab Salam", "VIP Lounge", "Gourmet Dining", "Valet Parking"]), json.dumps(["Standard Twin", "Deluxe Haram View", "Junior Suite"]), now_str),
+                        ("Anwar Al Madinah Mövenpick", "Madinah", "Saudi Arabia", 5, "Central Northern Zone", 50, 0, 48000, 650, 4.6, json.dumps(["Direct Access to Haram Courtyard", "Attached Shopping Mall", "4 Restaurants", "Spacious Family Suites"]), json.dumps(["Superior Double", "Deluxe Triple", "Executive Quad Suite"]), now_str),
+                        ("Pullman Zamzam Madina", "Madinah", "Saudi Arabia", 5, "Al Qiblah Markaziyah", 150, 0, 42000, 565, 4.5, json.dumps(["Close to Bab Al Salam", "Arabic Coffee Hospitality", "Free High-Speed WiFi"]), json.dumps(["Classic Room", "Superior Suite", "Family 2-Bedroom"]), now_str),
+                        ("Zowar International Hotel", "Madinah", "Saudi Arabia", 4, "Northern Central Area", 250, 0, 22000, 295, 4.3, json.dumps(["Short 3-min Walk to Haram", "Clean Aesthetic Rooms", "Restaurant"]), json.dumps(["Double Room", "Triple Room", "Quad Room"]), now_str),
+                        ("Emaar Elite Hotel", "Madinah", "Saudi Arabia", 3, "Southern Central Area", 350, 0, 16000, 215, 4.1, json.dumps(["Economy Friendly", "Walking Distance to Courtyard", "24/7 Front Desk"]), json.dumps(["Double Economy", "Triple Economy", "Quad Room"]), now_str),
+
+                        # Athens (Greece)
+                        ("Electra Palace Athens", "Athens", "Greece", 5, "Plaka Historical Center", 250, 0, 62000, 840, 4.7, json.dumps(["Rooftop Pool with Acropolis View", "Spa & Wellness", "Traditional Greek Breakfast"]), json.dumps(["Classic Double", "Acropolis View Room", "Junior Suite"]), now_str),
+                        ("Amalia Hotel Athens", "Athens", "Greece", 4, "Syntagma Square", 50, 0, 44000, 590, 4.5, json.dumps(["Opposite Parliament & National Gardens", "Metro Station Proximity", "Soundproof Rooms"]), json.dumps(["Standard Room", "Superior Park View", "Executive Suite"]), now_str),
+
+                        # Dubai (UAE)
+                        ("Address Downtown Dubai", "Dubai", "United Arab Emirates", 5, "Downtown Dubai", 50, 0, 88000, 1190, 4.8, json.dumps(["Direct View of Burj Khalifa & Fountains", "Infinity Pool", "Connected to Dubai Mall"]), json.dumps(["Deluxe Boulevard Room", "Fountain View Suite", "Family Suite"]), now_str),
+                        ("Rove Downtown", "Dubai", "United Arab Emirates", 3, "Downtown Dubai", 600, 1, 28000, 380, 4.5, json.dumps(["Free Shuttle to Dubai Mall & Beach", "Swimming Pool", "Laundromat", "Trendy Atmosphere"]), json.dumps(["Rover Room", "Rover Family Room (Interconnecting)"]), now_str),
+                    ]
+
+                    conn.executemany("""
+                        INSERT INTO hotels (
+                            name, city, country, stars, area, distance_to_center_m,
+                            shuttle_service, price_per_night_pkr, price_per_night_sar,
+                            rating, amenities_json, room_types_json, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, hotels)
+                    logger.info(f"[db] ✓ Seeded {len(hotels)} curated hotel properties for Makkah, Madinah, Athens, and Dubai.")
+        finally:
+            conn.close()
+
+
+def search_hotels_db(
+    city: str,
+    min_stars: int = 1,
+    max_price_pkr: Optional[int] = None,
+    shuttle_only: bool = False,
+    db_path: Path = DB_PATH,
+) -> list[dict]:
+    """Search hotel database with criteria filters."""
+    conn = get_connection(db_path)
+    try:
+        query = "SELECT * FROM hotels WHERE LOWER(city) LIKE LOWER(?) AND stars >= ?"
+        params: list = [f"%{city.strip()}%", min_stars]
+
+        if max_price_pkr:
+            query += " AND price_per_night_pkr <= ?"
+            params.append(max_price_pkr)
+
+        if shuttle_only:
+            query += " AND shuttle_service = 1"
+
+        query += " ORDER BY stars DESC, distance_to_center_m ASC, price_per_night_pkr ASC"
+
+        rows = conn.execute(query, params).fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["amenities"] = json.loads(d["amenities_json"])
+                d["room_types"] = json.loads(d["room_types_json"])
+            except Exception:
+                d["amenities"] = []
+                d["room_types"] = []
+            results.append(d)
+        return results
+    finally:
+        conn.close()
+
+
+def create_hotel_booking_record(
+    hotel_id: int,
+    guest_name: str,
+    guest_phone: str,
+    checkin_date: str,
+    checkout_date: str,
+    room_type: str,
+    meal_plan: str = "RO",
+    db_path: Path = DB_PATH,
+) -> dict:
+    """Generate provisional booking reservation hold in SQLite."""
+    import secrets
+    ref = f"KE-HTL-{secrets.token_hex(4).upper()}"
+    now_str = datetime.utcnow().isoformat()
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            hotel = conn.execute("SELECT * FROM hotels WHERE id = ?", (hotel_id,)).fetchone()
+            if not hotel:
+                raise ValueError(f"Hotel with ID {hotel_id} not found.")
+
+            # Calculate nights
+            try:
+                d1 = datetime.strptime(checkin_date.strip(), "%d/%m/%Y")
+                d2 = datetime.strptime(checkout_date.strip(), "%d/%m/%Y")
+                nights = max(1, (d2 - d1).days)
+            except Exception:
+                nights = 3
+
+            price_per_night = hotel["price_per_night_pkr"]
+            # Meal multiplier
+            meal_mult = 1.0 if meal_plan == "RO" else (1.15 if meal_plan == "BB" else (1.30 if meal_plan == "HB" else 1.45))
+            total_price = int(price_per_night * nights * meal_mult)
+
+            with conn:
+                conn.execute("""
+                    INSERT INTO hotel_bookings (
+                        booking_ref, hotel_id, hotel_name, guest_name, guest_phone,
+                        checkin_date, checkout_date, room_type, meal_plan, total_nights,
+                        total_price_pkr, status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?)
+                """, (
+                    ref, hotel["id"], hotel["name"], guest_name.strip(), guest_phone.strip(),
+                    checkin_date.strip(), checkout_date.strip(), room_type.strip(), meal_plan.upper(),
+                    nights, total_price, now_str
+                ))
+
+            return {
+                "booking_ref": ref,
+                "hotel_name": hotel["name"],
+                "city": hotel["city"],
+                "guest_name": guest_name,
+                "checkin_date": checkin_date,
+                "checkout_date": checkout_date,
+                "total_nights": nights,
+                "room_type": room_type,
+                "meal_plan": meal_plan.upper(),
+                "total_price_pkr": total_price,
+                "price_per_night_pkr": price_per_night,
+                "status": "CONFIRMED",
+            }
+        finally:
+            conn.close()
+
+
 # Ensure tables are created and default accounts seeded on module import
 init_db()
 seed_default_users()
+seed_visa_rules()
+seed_hotels()

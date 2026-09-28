@@ -40,6 +40,8 @@ from providers import get_provider
 from agents.orchestrator.graph import orchestrator
 from agents.visa.agent import visa_agent
 from agents.appointments.agent import appointments_agent, gvc_driver
+from agents.umrah.agent import umrah_agent
+from agents.hotels.agent import hotel_agent
 from agents.appointments.db import (
     add_client,
     delete_client,
@@ -61,6 +63,9 @@ from agents.appointments.db import (
     create_user,
     delete_user,
     update_user_status,
+    query_visa_rules,
+    search_hotels_db,
+    create_hotel_booking_record,
 )
 from agents.appointments.monitor import slot_monitor
 from agents.appointments.schemas import ClientProfile
@@ -319,6 +324,100 @@ async def appointments_endpoint(req: ChatRequest, user: dict = Depends(get_curre
         agent="appointments",
         session_id=req.session_id,
     )
+
+
+@app.post("/umrah", response_model=AgentResponse)
+async def umrah_endpoint(req: ChatRequest, user: dict = Depends(get_current_user)):
+    """Direct Hajj & Umrah specialist agent endpoint."""
+    messages = [HumanMessage(content=req.message)]
+    result = await umrah_agent.ainvoke({"messages": messages})
+    last = result["messages"][-1]
+    return AgentResponse(
+        response=last.content,
+        agent="umrah",
+        session_id=req.session_id,
+    )
+
+
+@app.post("/hotels", response_model=AgentResponse)
+async def hotel_endpoint(req: ChatRequest, user: dict = Depends(get_current_user)):
+    """Direct Hotel & Accommodation specialist agent endpoint."""
+    messages = [HumanMessage(content=req.message)]
+    result = await hotel_agent.ainvoke({"messages": messages})
+    last = result["messages"][-1]
+    return AgentResponse(
+        response=last.content,
+        agent="hotels",
+        session_id=req.session_id,
+    )
+
+
+# ── Visa Rules & Hotel Catalog REST Endpoints ─────────────────────────────────
+
+@app.get("/api/visa/rules")
+async def get_visa_rules_endpoint(
+    country: str = Query(..., description="Destination country, e.g. Greece, Saudi Arabia, UAE, UK"),
+    visa_type: Optional[str] = Query(None, description="Visa category or type code, e.g. 26, 0, tourist"),
+    user: dict = Depends(get_current_user),
+):
+    """Retrieve detailed visa document requirements, embassy fees, and guidelines."""
+    rules = query_visa_rules(country=country, visa_type=visa_type)
+    return {
+        "destination_country": country,
+        "total_results": len(rules),
+        "rules": rules,
+    }
+
+
+@app.get("/api/hotels/search")
+async def search_hotels_endpoint(
+    city: str = Query("Makkah", description="City: Makkah, Madinah, Athens, Dubai"),
+    min_stars: int = Query(1, ge=1, le=5),
+    max_price: Optional[int] = Query(None, description="Max budget in PKR per night"),
+    shuttle_only: bool = Query(False, description="Only hotels with free 24/7 Haram shuttle"),
+    user: dict = Depends(get_current_user),
+):
+    """Search hotel catalog with filters."""
+    hotels = search_hotels_db(
+        city=city,
+        min_stars=min_stars,
+        max_price_pkr=max_price,
+        shuttle_only=shuttle_only,
+    )
+    return {
+        "city": city,
+        "total_results": len(hotels),
+        "hotels": hotels,
+    }
+
+
+class HotelBookRequest(BaseModel):
+    hotel_id: int
+    guest_name: str
+    guest_phone: str
+    checkin_date: str
+    checkout_date: str
+    room_type: str = "Standard Double"
+    meal_plan: str = "BB"
+
+
+@app.post("/api/hotels/book")
+async def book_hotel_endpoint(req: HotelBookRequest, user: dict = Depends(get_current_user)):
+    """Generate provisional hotel reservation hold voucher."""
+    try:
+        booking = create_hotel_booking_record(
+            hotel_id=req.hotel_id,
+            guest_name=req.guest_name,
+            guest_phone=req.guest_phone,
+            checkin_date=req.checkin_date,
+            checkout_date=req.checkout_date,
+            room_type=req.room_type,
+            meal_plan=req.meal_plan,
+        )
+        return {"success": True, "booking": booking}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 
 # ── Client Queue REST Endpoints ───────────────────────────────────────────────
