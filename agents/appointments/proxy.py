@@ -1,8 +1,8 @@
 """
 agents/appointments/proxy.py
 ─────────────────────────────
-Proxy manager — supports static, residential proxy lists (data/ips-list-pk.txt),
-rotating pools, BrightData, Oxylabs, SmartProxy.
+Proxy manager — supports SQLite-persisted residential proxy pools with live health metrics,
+failover tracking, and automatic UI ingestion.
 Returns Playwright-compatible proxy dicts and standard HTTP proxy URLs.
 """
 from __future__ import annotations
@@ -13,6 +13,13 @@ from pathlib import Path
 from typing import List, Optional
 
 from config.settings import get_settings
+from .db import (
+    add_proxies_bulk,
+    get_active_proxies,
+    get_all_proxies,
+    record_proxy_result,
+    reset_proxy_cooldowns,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,76 +28,78 @@ DEFAULT_IP_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "ips-
 
 class ProxyManager:
     """
-    Build and rotate proxy configurations from .env or local residential proxy lists.
+    Build, manage, and rotate proxy configurations from SQLite or initial text list.
     """
 
     def __init__(self, proxy_file: Path = DEFAULT_IP_FILE) -> None:
         self._cfg = get_settings().proxy
         self._proxy_file = proxy_file
-        self._proxy_list: List[str] = self._load_proxies_from_file()
         self._current_index = 0
-        # Failure tracking: {proxy_url: last_failed_timestamp}
-        self._failed_proxies: dict[str, float] = {}
-        self._cooldown_seconds: float = 300.0  # 5 minutes quarantine for dead/blocked proxies
+        self._cooldown_seconds: float = 300.0  # 5 minutes quarantine
 
-    def _load_proxies_from_file(self) -> List[str]:
-        """Load and parse proxy lines formatted as host:port:user:pass from file."""
-        if not self._proxy_file.exists():
-            return []
+        # Auto-seed SQLite table from ips-list-pk.txt if DB is empty
+        self._seed_db_from_file_if_empty()
 
-        proxies = []
+    def _seed_db_from_file_if_empty(self) -> None:
+        """Seed SQLite proxies table from ips-list-pk.txt on first initialization if empty."""
         try:
-            lines = self._proxy_file.read_text(encoding="utf-8").splitlines()
-            for line in lines:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-
-                parts = line.split(":")
-                if len(parts) == 4:
-                    host, port, user, pwd = parts
-                    proxy_url = f"http://{user}:{pwd}@{host}:{port}"
-                    proxies.append(proxy_url)
-                elif line.startswith("http://") or line.startswith("https://"):
-                    proxies.append(line)
-
-            logger.info(f"[proxy] Loaded {len(proxies)} residential proxies from {self._proxy_file.name}")
+            existing = get_all_proxies()
+            if not existing and self._proxy_file.exists():
+                lines = self._proxy_file.read_text(encoding="utf-8").splitlines()
+                count = add_proxies_bulk(lines)
+                logger.info(f"[proxy] Seeded {count} proxies from {self._proxy_file.name} into SQLite table.")
         except Exception as e:
-            logger.warning(f"[proxy] Error loading proxy file {self._proxy_file}: {e}")
-
-        return proxies
+            logger.warning(f"[proxy] Failed to seed proxies to SQLite: {e}")
 
     # ── Proxy Health & Failover Tracking ──────────────────────────────
 
     def _get_healthy_proxies(self) -> List[str]:
-        """Return list of proxies currently not in cooldown."""
-        import time
-        now = time.time()
-        # Clean up expired cooldowns
-        expired = [p for p, t in self._failed_proxies.items() if now - t > self._cooldown_seconds]
-        for p in expired:
-            del self._failed_proxies[p]
+        """Return list of active, non-quarantined proxy URLs from SQLite."""
+        try:
+            rows = get_active_proxies()
+            if rows:
+                return [r["proxy_url"] for r in rows]
+        except Exception as e:
+            logger.warning(f"[proxy] Error reading active proxies from DB: {e}")
 
-        healthy = [p for p in self._proxy_list if p not in self._failed_proxies]
-        return healthy if healthy else self._proxy_list  # fallback to all if all are in cooldown
+        # Fallback to all proxies if all are quarantined
+        try:
+            all_rows = get_all_proxies()
+            if all_rows:
+                return [r["proxy_url"] for r in all_rows]
+        except Exception:
+            pass
 
-    def mark_proxy_failed(self, proxy_url: Optional[str]) -> None:
-        """Mark a proxy as failed (timed out or blocked by WAF) and quarantine it."""
-        if not proxy_url or proxy_url not in self._proxy_list:
+        return []
+
+    def mark_proxy_failed(self, proxy_url: Optional[str], error: Optional[str] = None) -> None:
+        """Mark a proxy as failed in SQLite and quarantine it for 5 minutes."""
+        if not proxy_url:
             return
-        import time
-        self._failed_proxies[proxy_url] = time.time()
-        logger.warning(f"[proxy] ⚠️ Proxy {proxy_url.split('@')[-1]} marked failed. Quarantined for {int(self._cooldown_seconds)}s. Healthy remaining: {len(self._get_healthy_proxies())}/{len(self._proxy_list)}")
+        try:
+            record_proxy_result(
+                proxy_url=proxy_url,
+                success=False,
+                error=error or "Imperva WAF / Timeout Block",
+                quarantine_seconds=int(self._cooldown_seconds),
+            )
+            logger.warning(f"[proxy] ⚠️ Proxy {proxy_url.split('@')[-1]} marked failed in SQLite (quarantined 5m).")
+        except Exception as e:
+            logger.error(f"[proxy] Failed to record proxy failure in DB: {e}")
 
     def mark_proxy_success(self, proxy_url: Optional[str]) -> None:
-        """Mark a proxy as healthy and remove from failure registry."""
-        if proxy_url and proxy_url in self._failed_proxies:
-            del self._failed_proxies[proxy_url]
+        """Record successful request for proxy in SQLite."""
+        if not proxy_url:
+            return
+        try:
+            record_proxy_result(proxy_url=proxy_url, success=True)
+        except Exception as e:
+            logger.error(f"[proxy] Failed to record proxy success in DB: {e}")
 
     # ── Public API ────────────────────────────────────────────────────
 
     def get_proxy_url(self) -> Optional[str]:
-        """Return the next healthy proxy URL via round-robin failover."""
+        """Return the next healthy proxy URL from SQLite via round-robin failover."""
         healthy = self._get_healthy_proxies()
         if healthy:
             proxy = healthy[self._current_index % len(healthy)]
@@ -100,7 +109,7 @@ class ProxyManager:
         return self._build_from_settings()
 
     def get_random_proxy(self) -> Optional[str]:
-        """Return a random healthy proxy from the residential pool."""
+        """Return a random healthy proxy from the SQLite pool."""
         healthy = self._get_healthy_proxies()
         if healthy:
             return random.choice(healthy)
@@ -128,13 +137,16 @@ class ProxyManager:
 
     @property
     def enabled(self) -> bool:
-        return bool(self._proxy_list) or self._cfg.provider != "none"
+        return self.total_proxies > 0 or self._cfg.provider != "none"
 
     @property
     def total_proxies(self) -> int:
-        return len(self._proxy_list)
+        try:
+            return len(get_all_proxies())
+        except Exception:
+            return 0
 
-    # ── Internal builders from settings ───────────────────────────────
+    # ── Internal builders from settings (fallback) ────────────────────
 
     def _build_from_settings(self) -> Optional[str]:
         cfg = self._cfg
@@ -162,3 +174,7 @@ class ProxyManager:
             return f"http://{user}:{cfg.password}@gate.smartproxy.com:10001"
 
         return None
+
+
+# Module-level singleton instance
+proxy_manager = ProxyManager()

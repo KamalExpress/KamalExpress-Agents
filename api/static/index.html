@@ -310,6 +310,9 @@
     .badge-booked { background: var(--badge-booked); }
     .badge-in_progress { background: var(--badge-prog); }
     .badge-failed { background: var(--badge-fail); }
+    .badge-active { background: #27ae60; }
+    .badge-quarantined { background: #e74c3c; }
+    .badge-disabled { background: #95a5a6; }
 
     .btn {
       padding: 7px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 700;
@@ -392,6 +395,7 @@
   <button class="nav-tab active" data-view="chat-view">💬 Conversational AI</button>
   <button class="nav-tab" data-view="queue-view">📋 Multi-Client Queue & Auto-Booker</button>
   <button class="nav-tab" data-view="slot-search-view">🔍 GVC Greece Slot Inspector</button>
+  <button class="nav-tab" data-view="proxy-view">🌐 Residential Proxies</button>
 </div>
 
 <!-- ── VIEW 1: CHAT VIEW ── -->
@@ -546,6 +550,107 @@ How can I assist you right now?</div>
   </div>
 </div>
 
+<!-- ── VIEW 4: RESIDENTIAL PROXIES ── -->
+<div class="view-container" id="proxy-view" style="padding:16px; overflow-y:auto;">
+  <div style="display:flex; flex-direction:column; gap:16px; max-width:1200px; margin:0 auto; width:100%;">
+    
+    <!-- Top Row: Ingest Form & Pool Health Metrics -->
+    <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:16px;">
+      
+      <!-- Bulk Add Proxies Card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📥 Bulk Add Residential Proxies (SQLite Pool)</div>
+        </div>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:4px;">
+          Paste proxy strings in either format (one per line):<br>
+          <code>host:port:username:password</code> or <code>http://username:password@host:port</code>
+        </p>
+        <div class="form-group">
+          <textarea id="bulk-proxy-input" rows="6" placeholder="pr.oxylabs.io:7777:customer_123:pass_xyz
+185.199.229.15:8000:myuser:mypass" style="width:100%; padding:10px; font-family:ui-monospace, monospace; font-size:12px; border:1.5px solid var(--border); border-radius:6px; resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button class="btn btn-outline" onclick="document.getElementById('bulk-proxy-input').value=''">Clear Box</button>
+          <button class="btn btn-primary" id="btn-save-proxies" onclick="submitBulkProxies()">💾 Save Proxies to Database</button>
+        </div>
+      </div>
+
+      <!-- Pool Status & Quick Actions -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📊 Proxy Pool Health & Telemetry</div>
+          <button class="btn btn-outline" onclick="loadProxies()" style="font-size:11px; padding:4px 8px;">🔄 Refresh</button>
+        </div>
+
+        <div class="stat-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+          <div class="stat-box">
+            <div class="stat-val" id="proxy-stat-total">0</div>
+            <div class="stat-lbl">Total Pool</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="proxy-stat-active" style="color:var(--badge-booked);">0</div>
+            <div class="stat-lbl">Active & Ready</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="proxy-stat-quarantined" style="color:var(--badge-fail);">0</div>
+            <div class="stat-lbl">Quarantined</div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px; margin-top:4px;">
+          <div style="background:#f4f8fb; padding:8px 12px; border-radius:6px; border:1px solid var(--border);">
+            <b>Total Successes:</b> <span id="proxy-stat-successes" style="color:var(--badge-booked); font-weight:700;">0</span>
+          </div>
+          <div style="background:#f4f8fb; padding:8px 12px; border-radius:6px; border:1px solid var(--border);">
+            <b>Total Fails:</b> <span id="proxy-stat-fails" style="color:var(--badge-fail); font-weight:700;">0</span>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:auto; padding-top:10px; border-top:1px solid var(--border);">
+          <button class="btn btn-outline" onclick="resetProxyCooldowns()" style="flex:1; font-size:12px; color:var(--primary); font-weight:700;">
+            ♻️ Reset All Cooldowns
+          </button>
+          <button class="btn btn-danger" onclick="clearAllProxies()" style="font-size:12px; padding:6px 12px;">
+            🗑️ Clear All
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Row: Proxy Pool Table -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🌐 Active Residential Proxy Inventory</div>
+        <span style="font-size:12px; color:var(--muted);" id="proxy-table-count">0 proxies loaded</span>
+      </div>
+
+      <div class="queue-table-wrap" style="max-height:420px;">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Host : Port</th>
+              <th>Username</th>
+              <th>Country</th>
+              <th>Status</th>
+              <th>Success / Fails</th>
+              <th>Quarantined Until / Error</th>
+              <th>Last Used</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="proxy-table-body">
+            <tr><td colspan="9" style="text-align:center; color:var(--muted); padding:20px;">Loading proxies from SQLite...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- ── ADD CLIENT MODAL ── -->
 <div class="modal" id="add-modal">
   <div class="modal-content">
@@ -639,6 +744,8 @@ How can I assist you right now?</div>
       if (tab.dataset.view === 'queue-view') {
         refreshQueue();
         refreshTelemetry();
+      } else if (tab.dataset.view === 'proxy-view') {
+        loadProxies();
       }
     });
   });
@@ -931,9 +1038,130 @@ How can I assist you right now?</div>
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  // ── Proxy Operations ────────────────────────────────────────
+  async function loadProxies() {
+    try {
+      const resp = await fetch('/api/proxies');
+      const data = await resp.json();
+
+      const stats = data.stats || {};
+      document.getElementById('proxy-stat-total').textContent = stats.total || 0;
+      document.getElementById('proxy-stat-active').textContent = stats.active || 0;
+      document.getElementById('proxy-stat-quarantined').textContent = stats.quarantined || 0;
+      document.getElementById('proxy-stat-successes').textContent = stats.total_successes || 0;
+      document.getElementById('proxy-stat-fails').textContent = stats.total_fails || 0;
+      document.getElementById('proxy-table-count').textContent = `${data.total || 0} proxies registered in pool`;
+
+      const tbody = document.getElementById('proxy-table-body');
+      tbody.innerHTML = '';
+
+      if (!data.proxies || data.proxies.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted); padding:20px;">No proxies currently in SQLite pool. Paste proxy strings above to add them.</td></tr>`;
+        return;
+      }
+
+      data.proxies.forEach(p => {
+        const tr = document.createElement('tr');
+        const badgeClass = `badge-${(p.status || 'ACTIVE').toLowerCase()}`;
+        const isQuarantined = p.status === 'QUARANTINED';
+        const quarantInfo = isQuarantined && p.quarantined_until 
+          ? `⏳ Until: ${p.quarantined_until.split('T')[1]?.slice(0, 8) || p.quarantined_until}`
+          : (p.last_error ? `<span style="color:#e74c3c" title="${escapeHtml(p.last_error)}">${escapeHtml(p.last_error.slice(0, 30))}...</span>` : '—');
+
+        const lastUsedInfo = p.last_used_at 
+          ? (p.last_used_at.includes('T') ? p.last_used_at.split('T')[1]?.slice(0, 8) : p.last_used_at) 
+          : 'Never';
+
+        tr.innerHTML = `
+          <td><b>#${p.id}</b></td>
+          <td><code>${escapeHtml(p.host)}:${p.port}</code></td>
+          <td><span style="color:var(--muted)">${p.username ? escapeHtml(p.username) : '<i>None</i>'}</span></td>
+          <td>${escapeHtml(p.country || 'PK')}</td>
+          <td><span class="badge ${badgeClass}">${p.status}</span></td>
+          <td><b style="color:var(--badge-booked)">${p.success_count}</b> / <b style="color:var(--badge-fail)">${p.fail_count}</b></td>
+          <td><small>${quarantInfo}</small></td>
+          <td><small>${lastUsedInfo}</small></td>
+          <td><button class="btn btn-danger" onclick="deleteProxy(${p.id})">Delete</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (err) {
+      console.error("Failed to load proxies:", err);
+    }
+  }
+
+  async function submitBulkProxies() {
+    const inputEl = document.getElementById('bulk-proxy-input');
+    const text = inputEl.value.trim();
+    if (!text) {
+      alert("Please paste one or more proxy strings first.");
+      return;
+    }
+
+    const btn = document.getElementById('btn-save-proxies');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+      const resp = await fetch('/api/proxies/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxies_text: text }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        alert(`✅ ${data.message}`);
+        inputEl.value = '';
+        loadProxies();
+      } else {
+        alert(`⚠️ Failed to save proxies: ${data.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert(`⚠️ Error saving proxies: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '💾 Save Proxies to Database';
+    }
+  }
+
+  async function resetProxyCooldowns() {
+    try {
+      const resp = await fetch('/api/proxies/reset-cooldowns', { method: 'POST' });
+      const data = await resp.json();
+      alert(`♻️ ${data.message}`);
+      loadProxies();
+    } catch (err) {
+      alert(`⚠️ Error resetting cooldowns: ${err.message}`);
+    }
+  }
+
+  async function deleteProxy(id) {
+    if (!confirm(`Are you sure you want to remove proxy #${id}?`)) return;
+    try {
+      const resp = await fetch(`/api/proxies/${id}`, { method: 'DELETE' });
+      const data = await resp.json();
+      loadProxies();
+    } catch (err) {
+      alert(`⚠️ Error deleting proxy: ${err.message}`);
+    }
+  }
+
+  async function clearAllProxies() {
+    if (!confirm("⚠️ Are you sure you want to CLEAR ALL PROXIES from the database?")) return;
+    try {
+      const resp = await fetch('/api/proxies', { method: 'DELETE' });
+      const data = await resp.json();
+      alert(`🗑️ ${data.message}`);
+      loadProxies();
+    } catch (err) {
+      alert(`⚠️ Error clearing proxies: ${err.message}`);
+    }
+  }
+
   // Initial load
   refreshQueue();
   refreshTelemetry();
+  loadProxies();
   setInterval(refreshTelemetry, 4000);
 </script>
 </body>

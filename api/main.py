@@ -46,6 +46,12 @@ from agents.appointments.db import (
     get_client_by_id,
     get_queue_stats,
     update_client_status,
+    add_proxies_bulk,
+    get_all_proxies,
+    get_proxy_stats,
+    delete_proxy,
+    reset_proxy_cooldowns,
+    clear_all_proxies,
 )
 from agents.appointments.monitor import slot_monitor
 from agents.appointments.schemas import ClientProfile
@@ -305,6 +311,62 @@ async def get_latest_otp(phone: Optional[str] = Query(None)):
         "phone": record["phone"],
         "age_seconds": int(age),
     }
+
+
+# ── Proxy Management REST Endpoints ──────────────────────────────────────────
+
+class ProxyBulkInput(BaseModel):
+    proxies_text: str
+
+
+@app.get("/api/proxies")
+async def list_proxies(status: Optional[str] = Query(None)):
+    """List all proxies in the SQLite pool with live health metrics."""
+    proxies = get_all_proxies(status=status)
+    stats = get_proxy_stats()
+    return {
+        "stats": stats,
+        "total": len(proxies),
+        "proxies": proxies,
+    }
+
+
+@app.post("/api/proxies/bulk")
+async def add_proxies_endpoint(req: ProxyBulkInput):
+    """Paste 10, 30, 50+ proxy lines and save to SQLite table."""
+    lines = req.proxies_text.strip().splitlines()
+    added = add_proxies_bulk(lines)
+    stats = get_proxy_stats()
+    return {
+        "success": True,
+        "added": added,
+        "total": stats["total"],
+        "message": f"Successfully ingested {added} proxies into SQLite pool.",
+        "stats": stats,
+    }
+
+
+@app.post("/api/proxies/reset-cooldowns")
+async def reset_cooldowns_endpoint():
+    """Reset all quarantined proxies back to ACTIVE."""
+    reset_count = reset_proxy_cooldowns()
+    return {"success": True, "reset_count": reset_count, "message": f"Reset {reset_count} proxies back to active."}
+
+
+@app.delete("/api/proxies/{proxy_id}")
+async def delete_proxy_endpoint(proxy_id: int):
+    """Delete a single proxy by ID."""
+    deleted = delete_proxy(proxy_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Proxy not found")
+    return {"success": True, "message": f"Proxy #{proxy_id} deleted"}
+
+
+@app.delete("/api/proxies")
+async def clear_proxies_endpoint():
+    """Clear all proxies from SQLite."""
+    clear_all_proxies()
+    return {"success": True, "message": "All proxies cleared from database."}
 
 
 # ── Health & UI ───────────────────────────────────────────────────────────────

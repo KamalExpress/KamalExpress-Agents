@@ -74,7 +74,28 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_status_dest ON client_queue(status, destination, visa_type, vac_id);")
-            logger.info(f"[db] Initialized SQLite database at {db_path}")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS proxies (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        proxy_url TEXT NOT NULL UNIQUE,
+                        host TEXT NOT NULL,
+                        port TEXT NOT NULL,
+                        username TEXT,
+                        password TEXT,
+                        country TEXT DEFAULT 'PK',
+                        status TEXT DEFAULT 'ACTIVE',
+                        success_count INTEGER DEFAULT 0,
+                        fail_count INTEGER DEFAULT 0,
+                        last_used_at TEXT,
+                        last_failed_at TEXT,
+                        last_error TEXT,
+                        quarantined_until TEXT,
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_proxy_status ON proxies(status, quarantined_until);")
+            logger.info(f"[db] Initialized SQLite database tables at {db_path}")
         finally:
             conn.close()
 
@@ -299,6 +320,204 @@ def get_queue_stats(db_path: Path = DB_PATH) -> dict:
             total += cnt
         stats["TOTAL"] = total
         return stats
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Proxy Management Functions (SQLite Table: proxies)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def add_proxies_bulk(proxy_lines: List[str], db_path: Path = DB_PATH) -> int:
+    """
+    Parse a list of proxy strings (host:port:user:pass or http://...) and insert into SQLite.
+    Returns count of added/updated proxies.
+    """
+    if not proxy_lines:
+        return 0
+
+    inserted_count = 0
+    now_str = datetime.utcnow().isoformat()
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                for line in proxy_lines:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+
+                    host, port, user, pwd = "", "", "", ""
+                    proxy_url = ""
+
+                    if line.startswith("http://") or line.startswith("https://"):
+                        proxy_url = line
+                        # Parse components
+                        from urllib.parse import urlparse
+                        p = urlparse(line)
+                        host = p.hostname or ""
+                        port = str(p.port or 80)
+                        user = p.username or ""
+                        pwd = p.password or ""
+                    else:
+                        parts = line.split(":")
+                        if len(parts) == 4:
+                            host, port, user, pwd = parts
+                            proxy_url = f"http://{user}:{pwd}@{host}:{port}"
+                        elif len(parts) == 2:
+                            host, port = parts
+                            proxy_url = f"http://{host}:{port}"
+
+                    if not proxy_url or not host:
+                        continue
+
+                    conn.execute("""
+                        INSERT INTO proxies (
+                            proxy_url, host, port, username, password, status, created_at
+                        ) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?)
+                        ON CONFLICT(proxy_url) DO UPDATE SET
+                            host=excluded.host,
+                            port=excluded.port,
+                            username=excluded.username,
+                            password=excluded.password,
+                            status='ACTIVE',
+                            quarantined_until=NULL
+                    """, (proxy_url, host, port, user, pwd, now_str))
+                    inserted_count += 1
+
+            logger.info(f"[db] Successfully ingested {inserted_count} proxies into SQLite.")
+            return inserted_count
+        finally:
+            conn.close()
+
+
+def get_all_proxies(status: Optional[str] = None, db_path: Path = DB_PATH) -> List[dict]:
+    """Retrieve all proxies from SQLite."""
+    conn = get_connection(db_path)
+    try:
+        if status:
+            rows = conn.execute("SELECT * FROM proxies WHERE status = ? ORDER BY id ASC", (status,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM proxies ORDER BY id ASC").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_active_proxies(db_path: Path = DB_PATH) -> List[dict]:
+    """Retrieve healthy, non-quarantined proxies."""
+    now_str = datetime.utcnow().isoformat()
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute("""
+            SELECT * FROM proxies 
+            WHERE status = 'ACTIVE' 
+              AND (quarantined_until IS NULL OR quarantined_until < ?)
+            ORDER BY last_used_at ASC, id ASC
+        """, (now_str,)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def record_proxy_result(
+    proxy_url: str,
+    success: bool,
+    error: Optional[str] = None,
+    quarantine_seconds: int = 300,
+    db_path: Path = DB_PATH,
+) -> None:
+    """Update success/fail stats and quarantine status for a proxy in SQLite."""
+    import datetime as dt
+    now_dt = datetime.utcnow()
+    now_str = now_dt.isoformat()
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                if success:
+                    conn.execute("""
+                        UPDATE proxies
+                        SET success_count = success_count + 1,
+                            last_used_at = ?,
+                            status = 'ACTIVE',
+                            quarantined_until = NULL,
+                            last_error = NULL
+                        WHERE proxy_url = ?
+                    """, (now_str, proxy_url))
+                else:
+                    quarantined_until = (now_dt + dt.timedelta(seconds=quarantine_seconds)).isoformat()
+                    conn.execute("""
+                        UPDATE proxies
+                        SET fail_count = fail_count + 1,
+                            last_failed_at = ?,
+                            last_error = ?,
+                            status = 'QUARANTINED',
+                            quarantined_until = ?
+                        WHERE proxy_url = ?
+                    """, (now_str, error or "WAF / Timeout Error", quarantined_until, proxy_url))
+        finally:
+            conn.close()
+
+
+def reset_proxy_cooldowns(db_path: Path = DB_PATH) -> int:
+    """Reset all quarantined proxies back to ACTIVE."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("UPDATE proxies SET status = 'ACTIVE', quarantined_until = NULL")
+                return cursor.rowcount
+        finally:
+            conn.close()
+
+
+def delete_proxy(proxy_id: int, db_path: Path = DB_PATH) -> bool:
+    """Delete a proxy from the SQLite table."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("DELETE FROM proxies WHERE id = ?", (proxy_id,))
+                return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+def clear_all_proxies(db_path: Path = DB_PATH) -> bool:
+    """Clear all proxies from SQLite."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                conn.execute("DELETE FROM proxies")
+                return True
+        finally:
+            conn.close()
+
+
+def get_proxy_stats(db_path: Path = DB_PATH) -> dict:
+    """Get aggregated proxy pool statistics."""
+    now_str = datetime.utcnow().isoformat()
+    conn = get_connection(db_path)
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM proxies").fetchone()[0]
+        active = conn.execute("""
+            SELECT COUNT(*) FROM proxies 
+            WHERE status = 'ACTIVE' AND (quarantined_until IS NULL OR quarantined_until < ?)
+        """, (now_str,)).fetchone()[0]
+        quarantined = conn.execute("""
+            SELECT COUNT(*) FROM proxies 
+            WHERE status = 'QUARANTINED' OR (quarantined_until IS NOT NULL AND quarantined_until >= ?)
+        """, (now_str,)).fetchone()[0]
+        return {
+            "total": total,
+            "active": active,
+            "quarantined": quarantined,
+            "disabled": total - (active + quarantined),
+        }
     finally:
         conn.close()
 
