@@ -316,26 +316,36 @@ class GVCPortalDriver:
 
     # ── OTP Trigger ─────────────────────────────────────────────
 
-    async def trigger_booking_otp(self, phone_number: str, prefix_id: str = "197") -> Dict[str, Any]:
+    async def trigger_booking_otp(self, phone_number: str, prefix_id: str = "197", max_retries: int = 3) -> Dict[str, Any]:
         """
-        Request GVC to send an SMS/WhatsApp OTP for appointment confirmation.
+        Request GVC to send an SMS/WhatsApp OTP for appointment confirmation with automatic proxy failover.
         """
         phone_clean = phone_number.lstrip("0")
         url = f"{self.base_url}/api/v1/onetimepassword/sendOtpBookAppointment/{phone_clean}/{prefix_id}"
         logger.info(f"[gvc] Triggering OTP for +92-{phone_clean}...")
 
-        try:
-            async with self._get_http_client(timeout=25.0) as client:
-                resp = await client.post(url, headers=self._get_headers())
-                if resp.status_code in [200, 204]:
-                    logger.info(f"[gvc] ✓ OTP successfully triggered for +92-{phone_clean}")
-                    return {"success": True, "phone": phone_clean, "message": "OTP sent successfully."}
-                else:
-                    logger.warning(f"[gvc] OTP trigger failed (HTTP {resp.status_code}): {resp.text[:150]}")
-                    return {"success": False, "status_code": resp.status_code, "message": resp.text[:150]}
-        except Exception as e:
-            logger.error(f"[gvc] Network error requesting OTP: {e}")
-            return {"success": False, "error": str(e)}
+        last_err = None
+        for attempt in range(max_retries):
+            proxy = self.proxy_manager.get_proxy_url()
+            try:
+                async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=25.0) as client:
+                    resp = await client.post(url, headers=self._get_headers())
+                    if resp.status_code in [200, 204]:
+                        self.proxy_manager.mark_proxy_success(proxy)
+                        logger.info(f"[gvc] ✓ OTP successfully triggered for +92-{phone_clean}")
+                        return {"success": True, "phone": phone_clean, "message": "OTP sent successfully."}
+                    elif resp.status_code in [403, 429]:
+                        logger.warning(f"[gvc] Proxy blocked/rate-limited (HTTP {resp.status_code}) on {proxy}. Quarantining and retrying...")
+                        self.proxy_manager.mark_proxy_failed(proxy)
+                    else:
+                        logger.warning(f"[gvc] OTP trigger returned HTTP {resp.status_code}: {resp.text[:150]}")
+                        return {"success": False, "status_code": resp.status_code, "message": resp.text[:150]}
+            except Exception as e:
+                logger.warning(f"[gvc] Proxy error on {proxy}: {e}. Retrying on next proxy...")
+                self.proxy_manager.mark_proxy_failed(proxy)
+                last_err = str(e)
+
+        return {"success": False, "error": f"Failed after {max_retries} proxy attempts. Last error: {last_err}"}
 
     # ── Final Booking Submission ────────────────────────────────
 
@@ -348,9 +358,10 @@ class GVCPortalDriver:
         otp_code: str = "",
         vac_id: Optional[str] = None,
         visa_type: Optional[str] = None,
+        max_retries: int = 3,
     ) -> BookingResult:
         """
-        Submit HAR-compliant final booking payload to GVC World.
+        Submit HAR-compliant final booking payload to GVC World with automatic proxy failover.
         """
         vac_key = str(vac_id or applicant.vac_id)
         vac_meta = GVC_VACS.get(vac_key.lower(), GVC_VACS["138"])
@@ -405,53 +416,64 @@ class GVCPortalDriver:
 
         api_url = f"{self.base_url}/api/v1/appointments"
 
-        try:
-            async with self._get_http_client(timeout=30.0) as client:
-                resp = await client.post(api_url, json=payload, headers=self._get_headers())
-                
-                if resp.status_code in [200, 201]:
-                    ref_num = f"GVC-GR-{vac_meta['city'][:3].upper()}-{datetime.now().strftime('%Y%m%d%H%M')}-{random.randint(100, 999)}"
-                    try:
-                        res_data = resp.json()
-                        if isinstance(res_data, dict):
-                            ref_num = res_data.get("referenceNumber") or res_data.get("arn") or ref_num
-                    except Exception:
-                        pass
+        last_err = ""
+        for attempt in range(max_retries):
+            proxy = self.proxy_manager.get_proxy_url()
+            try:
+                async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=30.0) as client:
+                    resp = await client.post(api_url, json=payload, headers=self._get_headers())
+                    
+                    if resp.status_code in [200, 201]:
+                        self.proxy_manager.mark_proxy_success(proxy)
+                        ref_num = f"GVC-GR-{vac_meta['city'][:3].upper()}-{datetime.now().strftime('%Y%m%d%H%M')}-{random.randint(100, 999)}"
+                        try:
+                            res_data = resp.json()
+                            if isinstance(res_data, dict):
+                                ref_num = res_data.get("referenceNumber") or res_data.get("arn") or ref_num
+                        except Exception:
+                            pass
 
-                    logger.info(f"[gvc] 🎉 BOOKING CONFIRMED! Reference: {ref_num}")
-                    return BookingResult(
-                        success=True,
-                        client_id=applicant.id,
-                        client_name=f"{applicant.first_name} {applicant.last_name}",
-                        reference_number=ref_num,
-                        portal="Greece (GVC World)",
-                        vac_city=vac_meta["name"],
-                        visa_type=GVC_VISA_TYPES.get(app_type, f"Type {app_type}"),
-                        booked_date=target_date,
-                        booked_time=target_time,
-                        message=f"Appointment successfully confirmed at {vac_meta['name']}.",
-                        details={"slot_id": slot_id, "passport": applicant.passport_number},
-                    )
-                else:
-                    err_msg = f"Booking API returned status {resp.status_code}: {resp.text[:200]}"
-                    logger.warning(f"[gvc] {err_msg}")
-                    return BookingResult(
-                        success=False,
-                        client_id=applicant.id,
-                        client_name=f"{applicant.first_name} {applicant.last_name}",
-                        portal="Greece (GVC World)",
-                        vac_city=vac_meta["name"],
-                        visa_type=GVC_VISA_TYPES.get(app_type, f"Type {app_type}"),
-                        message=err_msg,
-                    )
-        except Exception as e:
-            logger.error(f"[gvc] Network error during booking submission: {e}")
-            return BookingResult(
-                success=False,
-                client_id=applicant.id,
-                client_name=f"{applicant.first_name} {applicant.last_name}",
-                portal="Greece (GVC World)",
-                vac_city=vac_meta["name"],
-                visa_type=GVC_VISA_TYPES.get(app_type, f"Type {app_type}"),
-                message=f"Network exception: {e}",
-            )
+                        logger.info(f"[gvc] 🎉 BOOKING CONFIRMED! Reference: {ref_num}")
+                        return BookingResult(
+                            success=True,
+                            client_id=applicant.id,
+                            client_name=f"{applicant.first_name} {applicant.last_name}",
+                            reference_number=ref_num,
+                            portal="Greece (GVC World)",
+                            vac_city=vac_meta["name"],
+                            visa_type=GVC_VISA_TYPES.get(app_type, f"Type {app_type}"),
+                            booked_date=target_date,
+                            booked_time=target_time,
+                            message=f"Appointment successfully confirmed at {vac_meta['name']}.",
+                            details={"slot_id": slot_id, "passport": applicant.passport_number},
+                        )
+                    elif resp.status_code in [403, 429]:
+                        logger.warning(f"[gvc] Booking blocked/quarantined on proxy {proxy} (HTTP {resp.status_code}). Retrying...")
+                        self.proxy_manager.mark_proxy_failed(proxy)
+                        last_err = f"HTTP {resp.status_code} WAF block on {proxy}"
+                    else:
+                        err_msg = f"Booking API returned status {resp.status_code}: {resp.text[:200]}"
+                        logger.warning(f"[gvc] {err_msg}")
+                        return BookingResult(
+                            success=False,
+                            client_id=applicant.id,
+                            client_name=f"{applicant.first_name} {applicant.last_name}",
+                            portal="Greece (GVC World)",
+                            vac_city=vac_meta["name"],
+                            visa_type=GVC_VISA_TYPES.get(app_type, f"Type {app_type}"),
+                            message=err_msg,
+                        )
+            except Exception as e:
+                logger.warning(f"[gvc] Network error on proxy {proxy}: {e}. Retrying on next proxy...")
+                self.proxy_manager.mark_proxy_failed(proxy)
+                last_err = str(e)
+
+        return BookingResult(
+            success=False,
+            client_id=applicant.id,
+            client_name=f"{applicant.first_name} {applicant.last_name}",
+            portal="Greece (GVC World)",
+            vac_city=vac_meta["name"],
+            visa_type=GVC_VISA_TYPES.get(app_type, f"Type {app_type}"),
+            message=f"Booking attempt failed across {max_retries} residential proxies: {last_err}",
+        )

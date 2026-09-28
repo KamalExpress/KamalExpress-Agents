@@ -29,6 +29,9 @@ class ProxyManager:
         self._proxy_file = proxy_file
         self._proxy_list: List[str] = self._load_proxies_from_file()
         self._current_index = 0
+        # Failure tracking: {proxy_url: last_failed_timestamp}
+        self._failed_proxies: dict[str, float] = {}
+        self._cooldown_seconds: float = 300.0  # 5 minutes quarantine for dead/blocked proxies
 
     def _load_proxies_from_file(self) -> List[str]:
         """Load and parse proxy lines formatted as host:port:user:pass from file."""
@@ -57,22 +60,50 @@ class ProxyManager:
 
         return proxies
 
+    # ── Proxy Health & Failover Tracking ──────────────────────────────
+
+    def _get_healthy_proxies(self) -> List[str]:
+        """Return list of proxies currently not in cooldown."""
+        import time
+        now = time.time()
+        # Clean up expired cooldowns
+        expired = [p for p, t in self._failed_proxies.items() if now - t > self._cooldown_seconds]
+        for p in expired:
+            del self._failed_proxies[p]
+
+        healthy = [p for p in self._proxy_list if p not in self._failed_proxies]
+        return healthy if healthy else self._proxy_list  # fallback to all if all are in cooldown
+
+    def mark_proxy_failed(self, proxy_url: Optional[str]) -> None:
+        """Mark a proxy as failed (timed out or blocked by WAF) and quarantine it."""
+        if not proxy_url or proxy_url not in self._proxy_list:
+            return
+        import time
+        self._failed_proxies[proxy_url] = time.time()
+        logger.warning(f"[proxy] ⚠️ Proxy {proxy_url.split('@')[-1]} marked failed. Quarantined for {int(self._cooldown_seconds)}s. Healthy remaining: {len(self._get_healthy_proxies())}/{len(self._proxy_list)}")
+
+    def mark_proxy_success(self, proxy_url: Optional[str]) -> None:
+        """Mark a proxy as healthy and remove from failure registry."""
+        if proxy_url and proxy_url in self._failed_proxies:
+            del self._failed_proxies[proxy_url]
+
     # ── Public API ────────────────────────────────────────────────────
 
     def get_proxy_url(self) -> Optional[str]:
-        """Return the next or active proxy URL string."""
-        if self._proxy_list:
-            # Round-robin rotation through file list
-            proxy = self._proxy_list[self._current_index % len(self._proxy_list)]
+        """Return the next healthy proxy URL via round-robin failover."""
+        healthy = self._get_healthy_proxies()
+        if healthy:
+            proxy = healthy[self._current_index % len(healthy)]
             self._current_index += 1
             return proxy
 
         return self._build_from_settings()
 
     def get_random_proxy(self) -> Optional[str]:
-        """Return a random proxy from the residential pool."""
-        if self._proxy_list:
-            return random.choice(self._proxy_list)
+        """Return a random healthy proxy from the residential pool."""
+        healthy = self._get_healthy_proxies()
+        if healthy:
+            return random.choice(healthy)
         return self._build_from_settings()
 
     def get_playwright_proxy(self) -> Optional[dict]:
