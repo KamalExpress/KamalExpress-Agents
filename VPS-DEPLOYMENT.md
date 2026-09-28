@@ -42,7 +42,7 @@ Open PowerShell as Administrator on the VPS and run:
 cd C:\
 
 # Clone the repository
-git clone <YOUR_GITHUB_REPO_URL> KamalExpress-Agents
+git clone https://github.com/KamalExpress/KamalExpress-Agents.git KamalExpress-Agents
 cd KamalExpress-Agents
 ```
 
