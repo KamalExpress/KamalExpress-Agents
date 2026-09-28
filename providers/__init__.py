@@ -23,7 +23,10 @@ def get_provider() -> AIServiceProvider:
     """
     provider_name = get_settings().ai_provider
 
-    if provider_name == "ollama":
+    if provider_name == "bitnet":
+        from .bitnet_provider import BitNetProvider
+        return BitNetProvider()
+    elif provider_name == "ollama":
         from .ollama_provider import OllamaProvider
         return OllamaProvider()
     elif provider_name == "openrouter":
@@ -38,7 +41,7 @@ def get_provider() -> AIServiceProvider:
     else:
         raise ValueError(
             f"Unknown AI_PROVIDER='{provider_name}'. "
-            "Valid options: ollama | openrouter | openai | anthropic"
+            "Valid options: bitnet | ollama | openrouter | openai | anthropic"
         )
 
 

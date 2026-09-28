@@ -144,9 +144,10 @@ if (-not (Test-Path $EnvFile)) {
     if (Test-Path $EnvExample) {
         Copy-Item $EnvExample $EnvFile
         Write-Host "  [OK] Created .env from .env.example" -ForegroundColor Green
-    } else {
         $DefaultEnv = @(
-            "AI_PROVIDER=ollama",
+            "AI_PROVIDER=bitnet",
+            "BITNET_SERVER_URL=https://ai.alamiaconnect.com/v1",
+            "BITNET_API_KEY=51129693340",
             "API_HOST=0.0.0.0",
             "API_PORT=8080",
             "API_RELOAD=true",
@@ -154,7 +155,7 @@ if (-not (Test-Path $EnvFile)) {
             "BROWSER_CDP_URL=http://localhost:9222"
         )
         $DefaultEnv -join "`n" | Set-Content $EnvFile
-        Write-Host "  [OK] Generated default .env file" -ForegroundColor Green
+        Write-Host "  [OK] Generated default .env file with BitNet Cloud AI endpoint" -ForegroundColor Green
     }
 } else {
     Write-Host "  [OK] Existing .env file found." -ForegroundColor Green
