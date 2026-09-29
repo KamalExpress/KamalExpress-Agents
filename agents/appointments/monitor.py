@@ -118,13 +118,16 @@ class AutonomousSlotMonitor:
                 self.log_event(f"Queue is empty (0 queued applicants). Monitor is idling in standby. Next check in {self.interval_seconds}s.")
             return
 
-        # 2. Check CDP connection & session
-        await self._gvc_driver.sync_cookies_from_cdp()
-        if not self._gvc_driver.cdp_connected and not self._gvc_driver._session_cookies and not self._gvc_driver._bearer_token:
-            self.log_event(
-                f"⚠️ [Scan #{self._total_scans}] CDP session disconnected (port 9222). Please run '.\\Launch-Chrome-CDP.ps1 -RealProfile' and log in to GVC to enable live slot querying.",
-                level="WARNING"
-            )
+        # 2. Check active GVC session / CDP connection
+        is_auth = await self._gvc_driver.is_authenticated()
+        if not is_auth:
+            from .db import get_gvc_auth_mode
+            auth_mode = get_gvc_auth_mode()
+            if auth_mode == "auto_solver":
+                msg = f"⚠️ [Scan #{self._total_scans}] GVC session unauthenticated. Auto-Solver is renewing session in the background..."
+            else:
+                msg = f"⚠️ [Scan #{self._total_scans}] GVC session unauthenticated. Please sync token via Bookmarklet (Option 1) or switch to Auto-Solver (Option 3)."
+            self.log_event(msg, level="WARNING")
             return
 
         # 3. Group queued targets (destination, visa_type, vac_id) to avoid redundant portal queries
@@ -145,7 +148,7 @@ class AutonomousSlotMonitor:
 
                     if status_info.get("status") == "UNAUTHENTICATED":
                         self.log_event(
-                            f"⚠️ [Scan #{self._total_scans}] GVC {vac_meta['name']} session unauthenticated. Please log in to GVC inside Chrome (port 9222).",
+                            f"⚠️ [Scan #{self._total_scans}] GVC {vac_meta['name']} session expired/unauthenticated.",
                             level="WARNING"
                         )
                         continue

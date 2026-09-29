@@ -66,8 +66,17 @@ from agents.appointments.db import (
     query_visa_rules,
     search_hotels_db,
     create_hotel_booking_record,
+    get_gvc_auth_mode,
+    set_gvc_auth_mode,
+    get_gvc_credentials,
+    set_gvc_credentials,
+    save_gvc_session,
+    get_active_gvc_session,
+    invalidate_gvc_session,
 )
 from agents.appointments.monitor import slot_monitor
+from agents.appointments.portals.gvc_auth import gvc_auth_solver
+from agents.appointments.solver_worker import solver_worker
 from agents.appointments.schemas import ClientProfile
 
 logging.basicConfig(level=get_settings().log_level)
@@ -81,6 +90,16 @@ app = FastAPI(
     version="0.2.0",
     docs_url="/docs",
 )
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("[api] Initializing background solver worker...")
+    solver_worker.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("[api] Stopping background solver worker...")
+    solver_worker.stop()
 
 app.add_middleware(
     CORSMiddleware,
@@ -165,6 +184,23 @@ class AgentResponse(BaseModel):
 class MonitorToggleRequest(BaseModel):
     action: str  # "start" or "stop"
     interval_seconds: Optional[int] = 45
+
+
+class GVCSyncRequest(BaseModel):
+    token: Optional[str] = ""
+    cookies: Optional[Any] = None
+    bearer_token: Optional[str] = ""
+    source: str = "MANUAL_SYNC"
+
+
+class GVCModeRequest(BaseModel):
+    mode: str  # "manual" or "auto_solver"
+
+
+class GVCCredentialsRequest(BaseModel):
+    email: str
+    password: str
+    interval_seconds: int = 300
 
 
 # ── Authentication REST Endpoints ─────────────────────────────────────────────
@@ -488,6 +524,69 @@ async def search_slots(
         "total_slots": len(slots),
         "slots": [s.model_dump() for s in slots],
     }
+
+
+# ── GVC Session & Dual-Mode Auth Endpoints ─────────────────────────────────────
+
+@app.post("/api/gvc/session/sync")
+async def gvc_sync_session(req: GVCSyncRequest, user: dict = Depends(get_current_user)):
+    """Sync active GVC session token/cookies (Option 1: Manual / Bookmarklet)."""
+    saved = save_gvc_session(
+        auth_token=req.token or "",
+        cookies=req.cookies,
+        bearer_token=req.bearer_token or req.token or "",
+        source=req.source or "MANUAL_SYNC",
+        synced_by=user.get("username", "staff"),
+    )
+    return {
+        "success": True,
+        "session": saved,
+        "message": "GVC session token successfully synced to Kamal Express.",
+    }
+
+
+@app.get("/api/gvc/session/status")
+async def gvc_session_status(user: dict = Depends(get_current_user)):
+    """Get real-time GVC authentication mode, session validity, and solver status."""
+    sess = get_active_gvc_session()
+    mode = get_gvc_auth_mode()
+    creds = get_gvc_credentials()
+    telemetry = solver_worker.get_telemetry()
+    return {
+        "auth_mode": mode,
+        "has_active_session": bool(sess and sess.get("is_valid")),
+        "session": sess,
+        "credentials_configured": bool(creds.get("email")),
+        "credentials_email": creds.get("email"),
+        "solver_worker": telemetry,
+    }
+
+
+@app.post("/api/gvc/auth/mode")
+async def gvc_set_auth_mode_endpoint(req: GVCModeRequest, user: dict = Depends(get_current_user)):
+    """Switch active GVC auth mode ('manual' vs 'auto_solver')."""
+    mode = set_gvc_auth_mode(req.mode)
+    if mode == "auto_solver":
+        solver_worker.start()
+    return {
+        "success": True,
+        "auth_mode": mode,
+        "message": f"Switched GVC Auth Mode to: {'Autonomous Auto-Solver (Option 3)' if mode == 'auto_solver' else 'Manual Token Sync (Option 1 - Free)'}.",
+    }
+
+
+@app.post("/api/gvc/auth/credentials")
+async def gvc_set_credentials_endpoint(req: GVCCredentialsRequest, admin: dict = Depends(require_admin)):
+    """Store GVC account credentials for autonomous CapSolver login."""
+    set_gvc_credentials(req.email, req.password, req.interval_seconds)
+    return {"success": True, "message": "GVC account credentials saved successfully."}
+
+
+@app.post("/api/gvc/auth/solve-now")
+async def gvc_solve_now_endpoint(admin: dict = Depends(require_admin)):
+    """Trigger an immediate CapSolver login attempt."""
+    res = await gvc_auth_solver.login_with_credentials()
+    return res
 
 
 @app.get("/api/monitor/status")

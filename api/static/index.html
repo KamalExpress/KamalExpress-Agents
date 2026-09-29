@@ -373,9 +373,9 @@
     <p>Autonomous Visa Appointments & Multi-Agent Travel Operations</p>
   </div>
   <div class="header-stats">
-    <div class="header-stat-pill" id="pill-cdp" title="Chrome CDP Connection (Port 9222)">
-      <div class="status-dot idle" id="dot-cdp"></div>
-      <span id="hdr-cdp-text">CDP: Checking...</span>
+    <div class="header-stat-pill" id="pill-gvc-auth" onclick="switchNavTab('auth-view')" style="cursor:pointer;" title="GVC Authentication & Dual-Mode Status">
+      <div class="status-dot idle" id="dot-gvc-auth"></div>
+      <span id="hdr-gvc-auth-text">GVC Auth: Checking...</span>
     </div>
     <div class="header-stat-pill">
       <div class="status-dot idle" id="dot-monitor"></div>
@@ -401,6 +401,7 @@
   <button class="nav-tab active" data-view="chat-view">💬 Conversational AI</button>
   <button class="nav-tab" data-view="queue-view">📋 Multi-Client Queue & Auto-Booker</button>
   <button class="nav-tab" data-view="slot-search-view">🔍 GVC Greece Slot Inspector</button>
+  <button class="nav-tab" data-view="auth-view" id="tab-auth-view">🔐 GVC Auth & Sessions</button>
   <button class="nav-tab" data-view="proxy-view" id="tab-proxy-view">🌐 Residential Proxies</button>
   <button class="nav-tab" data-view="users-view" id="tab-users-view" style="display:none;">👥 Staff & Roles</button>
 </div>
@@ -728,6 +729,145 @@ How can I assist you right now?</div>
   </div>
 </div>
 
+<!-- ── VIEW 6: GVC AUTH & SESSION CONTROL ── -->
+<div class="view-container" id="auth-view" style="padding:16px; overflow-y:auto;">
+  <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
+    
+    <!-- Mode Switch Banner Card -->
+    <div class="card" style="border: 2px solid var(--primary-l); background: linear-gradient(135deg, #f0f7ff, #ffffff);">
+      <div class="card-header" style="border-bottom: 1px solid #d3e2ee; padding-bottom: 10px;">
+        <div>
+          <div class="card-title" style="font-size: 16px; color: var(--primary-d);">⚡ GVC Authentication Mode Selector</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 2px;">
+            Switch between Manual Browser Sync (Free / Low Load) and Autonomous CapSolver Auto-Login (High Load / Slot Drops).
+          </div>
+        </div>
+        <div id="auth-mode-badge" class="badge" style="font-size: 12px; padding: 4px 12px; background: var(--primary);">
+          MODE: MANUAL (FREE)
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
+        <!-- Option 1 Selector Card -->
+        <div id="mode-opt-manual" onclick="setGVCAuthMode('manual')" style="border: 2px solid var(--primary); border-radius: 8px; padding: 14px; background: #ffffff; cursor: pointer; transition: all 0.2s ease;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <div style="font-weight: 800; font-size: 14px; color: var(--primary-d);">
+              <input type="radio" name="auth_mode_choice" id="radio-mode-manual" value="manual" checked style="margin-right: 6px;">
+              Option 1: Manual Token Sync (Free)
+            </div>
+            <span class="badge" style="background:#e1effe; color:#1e429f;">Zero Cost</span>
+          </div>
+          <p style="font-size: 12px; color: #4b5563; line-height: 1.4; margin: 0;">
+            Used during normal / non-drop hours. Staff logs in on their own workstation and syncs session with 1-click bookmarklet. Auto-Solver is <b>PAUSED</b> to save on captcha solving costs.
+          </p>
+        </div>
+
+        <!-- Option 3 Selector Card -->
+        <div id="mode-opt-auto" onclick="setGVCAuthMode('auto_solver')" style="border: 1px solid #d1d5db; border-radius: 8px; padding: 14px; background: #ffffff; cursor: pointer; transition: all 0.2s ease;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <div style="font-weight: 800; font-size: 14px; color: var(--primary-d);">
+              <input type="radio" name="auth_mode_choice" id="radio-mode-auto" value="auto_solver" style="margin-right: 6px;">
+              Option 3: Autonomous Auto-Solver
+            </div>
+            <span class="badge badge-booked">Slot Drop Mode</span>
+          </div>
+          <p style="font-size: 12px; color: #4b5563; line-height: 1.4; margin: 0;">
+            Used during heavy slot drop & high-load periods when staff are frequently logged out. VPS solves reCAPTCHA autonomously with CapSolver/2Captcha and keeps session alive 24/7.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dual Action Grid -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      
+      <!-- Option 1 Panel: 1-Click Bookmarklet & Manual Token Sync -->
+      <div class="card" id="panel-option-1">
+        <div class="card-header">
+          <div class="card-title">📌 Option 1: Manual Session Sync</div>
+          <span class="badge badge-active" id="opt1-status-pill">Active Mode</span>
+        </div>
+
+        <!-- 1-Click Bookmarklet Section -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+          <div style="font-weight: 700; font-size: 13px; color: var(--primary-d); margin-bottom: 4px;">
+            ⭐ 1-Click Browser Bookmarklet
+          </div>
+          <p style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
+            Drag this button to your browser's Bookmarks bar. Whenever you are logged into GVC World on your PC, click the bookmark to instantly sync your session to Kamal Express!
+          </p>
+          <div style="text-align: center;">
+            <a id="btn-bookmarklet-link" class="btn btn-primary" style="display: inline-block; padding: 8px 16px; font-weight: 700; font-size: 13px; text-decoration: none; cursor: grab;" href="#" onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar!');">
+              ⚡ Sync GVC Session to Kamal Express
+            </a>
+          </div>
+        </div>
+
+        <!-- Manual Paste Section -->
+        <form onsubmit="event.preventDefault(); submitManualGVCAuth();">
+          <div class="form-group">
+            <label>Paste GVC Auth Token or Raw Cookie Header</label>
+            <textarea id="gvc-manual-token" rows="3" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... or auth_token=eyJ...; ASP.NET_SessionId=..." style="font-family:monospace; font-size:11px;"></textarea>
+          </div>
+          <button type="submit" id="btn-save-manual-token" class="btn btn-primary" style="width:100%;">
+            💾 Save & Sync Session Token
+          </button>
+        </form>
+
+        <!-- Current Session Details Box -->
+        <div id="gvc-active-session-box" style="margin-top: 14px; padding: 10px; border-radius: 6px; background: #ffffff; border: 1px solid #e2e8f0; font-size: 11px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <b>Current Session State:</b>
+            <span id="gvc-sess-validity" class="badge badge-queued">Checking...</span>
+          </div>
+          <div style="color:#64748b;">Source: <span id="gvc-sess-source" style="font-weight:600; color:#1e293b;">—</span></div>
+          <div style="color:#64748b;">Last Synced: <span id="gvc-sess-synced" style="font-weight:600; color:#1e293b;">—</span></div>
+          <div style="color:#64748b;">Expires At: <span id="gvc-sess-expires" style="font-weight:600; color:#1e293b;">—</span></div>
+        </div>
+      </div>
+
+      <!-- Option 3 Panel: Autonomous CapSolver Auto-Login -->
+      <div class="card" id="panel-option-3">
+        <div class="card-header">
+          <div class="card-title">🤖 Option 3: Auto-Solver Engine</div>
+          <span class="badge" id="opt3-status-pill" style="background:#f3f4f6; color:#6b7280;">Paused</span>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span style="font-weight: 700; font-size: 13px; color: var(--primary-d);">Background Solver Status:</span>
+            <span id="solver-worker-state" class="badge badge-warn">PAUSED</span>
+          </div>
+          <div style="font-size:11px; color:var(--muted);">Total Solves: <b id="solver-total-solves" style="color:var(--primary-d)">0</b> | Last Error: <span id="solver-last-error" style="color:#ef4444">None</span></div>
+        </div>
+
+        <!-- Account Credentials Form -->
+        <form onsubmit="event.preventDefault(); submitGVCCredentials();">
+          <div class="form-group">
+            <label>GVC Account Email *</label>
+            <input type="email" id="gvc-acc-email" required placeholder="account@kamalexpress.com" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>GVC Account Password *</label>
+            <input type="password" id="gvc-acc-password" required placeholder="••••••••••••" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label>Auto-Renew Interval (Seconds)</label>
+            <input type="number" id="gvc-acc-interval" min="60" value="300" placeholder="300">
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
+            <button type="submit" class="btn btn-outline" style="font-weight:600;">💾 Save Credentials</button>
+            <button type="button" class="btn btn-primary" onclick="testSolveNow()" id="btn-test-solve">⚡ Test Solve & Login</button>
+          </div>
+        </form>
+
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
 <!-- ── LOGIN OVERLAY MODAL ── -->
 <div class="modal active" id="login-modal" style="z-index: 9999; background: rgba(8, 75, 122, 0.7); backdrop-filter: blur(8px);">
   <div class="modal-content" style="width: 380px; text-align: center; border: 2px solid var(--primary-l); box-shadow: 0 16px 40px rgba(0,0,0,0.3);">
@@ -834,7 +974,9 @@ How can I assist you right now?</div>
     if (initBubble && window.marked && window.marked.parse) {
       initBubble.innerHTML = marked.parse(initBubble.textContent);
     }
+    initGVCBookmarklet();
     checkAuth();
+    setInterval(loadGVCAuthStatus, 8000);
   });
 
   // ── Authentication & RBAC Handlers ───────────────────────────
@@ -874,6 +1016,7 @@ How can I assist you right now?</div>
     refreshQueue();
     refreshTelemetry();
     loadProxies();
+    loadGVCAuthStatus();
   }
 
   function showLogin() {
@@ -925,6 +1068,207 @@ How can I assist you right now?</div>
     showLogin();
   }
 
+  // ── GVC Dual-Mode Auth & Session Handlers ───────────────────────
+  function initGVCBookmarklet() {
+    const origin = window.location.origin;
+    const bmCode = `javascript:(function(){const t=localStorage.getItem('auth_token')||(document.cookie.match(/auth_token=([^;]+)/)||[])[1];if(!t){alert('❌ Not logged into GVC!');return;}fetch('${origin}/api/gvc/session/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t,cookies:document.cookie,source:'BOOKMARKLET'})}).then(r=>r.json()).then(d=>alert('✅ GVC Session Synced to Kamal Express! ID: '+d.session.id)).catch(e=>alert('❌ Sync failed: '+e));})();`;
+    const btn = document.getElementById('btn-bookmarklet-link');
+    if (btn) {
+      btn.setAttribute('href', bmCode);
+    }
+  }
+
+  function switchNavTab(viewId) {
+    const tab = document.querySelector(`.nav-tab[data-view="${viewId}"]`);
+    if (tab) tab.click();
+  }
+
+  async function loadGVCAuthStatus() {
+    try {
+      const resp = await fetch('/api/gvc/session/status');
+      if (resp.status === 401) return;
+      const data = await resp.json();
+
+      const mode = data.auth_mode || 'manual';
+      const hasSess = data.has_active_session;
+      const sess = data.session || {};
+      const telemetry = data.solver_worker || {};
+
+      // Update Header Pill
+      const dot = document.getElementById('dot-gvc-auth');
+      const hdrText = document.getElementById('hdr-gvc-auth-text');
+      if (dot && hdrText) {
+        if (hasSess) {
+          dot.className = 'status-dot active';
+          hdrText.textContent = `GVC: Active (${mode === 'auto_solver' ? 'Auto' : 'Manual'})`;
+        } else {
+          dot.className = 'status-dot ' + (mode === 'auto_solver' ? 'warn' : 'idle');
+          hdrText.textContent = `GVC: ${mode === 'auto_solver' ? 'Solving...' : 'Standby'}`;
+        }
+      }
+
+      // Update Mode Selector UI
+      const badge = document.getElementById('auth-mode-badge');
+      const radioManual = document.getElementById('radio-mode-manual');
+      const radioAuto = document.getElementById('radio-mode-auto');
+      const cardManual = document.getElementById('mode-opt-manual');
+      const cardAuto = document.getElementById('mode-opt-auto');
+      const opt1Pill = document.getElementById('opt1-status-pill');
+      const opt3Pill = document.getElementById('opt3-status-pill');
+
+      if (mode === 'auto_solver') {
+        if (badge) { badge.textContent = 'MODE: AUTO-SOLVER (HIGH LOAD)'; badge.style.background = 'var(--accent)'; }
+        if (radioAuto) radioAuto.checked = true;
+        if (cardAuto) { cardAuto.style.borderColor = 'var(--accent)'; cardAuto.style.borderWidth = '2px'; }
+        if (cardManual) { cardManual.style.borderColor = '#d1d5db'; cardManual.style.borderWidth = '1px'; }
+        if (opt1Pill) { opt1Pill.textContent = 'Standby'; opt1Pill.className = 'badge'; opt1Pill.style.background = '#f3f4f6'; opt1Pill.style.color = '#6b7280'; }
+        if (opt3Pill) { opt3Pill.textContent = 'ACTIVE'; opt3Pill.className = 'badge badge-booked'; }
+      } else {
+        if (badge) { badge.textContent = 'MODE: MANUAL (FREE)'; badge.style.background = 'var(--primary)'; }
+        if (radioManual) radioManual.checked = true;
+        if (cardManual) { cardManual.style.borderColor = 'var(--primary)'; cardManual.style.borderWidth = '2px'; }
+        if (cardAuto) { cardAuto.style.borderColor = '#d1d5db'; cardAuto.style.borderWidth = '1px'; }
+        if (opt1Pill) { opt1Pill.textContent = 'Active Mode'; opt1Pill.className = 'badge badge-active'; }
+        if (opt3Pill) { opt3Pill.textContent = 'PAUSED (Zero Cost)'; opt3Pill.className = 'badge'; opt3Pill.style.background = '#f3f4f6'; opt3Pill.style.color = '#6b7280'; }
+      }
+
+      // Update Active Session Details
+      const sessVal = document.getElementById('gvc-sess-validity');
+      const sessSrc = document.getElementById('gvc-sess-source');
+      const sessSync = document.getElementById('gvc-sess-synced');
+      const sessExp = document.getElementById('gvc-sess-expires');
+
+      if (sessVal) {
+        if (hasSess) {
+          sessVal.textContent = 'VALID & READY';
+          sessVal.className = 'badge badge-booked';
+        } else {
+          sessVal.textContent = sess.is_expired ? 'EXPIRED' : 'NO ACTIVE SESSION';
+          sessVal.className = 'badge badge-cancelled';
+        }
+      }
+      if (sessSrc) sessSrc.textContent = sess.source || '—';
+      if (sessSync) sessSync.textContent = sess.last_synced_at ? sess.last_synced_at.replace('T', ' ').slice(0, 19) : '—';
+      if (sessExp) sessExp.textContent = sess.expires_at ? sess.expires_at.replace('T', ' ').slice(0, 19) : '—';
+
+      // Update Solver Worker Details
+      const workerState = document.getElementById('solver-worker-state');
+      const totalSolves = document.getElementById('solver-total-solves');
+      const lastErr = document.getElementById('solver-last-error');
+      const accEmail = document.getElementById('gvc-acc-email');
+
+      if (workerState) {
+        workerState.textContent = telemetry.worker_status || (mode === 'auto_solver' ? 'RUNNING' : 'PAUSED');
+        workerState.className = 'badge ' + (mode === 'auto_solver' ? 'badge-active' : 'badge-warn');
+      }
+      if (totalSolves) totalSolves.textContent = telemetry.total_solves || 0;
+      if (lastErr) lastErr.textContent = telemetry.last_error || 'None';
+      if (accEmail && data.credentials_email && !accEmail.value) {
+        accEmail.value = data.credentials_email;
+      }
+    } catch (e) {
+      console.error('Failed to load GVC auth status:', e);
+    }
+  }
+
+  async function setGVCAuthMode(mode) {
+    try {
+      const resp = await fetch('/api/gvc/auth/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        loadGVCAuthStatus();
+      }
+    } catch (e) {
+      alert('Failed to set auth mode: ' + e.message);
+    }
+  }
+
+  async function submitManualGVCAuth() {
+    const tokenInput = document.getElementById('gvc-manual-token');
+    const rawVal = tokenInput.value.trim();
+    if (!rawVal) {
+      alert('Please paste an auth token or cookie header.');
+      return;
+    }
+    const btn = document.getElementById('btn-save-manual-token');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      const resp = await fetch('/api/gvc/session/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: rawVal, cookies: rawVal, source: 'MANUAL_SYNC' }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        alert('✅ Session token saved and synced successfully!');
+        tokenInput.value = '';
+        loadGVCAuthStatus();
+      } else {
+        alert('❌ Failed to save session: ' + (data.detail || 'Unknown error'));
+      }
+    } catch (e) {
+      alert('Connection error: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '💾 Save & Sync Session Token';
+    }
+  }
+
+  async function submitGVCCredentials() {
+    const email = document.getElementById('gvc-acc-email').value.trim();
+    const password = document.getElementById('gvc-acc-password').value;
+    const interval = parseInt(document.getElementById('gvc-acc-interval').value || '300');
+
+    if (!email || !password) {
+      alert('Please enter both GVC email and password.');
+      return;
+    }
+
+    try {
+      const resp = await fetch('/api/gvc/auth/credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, interval_seconds: interval }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        alert('✅ GVC account credentials saved successfully.');
+        loadGVCAuthStatus();
+      } else {
+        alert('❌ Failed: ' + (data.detail || 'Error'));
+      }
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  }
+
+  async function testSolveNow() {
+    const btn = document.getElementById('btn-test-solve');
+    btn.disabled = true;
+    btn.textContent = '⏳ Solving reCAPTCHA & Logging in...';
+
+    try {
+      const resp = await fetch('/api/gvc/auth/solve-now', { method: 'POST' });
+      const data = await resp.json();
+      if (data.success) {
+        alert('🎉 SUCCESS: ' + (data.message || 'Authenticated successfully!'));
+        loadGVCAuthStatus();
+      } else {
+        alert('❌ Auto-login test failed: ' + (data.error || JSON.stringify(data)));
+      }
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⚡ Test Solve & Login';
+    }
+  }
+
   // ── Navigation Tabs ──────────────────────────────────────────
   document.querySelectorAll('.nav-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -940,6 +1284,8 @@ How can I assist you right now?</div>
         loadProxies();
       } else if (tab.dataset.view === 'users-view') {
         loadUsers();
+      } else if (tab.dataset.view === 'auth-view') {
+        loadGVCAuthStatus();
       }
     });
   });
@@ -1151,9 +1497,15 @@ How can I assist you right now?</div>
 
       tbody.innerHTML = '';
       if (data.status === "UNAUTHENTICATED") {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#e67e22; padding:20px;">
-          <b>⚠️ Unauthenticated Session:</b> Chrome is not listening on port 9222 or GVC session is inactive.<br>
-          <small>Please run <code>.\\Launch-Chrome-CDP.ps1 -RealProfile</code> in PowerShell and log in to GVC.</small>
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px;">
+          <div style="max-width:550px; margin:0 auto; background:#fff8eb; border:1px solid #f9d8a6; border-radius:8px; padding:16px;">
+            <div style="font-weight:700; color:#b45309; font-size:14px; margin-bottom:6px;">⚠️ GVC Portal Session Unauthenticated</div>
+            <p style="font-size:12px; color:#78350f; margin-bottom:12px;">${escapeHtml(data.error || 'No active authenticated GVC session found.')}</p>
+            <div style="display:flex; justify-content:center; gap:10px;">
+              <button class="btn btn-primary" onclick="switchNavTab('auth-view')" style="font-size:12px; padding:6px 14px;">🔐 Open GVC Auth Center</button>
+              <button class="btn btn-outline" onclick="setGVCAuthMode('auto_solver')" style="font-size:12px; padding:6px 14px;">⚡ Switch to Auto-Solver</button>
+            </div>
+          </div>
         </td></tr>`;
         return;
       }

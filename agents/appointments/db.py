@@ -188,6 +188,35 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_hotel_bookings_ref ON hotel_bookings(booking_ref);")
 
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS gvc_sessions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        auth_token TEXT,
+                        bearer_token TEXT,
+                        cookies_json TEXT,
+                        source TEXT DEFAULT 'MANUAL_SYNC',
+                        is_valid INTEGER DEFAULT 1,
+                        expires_at TEXT,
+                        last_synced_at TEXT NOT NULL,
+                        synced_by TEXT DEFAULT 'staff',
+                        notes TEXT DEFAULT ''
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_gvc_sessions_valid ON gvc_sessions(is_valid, last_synced_at);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS system_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                """)
+                # Seed default auth mode if not present
+                conn.execute("""
+                    INSERT OR IGNORE INTO system_settings (key, value, updated_at)
+                    VALUES ('gvc_auth_mode', 'manual', datetime('now'))
+                """)
+
             logger.info(f"[db] Initialized SQLite database tables at {db_path}")
         finally:
             conn.close()
@@ -1217,6 +1246,189 @@ def create_hotel_booking_record(
                 "price_per_night_pkr": price_per_night,
                 "status": "CONFIRMED",
             }
+        finally:
+            conn.close()
+
+
+# ── GVC Session & System Settings Management ──────────────────────────────────
+
+def get_setting(key: str, default: str = "", db_path: Path = DB_PATH) -> str:
+    """Retrieve a system configuration setting."""
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute("SELECT value FROM system_settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+    finally:
+        conn.close()
+
+
+def set_setting(key: str, value: str, db_path: Path = DB_PATH) -> None:
+    """Store or update a system configuration setting."""
+    now_str = datetime.utcnow().isoformat()
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                conn.execute("""
+                    INSERT INTO system_settings (key, value, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                """, (key, str(value), now_str))
+        finally:
+            conn.close()
+
+
+def get_gvc_auth_mode(db_path: Path = DB_PATH) -> str:
+    """Get active GVC auth mode: 'manual' (Option 1) or 'auto_solver' (Option 3)."""
+    return get_setting("gvc_auth_mode", default="manual", db_path=db_path)
+
+
+def set_gvc_auth_mode(mode: str, db_path: Path = DB_PATH) -> str:
+    """Set active GVC auth mode ('manual' | 'auto_solver')."""
+    mode_clean = "auto_solver" if mode.lower() in ["auto_solver", "auto", "option3", "solver"] else "manual"
+    set_setting("gvc_auth_mode", mode_clean, db_path=db_path)
+    return mode_clean
+
+
+def get_gvc_credentials(db_path: Path = DB_PATH) -> dict:
+    """Get saved GVC login credentials for auto-solver."""
+    return {
+        "email": get_setting("gvc_account_email", default="", db_path=db_path),
+        "password": get_setting("gvc_account_password", default="", db_path=db_path),
+        "interval_seconds": int(get_setting("auto_solver_interval_seconds", default="300", db_path=db_path) or "300"),
+    }
+
+
+def set_gvc_credentials(email: str, password: str, interval_seconds: int = 300, db_path: Path = DB_PATH) -> None:
+    """Save GVC login credentials for auto-solver."""
+    set_setting("gvc_account_email", email.strip(), db_path=db_path)
+    set_setting("gvc_account_password", password.strip(), db_path=db_path)
+    set_setting("auto_solver_interval_seconds", str(max(60, interval_seconds)), db_path=db_path)
+
+
+def save_gvc_session(
+    auth_token: str = "",
+    cookies: Optional[dict | str] = None,
+    bearer_token: Optional[str] = None,
+    source: str = "MANUAL_SYNC",
+    synced_by: str = "staff",
+    expires_in_seconds: int = 14400,
+    notes: str = "",
+    db_path: Path = DB_PATH,
+) -> dict:
+    """
+    Save or update an active GVC session.
+    Parses string or dict cookies and normalizes auth_token.
+    """
+    now = datetime.utcnow()
+    now_str = now.isoformat()
+    expires_at = (now + timedelta(seconds=expires_in_seconds)).isoformat()
+
+    cookies_dict: dict = {}
+    if isinstance(cookies, dict):
+        cookies_dict = cookies
+    elif isinstance(cookies, str) and cookies.strip():
+        for part in cookies.split(";"):
+            part = part.strip()
+            if "=" in part:
+                k, v = part.split("=", 1)
+                cookies_dict[k.strip()] = v.strip()
+
+    clean_token = auth_token.strip() if auth_token else ""
+    if not clean_token and "auth_token" in cookies_dict:
+        clean_token = cookies_dict["auth_token"]
+
+    clean_bearer = bearer_token.strip() if bearer_token else clean_token
+
+    cookies_json = json.dumps(cookies_dict)
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                conn.execute("UPDATE gvc_sessions SET is_valid = 0 WHERE is_valid = 1")
+                cur = conn.execute("""
+                    INSERT INTO gvc_sessions (
+                        auth_token, bearer_token, cookies_json, source, is_valid,
+                        expires_at, last_synced_at, synced_by, notes
+                    ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+                """, (
+                    clean_token, clean_bearer, cookies_json, source,
+                    expires_at, now_str, synced_by, notes
+                ))
+                session_id = cur.lastrowid
+            return {
+                "id": session_id,
+                "auth_token": clean_token,
+                "bearer_token": clean_bearer,
+                "cookies_count": len(cookies_dict),
+                "source": source,
+                "is_valid": True,
+                "expires_at": expires_at,
+                "last_synced_at": now_str,
+                "synced_by": synced_by,
+            }
+        finally:
+            conn.close()
+
+
+def get_active_gvc_session(db_path: Path = DB_PATH) -> Optional[dict]:
+    """Retrieve current valid GVC session from database."""
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute("""
+            SELECT id, auth_token, bearer_token, cookies_json, source, is_valid,
+                   expires_at, last_synced_at, synced_by, notes
+            FROM gvc_sessions
+            WHERE is_valid = 1
+            ORDER BY id DESC LIMIT 1
+        """).fetchone()
+        if not row:
+            return None
+
+        cookies = {}
+        if row["cookies_json"]:
+            try:
+                cookies = json.loads(row["cookies_json"])
+            except Exception:
+                pass
+
+        is_expired = False
+        if row["expires_at"]:
+            try:
+                exp = datetime.fromisoformat(row["expires_at"])
+                if datetime.utcnow() > exp:
+                    is_expired = True
+            except Exception:
+                pass
+
+        return {
+            "id": row["id"],
+            "auth_token": row["auth_token"] or "",
+            "bearer_token": row["bearer_token"] or row["auth_token"] or "",
+            "cookies": cookies,
+            "source": row["source"],
+            "is_valid": bool(row["is_valid"]) and not is_expired,
+            "is_expired": is_expired,
+            "expires_at": row["expires_at"],
+            "last_synced_at": row["last_synced_at"],
+            "synced_by": row["synced_by"],
+            "notes": row["notes"] or "",
+        }
+    finally:
+        conn.close()
+
+
+def invalidate_gvc_session(session_id: Optional[int] = None, db_path: Path = DB_PATH) -> None:
+    """Mark GVC session(s) as invalid / unauthenticated."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                if session_id:
+                    conn.execute("UPDATE gvc_sessions SET is_valid = 0 WHERE id = ?", (session_id,))
+                else:
+                    conn.execute("UPDATE gvc_sessions SET is_valid = 0 WHERE is_valid = 1")
         finally:
             conn.close()
 

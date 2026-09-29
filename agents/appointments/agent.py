@@ -208,6 +208,7 @@ def search_gvc_slots(
 
     status_info = getattr(gvc_driver, "last_search_status", {})
     if status_info.get("status") == "UNAUTHENTICATED":
+        err_detail = status_info.get("error") or "GVC session is inactive or unauthenticated."
         return {
             "portal": "Greece (GVC World)",
             "vac_center": vac_meta["name"],
@@ -217,8 +218,8 @@ def search_gvc_slots(
             "cdp_connected": gvc_driver.cdp_connected,
             "total_available_slots": 0,
             "slots": [],
-            "error": "GVC session is inactive or unauthenticated. Please launch Chrome with `.\\Launch-Chrome-CDP.ps1 -RealProfile` and log into GVC portal.",
-            "message": "Slot search failed: Unauthenticated session. Please log in to GVC in Chrome (port 9222).",
+            "error": err_detail,
+            "message": f"Slot search failed: {err_detail}",
         }
     elif status_info.get("status") == "ERROR":
         return {
@@ -383,16 +384,28 @@ def check_portal_connection(portal: str = "greece") -> dict:
     Returns:
         Connection status, cookie count, and session validity.
     """
-    cookies = run_sync(gvc_driver.sync_cookies_from_cdp())
+    from .db import get_active_gvc_session, get_gvc_auth_mode
+    active_sess = get_active_gvc_session()
+    auth_mode = get_gvc_auth_mode()
     is_auth = run_sync(gvc_driver.is_authenticated())
-    cdp_ok = gvc_driver.cdp_connected or len(cookies) > 0
+    cookies = run_sync(gvc_driver.sync_cookies_from_cdp()) if not is_auth else (active_sess.get("cookies") if active_sess else {})
+    cdp_ok = gvc_driver.cdp_connected or bool(active_sess and active_sess.get("is_valid"))
+
+    msg = "Session is active and ready for slot search/booking."
+    if not is_auth:
+        if auth_mode == "auto_solver":
+            msg = "Auto-Solver is currently solving reCAPTCHA and renewing GVC session in the background."
+        else:
+            msg = "GVC session is unauthenticated. Please sync token via Bookmarklet (Option 1) or switch to Auto-Solver (Option 3)."
 
     return {
         "portal": "Greece (GVC World)",
+        "auth_mode": auth_mode,
         "cdp_connected": cdp_ok,
-        "gvc_cookies_loaded": len(cookies),
+        "gvc_cookies_loaded": len(cookies) if isinstance(cookies, dict) else 0,
         "session_valid": is_auth,
-        "message": "Session is active and ready for slot search/booking." if is_auth else "Session inactive or Chrome not listening on port 9222. Run `.\\Launch-Chrome-CDP.ps1 -RealProfile` to connect.",
+        "source": active_sess.get("source") if active_sess else ("CDP" if gvc_driver.cdp_connected else "NONE"),
+        "message": msg,
     }
 
 

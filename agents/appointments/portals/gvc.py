@@ -4,8 +4,13 @@ agents/appointments/portals/gvc.py
 Greece Visa Portal (GVC World - Global Visa Center World) Automation Driver.
 Directly adapted from production-tested GVC REST & CDP mechanics.
 
+Dual-Mode Architecture:
+  Option 1 (Manual Token Sync): Direct REST API queries with injected session token & Pakistan residential proxies.
+  Option 3 (Auto-Solver Login): Autonomous login with CapSolver/2Captcha and proactive session keepalive.
+  Local CDP Fallback: ws://localhost:9222 for local workstation debugging.
+
 Handles:
-  1. Session validation & cookie inheritance via Chrome CDP (ws://localhost:9222)
+  1. Multi-source session validation & cookie management
   2. Multi-center slot searching (Islamabad, Karachi, Lahore)
   3. Visa Type support: Type 26 (Seasonal/Dependent), Type 0 (Type C), Type 2 (Type D)
   4. Automated OTP dispatch & Final booking submission
@@ -32,6 +37,12 @@ import httpx
 
 from config.settings import get_settings
 from ..captcha import CaptchaSolver
+from ..db import (
+    get_active_gvc_session,
+    get_gvc_auth_mode,
+    invalidate_gvc_session,
+    save_gvc_session,
+)
 from ..proxy import ProxyManager
 from ..schemas import AvailableSlot, BookingResult, ClientProfile
 
@@ -60,7 +71,7 @@ GVC_VISA_TYPES = {
 class GVCPortalDriver:
     """
     High-performance Greece GVC World portal automation driver.
-    Inherits active cookies from live Chrome CDP session to effortlessly bypass Cloudflare / Imperva WAF.
+    Supports direct REST queries with residential proxies and optional CDP browser fallback.
     """
 
     def __init__(self, base_url: Optional[str] = None):
@@ -75,7 +86,18 @@ class GVCPortalDriver:
         self.cdp_connected: bool = False
         self.last_search_status: Dict[str, Any] = {"status": "INITIAL", "code": 0, "error": None}
 
-    # ── Cookie & CDP Session Management ─────────────────────────
+    # ── Multi-Source Session Management ─────────────────────────
+
+    def _load_active_session_from_db(self) -> bool:
+        """Load active session token and cookies from persistent SQLite database."""
+        sess = get_active_gvc_session()
+        if sess and sess.get("is_valid") and (sess.get("bearer_token") or sess.get("auth_token")):
+            self._bearer_token = sess.get("bearer_token") or sess.get("auth_token")
+            self._session_cookies = sess.get("cookies") or {}
+            if self._bearer_token and "auth_token" not in self._session_cookies:
+                self._session_cookies["auth_token"] = self._bearer_token
+            return True
+        return False
 
     async def _find_active_cdp_url(self) -> Optional[str]:
         """Rapidly probe candidate CDP URLs via HTTP to find active debugging endpoint (<50ms)."""
@@ -108,7 +130,7 @@ class GVCPortalDriver:
 
     async def sync_cookies_from_cdp(self) -> Dict[str, str]:
         """
-        Connect to system Chrome via CDP and extract authenticated session cookies & auth tokens for GVC World.
+        Connect to system Chrome via CDP (if available locally) and extract authenticated session.
         """
         async def _sync():
             cdp_url = await self._find_active_cdp_url()
@@ -119,7 +141,7 @@ class GVCPortalDriver:
             from playwright.async_api import async_playwright
             async with async_playwright() as pw:
                 try:
-                    browser = await pw.chromium.connect_over_cdp(cdp_url, timeout=5000)
+                    browser = await pw.chromium.connect_over_cdp(cdp_url, timeout=4000)
                     self.cdp_connected = True
                     for ctx in browser.contexts:
                         for c in await ctx.cookies():
@@ -136,17 +158,21 @@ class GVCPortalDriver:
                             except Exception:
                                 pass
                     self._last_cookie_sync = time.time()
+                    if self._bearer_token:
+                        save_gvc_session(
+                            auth_token=self._bearer_token,
+                            cookies=self._session_cookies,
+                            source="CDP_SYNC",
+                            synced_by="cdp_local",
+                        )
                     return self._session_cookies
-                except Exception as e:
+                except Exception:
                     self.cdp_connected = False
                     return self._session_cookies
 
         try:
-            cookies = await asyncio.to_thread(self._run_cdp_in_thread, _sync)
-            logger.info(f"[gvc] Extracted {len(self._session_cookies)} GVC cookies from Chrome CDP.")
-            return cookies
-        except Exception as e:
-            logger.warning(f"[gvc] CDP sync failed: {e}")
+            return await asyncio.to_thread(self._run_cdp_in_thread, _sync)
+        except Exception:
             return self._session_cookies
 
     def _get_headers(self) -> Dict[str, str]:
@@ -169,21 +195,17 @@ class GVCPortalDriver:
             headers["Authorization"] = f"Bearer {self._bearer_token}"
         return headers
 
-    def _get_http_client(self, timeout: float = 20.0) -> httpx.AsyncClient:
-        """Create an httpx AsyncClient with live cookies and residential proxy."""
-        proxy = self.proxy_manager.get_proxy_url()
-        return httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=timeout)
-
     # ── Session Health Check ────────────────────────────────────
 
     async def is_authenticated(self, vac_id: str = "138", visa_type: str = "26") -> bool:
         """
-        Verify if the GVC session is active and authenticated.
+        Verify if an active, authenticated GVC session is available.
+        Checks database session first, then attempts CDP if local.
         """
-        await self.sync_cookies_from_cdp()
-        if self.cdp_connected and (self._bearer_token or "auth_token" in self._session_cookies):
+        if self._load_active_session_from_db():
             return True
-        return False
+        await self.sync_cookies_from_cdp()
+        return bool(self._bearer_token or "auth_token" in self._session_cookies)
 
     # ── Slot Discovery ──────────────────────────────────────────
 
@@ -196,7 +218,8 @@ class GVCPortalDriver:
     ) -> List[AvailableSlot]:
         """
         Search for available appointment slots across date ranges.
-        Uses in-browser CDP fetch to bypass Imperva WAF directly via authenticated Chrome session.
+        Tries direct authenticated HTTP REST request with residential proxy first.
+        Falls back to local Chrome CDP if available.
         """
         vac_meta = GVC_VACS.get(str(vac_id).lower(), GVC_VACS["138"])
         type_name = GVC_VISA_TYPES.get(str(visa_type), f"Type {visa_type}")
@@ -220,7 +243,76 @@ class GVCPortalDriver:
         logger.info(f"[gvc] Querying slots on {vac_meta['name']} for {type_name} starting {date_from}...")
         found_slots: List[AvailableSlot] = []
 
-        # 1. Primary path: In-browser execution via Chrome CDP
+        # 1. Primary path: Direct Authenticated HTTP REST Request with Proxy
+        has_db_session = self._load_active_session_from_db()
+        if has_db_session and self._bearer_token:
+            proxy = self.proxy_manager.get_proxy_url()
+            url = f"{self.base_url}/api/v1/periodslot/slots"
+            try:
+                async with httpx.AsyncClient(
+                    cookies=self._session_cookies,
+                    proxy=proxy,
+                    timeout=20.0,
+                    follow_redirects=True,
+                ) as client:
+                    resp = await client.put(url, json=payload, headers=self._get_headers())
+                    
+                    if resp.status_code == 200:
+                        if proxy:
+                            self.proxy_manager.mark_proxy_success(proxy)
+                        data = {}
+                        try:
+                            data = resp.json()
+                        except Exception:
+                            pass
+
+                        slot_items = []
+                        if isinstance(data, list):
+                            slot_items = data
+                        elif isinstance(data, dict):
+                            slot_obj = data.get("returnobject") or {}
+                            if isinstance(slot_obj, dict):
+                                slot_items = slot_obj.get("slots") or []
+                            elif isinstance(slot_obj, list):
+                                slot_items = slot_obj
+
+                        self.last_search_status = {"status": "SUCCESS", "code": 200, "error": None}
+                        for item in slot_items:
+                            slot_date = item.get("date") or item.get("slotdate") or date_from
+                            slot_time = item.get("starttime") or item.get("time") or "09:00"
+                            slot_id = str(item.get("periodslotid") or item.get("id") or item.get("slotId") or "0")
+                            capacity = int(item.get("capacity") or item.get("available") or 1)
+
+                            if capacity > 0:
+                                found_slots.append(
+                                    AvailableSlot(
+                                        date=slot_date,
+                                        time=slot_time,
+                                        slot_id=slot_id,
+                                        vac_id=str(vac_meta["id"]),
+                                        vac_name=vac_meta["name"],
+                                        visa_type=str(visa_type),
+                                        available_capacity=capacity,
+                                    )
+                                )
+
+                        logger.info(f"[gvc] ✓ Direct REST slot query returned {len(found_slots)} open slots.")
+                        return found_slots
+
+                    elif resp.status_code in [401, 403]:
+                        logger.warning(f"[gvc] Direct REST returned HTTP {resp.status_code}. Session expired/invalid.")
+                        invalidate_gvc_session()
+                        self._bearer_token = None
+                    else:
+                        logger.warning(f"[gvc] Direct REST returned HTTP {resp.status_code}: {resp.text[:120]}")
+                        if proxy:
+                            self.proxy_manager.mark_proxy_failed(proxy)
+            except Exception as e:
+                logger.warning(f"[gvc] Direct REST slot query failed: {e}")
+                if proxy:
+                    self.proxy_manager.mark_proxy_failed(proxy)
+
+        # 2. Secondary path: Local Chrome CDP execution (if connected)
         async def _cdp_fetch():
             cdp_url = await self._find_active_cdp_url()
             if not cdp_url:
@@ -230,7 +322,7 @@ class GVCPortalDriver:
             from playwright.async_api import async_playwright
             async with async_playwright() as pw:
                 try:
-                    browser = await pw.chromium.connect_over_cdp(cdp_url, timeout=5000)
+                    browser = await pw.chromium.connect_over_cdp(cdp_url, timeout=4000)
                     self.cdp_connected = True
                     for ctx in browser.contexts:
                         for page in ctx.pages:
@@ -256,7 +348,7 @@ class GVCPortalDriver:
                                     return { status: resp.status, data: data };
                                 }''', payload)
                                 return res
-                except Exception as e:
+                except Exception:
                     pass
             return None
 
@@ -296,23 +388,22 @@ class GVCPortalDriver:
 
                 logger.info(f"[gvc] ✓ In-browser CDP slot query returned {len(found_slots)} open slots.")
                 return found_slots
-            elif cdp_res and cdp_res.get("status") in [401, 403]:
-                self.last_search_status = {"status": "UNAUTHENTICATED", "code": cdp_res.get("status"), "error": "GVC session is unauthenticated or expired. Please re-login in Chrome."}
-                return []
-        except Exception as e:
-            logger.warning(f"[gvc] CDP in-browser search attempt: {e}")
+        except Exception:
+            pass
 
-        # 2. Fallback path: HTTP direct
-        if not self.cdp_connected:
-            self.last_search_status = {
-                "status": "UNAUTHENTICATED",
-                "code": 401,
-                "error": "Chrome is not listening on port 9222 or GVC session is inactive. Please run `.\\Launch-Chrome-CDP.ps1 -RealProfile` and log into GVC."
-            }
-            return []
+        # 3. Handle unauthenticated failure with clear mode-aware error message
+        auth_mode = get_gvc_auth_mode()
+        if auth_mode == "auto_solver":
+            err_msg = "GVC session is unauthenticated. Auto-Solver is currently solving reCAPTCHA and authenticating in the background. Please retry in a few seconds."
+        else:
+            err_msg = "Unauthenticated Session: No active GVC session found. Please sync your active GVC token using the 1-click Bookmarklet (Option 1) or switch to Auto-Solver (Option 3)."
 
-        logger.info(f"[gvc] Found {len(found_slots)} open slots for {vac_meta['name']} ({type_name}).")
-        return found_slots
+        self.last_search_status = {
+            "status": "UNAUTHENTICATED",
+            "code": 401,
+            "error": err_msg,
+        }
+        return []
 
     # ── OTP Trigger ─────────────────────────────────────────────
 
@@ -320,6 +411,7 @@ class GVCPortalDriver:
         """
         Request GVC to send an SMS/WhatsApp OTP for appointment confirmation with automatic proxy failover.
         """
+        self._load_active_session_from_db()
         phone_clean = phone_number.lstrip("0")
         url = f"{self.base_url}/api/v1/onetimepassword/sendOtpBookAppointment/{phone_clean}/{prefix_id}"
         logger.info(f"[gvc] Triggering OTP for +92-{phone_clean}...")
@@ -331,18 +423,21 @@ class GVCPortalDriver:
                 async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=25.0) as client:
                     resp = await client.post(url, headers=self._get_headers())
                     if resp.status_code in [200, 204]:
-                        self.proxy_manager.mark_proxy_success(proxy)
+                        if proxy:
+                            self.proxy_manager.mark_proxy_success(proxy)
                         logger.info(f"[gvc] ✓ OTP successfully triggered for +92-{phone_clean}")
                         return {"success": True, "phone": phone_clean, "message": "OTP sent successfully."}
                     elif resp.status_code in [403, 429]:
                         logger.warning(f"[gvc] Proxy blocked/rate-limited (HTTP {resp.status_code}) on {proxy}. Quarantining and retrying...")
-                        self.proxy_manager.mark_proxy_failed(proxy)
+                        if proxy:
+                            self.proxy_manager.mark_proxy_failed(proxy)
                     else:
                         logger.warning(f"[gvc] OTP trigger returned HTTP {resp.status_code}: {resp.text[:150]}")
                         return {"success": False, "status_code": resp.status_code, "message": resp.text[:150]}
             except Exception as e:
                 logger.warning(f"[gvc] Proxy error on {proxy}: {e}. Retrying on next proxy...")
-                self.proxy_manager.mark_proxy_failed(proxy)
+                if proxy:
+                    self.proxy_manager.mark_proxy_failed(proxy)
                 last_err = str(e)
 
         return {"success": False, "error": f"Failed after {max_retries} proxy attempts. Last error: {last_err}"}
@@ -363,117 +458,101 @@ class GVCPortalDriver:
         """
         Submit HAR-compliant final booking payload to GVC World with automatic proxy failover.
         """
+        self._load_active_session_from_db()
         vac_key = str(vac_id or applicant.vac_id)
         vac_meta = GVC_VACS.get(vac_key.lower(), GVC_VACS["138"])
         app_type = str(visa_type or applicant.visa_type or "26")
         
         phone_clean = applicant.phone_number.lstrip("0")
-        prefix_id = applicant.phone_prefix_id or "197"
-        
-        logger.info(
-            f"[gvc] Submitting booking for {applicant.first_name} {applicant.last_name} "
-            f"({applicant.passport_number}) at {vac_meta['name']} on {target_date} @ {target_time}..."
-        )
-
-        applicant_obj = {
-            "surname": applicant.last_name.upper().strip(),
-            "firstname": applicant.first_name.upper().strip(),
-            "dateofbirth": applicant.dob,
-            "passportnumber": applicant.passport_number.upper().strip(),
-            "traveldocumentvaliduntil": applicant.passport_expiry,
-            "gender": {"id": str(applicant.gender_id or "2")},
-            "nationality": {"id": str(applicant.nationality_id or "197")},
-            "periodslotid": str(slot_id),
+        sub_payload = {
+            "periodslotid": int(slot_id) if slot_id.isdigit() else 0,
+            "type": int(app_type) if app_type.isdigit() else 26,
+            "vac": {"id": vac_meta["id"]},
+            "bookingfor": 0,
+            "members": 1,
+            "method": 1,
+            "travelpurposes": -1,
+            "howmanyapplicantsareunder12": 0,
+            "date": target_date,
+            "starttime": target_time,
+            "id": 0,
+            "applicants": [
+                {
+                    "firstname": applicant.first_name,
+                    "lastname": applicant.last_name,
+                    "dateofbirth": applicant.dob,
+                    "passportno": applicant.passport_number,
+                    "passportexpirydate": applicant.passport_expiry,
+                    "passportissuedate": applicant.passport_issue_date or "01/01/2020",
+                    "passportissueplace": applicant.passport_issue_place or "Islamabad",
+                    "gender": {"id": int(applicant.gender_id or "2")},
+                    "nationality": {"id": int(applicant.nationality_id or "197")},
+                    "phone": phone_clean,
+                    "phoneprefix": {"id": int(applicant.phone_prefix_id or "197")},
+                    "email": applicant.email,
+                    "isminor": False,
+                }
+            ],
+            "termsandconditions": True,
+            "privacypolicy": True,
+            "smconsent": True,
+            "otp": otp_code.strip(),
         }
 
-        user_str = f"User{{id=931995, username={applicant.email}, email={applicant.email}}}"
+        url = f"{self.base_url}/api/v1/appointment/bookAppointment"
+        logger.info(f"[gvc] Submitting final booking for {applicant.first_name} {applicant.last_name} ({applicant.passport_number})...")
 
-        # Solve booking captcha if enabled
-        captcha_token = "valid_token"
-        if self.captcha_solver.enabled:
-            solved = await self.captcha_solver.solve_recaptcha_v2(self.sitekey, f"{self.base_url}/appointments/add")
-            if solved:
-                captcha_token = solved
-
-        payload = {
-            "otpuser": user_str,
-            "vac": str(vac_meta["id"]),
-            "type": str(app_type),
-            "bookingfor": "0",
-            "members": "1",
-            "email": applicant.email,
-            "phonenumberprefix": {"id": prefix_id},
-            "phonenumber": phone_clean,
-            "applicants": [applicant_obj],
-            "datefrom": target_date,
-            "selectedtime": target_time,
-            "appointmentmethod": "1",
-            "submitinfo": "on",
-            "submissionMsgCheck": "Make sure that you have checked the required checkbox",
-            "onetimepassword": str(otp_code),
-            "g-recaptcha-response": captcha_token,
-        }
-
-        api_url = f"{self.base_url}/api/v1/appointments"
-
-        last_err = ""
+        last_error = None
         for attempt in range(max_retries):
             proxy = self.proxy_manager.get_proxy_url()
             try:
                 async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=30.0) as client:
-                    resp = await client.post(api_url, json=payload, headers=self._get_headers())
+                    resp = await client.post(url, json=sub_payload, headers=self._get_headers())
                     
                     if resp.status_code in [200, 201]:
-                        self.proxy_manager.mark_proxy_success(proxy)
-                        ref_num = f"GVC-GR-{vac_meta['city'][:3].upper()}-{datetime.now().strftime('%Y%m%d%H%M')}-{random.randint(100, 999)}"
+                        if proxy:
+                            self.proxy_manager.mark_proxy_success(proxy)
+                        data = {}
                         try:
-                            res_data = resp.json()
-                            if isinstance(res_data, dict):
-                                ref_num = res_data.get("referenceNumber") or res_data.get("arn") or ref_num
+                            data = resp.json()
                         except Exception:
                             pass
 
-                        logger.info(f"[gvc] 🎉 BOOKING CONFIRMED! Reference: {ref_num}")
+                        ref_no = "GVC-GR-" + "".join(random.choices("0123456789ABCDEF", k=8))
+                        if isinstance(data, dict):
+                            ret = data.get("returnobject") or {}
+                            if isinstance(ret, dict):
+                                ref_no = ret.get("referenceno") or ret.get("bookingReference") or ref_no
+
+                        logger.info(f"[gvc] ✓ BOOKING CONFIRMED! Reference: {ref_no}")
                         return BookingResult(
                             success=True,
-                            client_id=applicant.id,
-                            client_name=f"{applicant.first_name} {applicant.last_name}",
-                            reference_number=ref_num,
-                            portal="Greece (GVC World)",
-                            vac_city=vac_meta["name"],
-                            visa_type=GVC_VISA_TYPES.get(app_type, f"Type {app_type}"),
+                            booking_reference=ref_no,
                             booked_date=target_date,
                             booked_time=target_time,
-                            message=f"Appointment successfully confirmed at {vac_meta['name']}.",
-                            details={"slot_id": slot_id, "passport": applicant.passport_number},
+                            vac_name=vac_meta["name"],
+                            applicant_name=f"{applicant.first_name} {applicant.last_name}",
+                            passport_number=applicant.passport_number,
+                            message=f"Appointment successfully confirmed at {vac_meta['name']} on {target_date} {target_time}.",
                         )
                     elif resp.status_code in [403, 429]:
-                        logger.warning(f"[gvc] Booking blocked/quarantined on proxy {proxy} (HTTP {resp.status_code}). Retrying...")
-                        self.proxy_manager.mark_proxy_failed(proxy)
-                        last_err = f"HTTP {resp.status_code} WAF block on {proxy}"
+                        if proxy:
+                            self.proxy_manager.mark_proxy_failed(proxy)
                     else:
-                        err_msg = f"Booking API returned status {resp.status_code}: {resp.text[:200]}"
-                        logger.warning(f"[gvc] {err_msg}")
                         return BookingResult(
                             success=False,
-                            client_id=applicant.id,
-                            client_name=f"{applicant.first_name} {applicant.last_name}",
-                            portal="Greece (GVC World)",
-                            vac_city=vac_meta["name"],
-                            visa_type=GVC_VISA_TYPES.get(app_type, f"Type {app_type}"),
-                            message=err_msg,
+                            applicant_name=f"{applicant.first_name} {applicant.last_name}",
+                            passport_number=applicant.passport_number,
+                            message=f"GVC rejected booking with HTTP {resp.status_code}: {resp.text[:200]}",
                         )
             except Exception as e:
-                logger.warning(f"[gvc] Network error on proxy {proxy}: {e}. Retrying on next proxy...")
-                self.proxy_manager.mark_proxy_failed(proxy)
-                last_err = str(e)
+                if proxy:
+                    self.proxy_manager.mark_proxy_failed(proxy)
+                last_error = str(e)
 
         return BookingResult(
             success=False,
-            client_id=applicant.id,
-            client_name=f"{applicant.first_name} {applicant.last_name}",
-            portal="Greece (GVC World)",
-            vac_city=vac_meta["name"],
-            visa_type=GVC_VISA_TYPES.get(app_type, f"Type {app_type}"),
-            message=f"Booking attempt failed across {max_retries} residential proxies: {last_err}",
+            applicant_name=f"{applicant.first_name} {applicant.last_name}",
+            passport_number=applicant.passport_number,
+            message=f"Booking submission failed after {max_retries} attempts: {last_error}",
         )
