@@ -799,26 +799,19 @@ async def receive_otp_webhook(request: Request):
     if not code:
         code = extract_otp_code(str(message)) or extract_otp_code(raw_body_str)
 
-    if not code:
-        logger.warning(f"[otp-webhook] Received payload with no detectable OTP code: {raw_body_str[:300]}")
-        return {
-            "success": False,
-            "status": "NO_OTP_FOUND",
-            "message": "Payload received but no numeric verification code was found. (If this was a test message, endpoint is reachable)",
-            "received_payload_sample": raw_body_str[:150],
-        }
-
     try:
         record = record_incoming_otp(
             phone=str(phone) if phone else None,
-            code=str(code),
+            code=str(code) if code else None,
             raw_message=str(message),
             sender=str(sender_name),
         )
+        status_code_name = "OTP_INTERCEPTED" if record.get("is_otp") else "TEST_MSG_LOGGED"
+        msg = f"OTP {record['code']} received and dispatched to active booking tasks." if record.get("is_otp") else "Test SMS logged to stream successfully."
         return {
             "success": True,
-            "status": "OTP_INTERCEPTED",
-            "message": f"OTP {record['code']} received and dispatched to active booking tasks.",
+            "status": status_code_name,
+            "message": msg,
             "record": record,
         }
     except Exception as err:

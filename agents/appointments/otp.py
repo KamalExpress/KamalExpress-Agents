@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 # In-memory OTP store: normalized_phone -> record dict
 OTP_STORE: Dict[str, dict] = {}
 
+# Rolling stream log of all incoming messages (newest first, max 100)
+RECENT_SMS_STREAM: List[dict] = []
+
 # Active waiting futures: normalized_phone -> list of asyncio.Future
 OTP_WAITERS: Dict[str, List[asyncio.Future]] = {}
 
@@ -65,18 +68,19 @@ def record_incoming_otp(
     sender: str = "SMS_FORWARDER",
 ) -> dict:
     """
-    Ingest and cache an incoming OTP, immediately notifying all awaiting listeners.
+    Ingest and cache an incoming SMS/OTP, immediately notifying all awaiting listeners.
     """
     clean_code = (code or "").strip()
     if not clean_code and raw_message:
         clean_code = extract_otp_code(raw_message) or ""
 
-    if not clean_code:
-        raise ValueError("No numeric OTP verification code could be found in payload.")
+    has_valid_otp = bool(clean_code)
+    display_code = clean_code if has_valid_otp else "TEST_MSG"
 
-    clean_phone = normalize_phone(phone)
+    clean_phone = normalize_phone(phone) or (phone or "UNKNOWN").strip()
     record = {
-        "code": clean_code,
+        "code": display_code,
+        "is_otp": has_valid_otp,
         "phone": clean_phone,
         "raw_phone": phone or "",
         "raw_message": raw_message or "",
@@ -85,25 +89,32 @@ def record_incoming_otp(
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    if clean_phone:
-        OTP_STORE[clean_phone] = record
-    OTP_STORE["latest"] = record
+    if has_valid_otp:
+        if clean_phone:
+            OTP_STORE[clean_phone] = record
+        OTP_STORE["latest"] = record
 
-    # Wake up any waiting coroutines
-    keys_to_notify = [clean_phone, "latest", "any"] if clean_phone else ["latest", "any"]
+    # Append to rolling stream (max 100)
+    RECENT_SMS_STREAM.insert(0, record)
+    if len(RECENT_SMS_STREAM) > 100:
+        RECENT_SMS_STREAM.pop()
+
+    # Wake up any waiting coroutines only if a real numeric OTP exists
     notified_count = 0
-    for key in keys_to_notify:
-        if key in OTP_WAITERS:
-            waiters = list(OTP_WAITERS[key])
-            for fut in waiters:
-                if not fut.done():
-                    fut.set_result(clean_code)
-                    notified_count += 1
-            OTP_WAITERS[key] = []
+    if has_valid_otp:
+        keys_to_notify = [clean_phone, "latest", "any"] if clean_phone else ["latest", "any"]
+        for key in keys_to_notify:
+            if key in OTP_WAITERS:
+                waiters = list(OTP_WAITERS[key])
+                for fut in waiters:
+                    if not fut.done():
+                        fut.set_result(clean_code)
+                        notified_count += 1
+                OTP_WAITERS[key] = []
 
     logger.info(
-        f"[otp] ✓ Intercepted OTP '{clean_code}' for phone +92-{clean_phone or 'UNKNOWN'} "
-        f"from {sender}. (Notified {notified_count} waiting tasks)"
+        f"[otp] ✓ Ingested SMS (Code: '{display_code}', IsOTP: {has_valid_otp}) "
+        f"for phone +92-{clean_phone} from {sender}. (Notified {notified_count} tasks)"
     )
     return record
 
@@ -121,7 +132,7 @@ async def wait_for_otp(
 
     # 1. Check if a very recent OTP is already in cache
     candidate = OTP_STORE.get(clean_phone) or (OTP_STORE.get("latest") if not clean_phone else None)
-    if candidate:
+    if candidate and candidate.get("is_otp"):
         age = time.time() - candidate.get("timestamp", 0)
         if age <= max_age_seconds:
             logger.info(
@@ -156,7 +167,7 @@ def get_latest_cached_otp(phone: Optional[str] = None, max_age_seconds: float = 
     """Retrieve the latest cached OTP if still valid within TTL."""
     clean_phone = normalize_phone(phone)
     record = OTP_STORE.get(clean_phone) or (OTP_STORE.get("latest") if not clean_phone else None)
-    if not record:
+    if not record or not record.get("is_otp"):
         return None
     age = time.time() - record.get("timestamp", 0)
     if age > max_age_seconds:
@@ -165,16 +176,9 @@ def get_latest_cached_otp(phone: Optional[str] = None, max_age_seconds: float = 
 
 
 def get_all_cached_otps() -> List[dict]:
-    """Return all cached OTPs sorted newest first."""
-    seen_codes = set()
+    """Return all stream messages sorted newest first."""
     results = []
-    for k, v in OTP_STORE.items():
-        if k == "latest":
-            continue
-        code_key = f"{v.get('phone')}_{v.get('code')}"
-        if code_key not in seen_codes:
-            seen_codes.add(code_key)
-            age = time.time() - v.get("timestamp", 0)
-            results.append({**v, "age_seconds": round(age, 1)})
-    results.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+    for item in RECENT_SMS_STREAM:
+        age = time.time() - item.get("timestamp", 0)
+        results.append({**item, "age_seconds": round(age, 1)})
     return results

@@ -2489,13 +2489,17 @@ How can I help you today?</div>
       data.recent_otps.forEach(item => {
         const tr = document.createElement('tr');
         const isFresh = item.age_seconds <= 180;
+        const isOtp = item.is_otp !== false && item.code !== 'TEST_MSG';
+        const badgeClass = isOtp ? (isFresh ? 'badge-booked' : 'badge-disabled') : 'badge-in_progress';
+        const codeDisplay = isOtp ? escapeHtml(item.code) : `<span style="font-size:11px; font-weight:600;">(Test SMS)</span>`;
+
         tr.innerHTML = `
           <td><span style="font-family:monospace; font-size:11px;">${item.created_at || 'Just now'}</span></td>
           <td><b>+92-${escapeHtml(item.phone || 'UNKNOWN')}</b></td>
-          <td><span class="badge ${isFresh ? 'badge-booked' : 'badge-disabled'}" style="font-size:13px; font-weight:700; letter-spacing:1px; font-family:monospace;">${escapeHtml(item.code)}</span></td>
+          <td><span class="badge ${badgeClass}" style="font-size:${isOtp ? '13px' : '11px'}; font-weight:700; letter-spacing:1px; font-family:monospace;">${codeDisplay}</span></td>
           <td><span class="badge badge-active">${escapeHtml(item.sender || 'SMS_FORWARDER')}</span></td>
           <td><span style="font-size:11.5px; color:${isFresh ? 'var(--success)' : 'var(--muted-foreground)'};">${item.age_seconds}s ago</span></td>
-          <td style="font-size:11px; color:var(--muted-foreground); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(item.raw_message || '—')}</td>
+          <td style="font-size:11px; color:var(--muted-foreground); max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(item.raw_message || '')}">${escapeHtml(item.raw_message || '—')}</td>
         `;
         tbody.appendChild(tr);
       });
