@@ -201,7 +201,7 @@ class GVCPortalDriver:
 
     async def refresh_waf_cookies(self, proxy: Optional[str] = None) -> Dict[str, str]:
         """
-        Execute headless Playwright flow to quickly solve Imperva JS challenge and extract fresh Incapsula cookies.
+        Execute headless Playwright flow with stealth evasion to solve Imperva JS challenge and extract fresh Incapsula cookies.
         Directly adapted from operator-agent/main_operator.py.
         """
         logger.info("[gvc] Refreshing Imperva WAF cookies via Headless Playwright...")
@@ -212,7 +212,12 @@ class GVCPortalDriver:
                 with sync_playwright() as p:
                     browser = p.chromium.launch(
                         headless=True,
-                        args=["--disable-blink-features=AutomationControlled"]
+                        args=[
+                            "--disable-blink-features=AutomationControlled",
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                        ]
                     )
                     context_kwargs = {
                         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -236,12 +241,23 @@ class GVCPortalDriver:
                     context = browser.new_context(**context_kwargs)
                     page = context.new_page()
 
+                    # Apply Playwright Stealth evasion
+                    try:
+                        from playwright_stealth import Stealth
+                        Stealth().apply_stealth_sync(page)
+                    except ImportError:
+                        try:
+                            from playwright_stealth import stealth_sync
+                            stealth_sync(page)
+                        except ImportError:
+                            logger.warning("[gvc] playwright_stealth not found, WAF might still detect headless.")
+
                     target_url = f"{self.base_url}/login"
                     logger.info(f"[gvc] Navigating to {target_url} to clear Imperva challenge...")
                     page.goto(target_url, wait_until="commit", timeout=60000)
 
                     username_selector = 'input[name="username"], input[type="email"], input[id*="user"], #email, form'
-                    page.wait_for_selector(username_selector, timeout=45000)
+                    page.wait_for_selector(username_selector, timeout=90000)
                     logger.info("[gvc] Login form rendered! Imperva WAF challenge successfully bypassed.")
 
                     cookies = context.cookies()
@@ -324,6 +340,25 @@ class GVCPortalDriver:
             try:
                 if HAS_CURL_CFFI and AsyncSession:
                     async with AsyncSession(impersonate="chrome120") as session:
+                        # Pre-flight navigation to establish Incapsula TLS trust if needed
+                        has_incap = any("incap" in k.lower() for k in self._session_cookies.keys())
+                        if not has_incap:
+                            try:
+                                await session.get(
+                                    f"{self.base_url}/?lang=en_US",
+                                    headers={
+                                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                                        "Sec-Fetch-Dest": "document",
+                                        "Sec-Fetch-Mode": "navigate",
+                                        "Sec-Fetch-Site": "none",
+                                    },
+                                    proxies=proxies,
+                                    timeout=15,
+                                )
+                                self._session_cookies.update(session.cookies.get_dict())
+                            except Exception as pf_err:
+                                logger.debug(f"[gvc] Pre-flight GET note: {pf_err}")
+
                         resp = await session.put(
                             url,
                             json=payload,
@@ -332,6 +367,8 @@ class GVCPortalDriver:
                             proxies=proxies,
                             timeout=20,
                         )
+                        if hasattr(session, "cookies"):
+                            self._session_cookies.update(session.cookies.get_dict())
                 else:
                     async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=20.0, follow_redirects=True) as client:
                         resp = await client.put(url, json=payload, headers=self._get_headers())
@@ -358,6 +395,8 @@ class GVCPortalDriver:
                                     proxies=proxies,
                                     timeout=20,
                                 )
+                                if hasattr(retry_session, "cookies"):
+                                    self._session_cookies.update(retry_session.cookies.get_dict())
                         else:
                             async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=20.0, follow_redirects=True) as client:
                                 resp = await client.put(url, json=payload, headers=self._get_headers())
