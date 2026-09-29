@@ -868,14 +868,14 @@ async def get_otp_system_status(user: dict = Depends(get_current_user)):
 
 @app.post("/api/otp/simulate")
 async def simulate_test_otp(phone: Optional[str] = Query("3001234567"), code: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
-    """Simulate receiving a test SMS OTP from GVC to verify phone webhook configuration and event bus."""
+    """Simulate receiving a test SMS OTP from Gerrys/GVCW to verify phone webhook configuration and event bus."""
     import random
-    sim_code = code or f"{random.randint(100000, 999999)}"
+    sim_code = code or f"{random.randint(10000, 99999)}"
     record = record_incoming_otp(
         phone=phone,
         code=sim_code,
-        raw_message=f"Your GVC World verification code is {sim_code}. Valid for 3 minutes.",
-        sender="TEST_SIMULATOR",
+        raw_message=f"GERRYS - This OTP number is valid for 5 mins. Please do not share this with anyone. The OTP for your GVCW Appointment is: {sim_code}",
+        sender="GERRYS",
     )
     return {
         "success": True,

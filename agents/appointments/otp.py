@@ -40,23 +40,38 @@ def normalize_phone(phone: Optional[str]) -> str:
 
 
 def extract_otp_code(text: Optional[str]) -> Optional[str]:
-    """Extract 6-digit (or 4-8 digit) numerical verification code from SMS message text."""
+    """Extract 4-8 digit numerical verification code from SMS message text, specifically targeting Gerrys / GVCW formats."""
     if not text:
         return None
-    # 1. Look for explicit keyword patterns first (e.g. "code is 123456", "OTP: 123456", "GVC code 123456")
-    kw_match = re.search(r"(?:code|otp|verification|pin|password|gvc)[:\s]+(\d{4,8})", text, re.IGNORECASE)
-    if kw_match:
-        return kw_match.group(1)
 
-    # 2. Look for standalone 6-digit code
-    six_match = re.search(r"\b(\d{6})\b", text)
-    if six_match:
-        return six_match.group(1)
+    # 1. Targeted GVCW / GERRYS appointment pattern (e.g. "The OTP for your GVCW Appointment is: 99910")
+    p1 = re.search(
+        r"(?:appointment\s+is|gvcw?\s+appointment\s+is|otp\s+for.*?is|otp\s+number.*?is|code\s+is|otp\s+is)[:\s]+(\d{4,8})",
+        text,
+        re.IGNORECASE,
+    )
+    if p1:
+        return p1.group(1)
 
-    # 3. Look for standalone 4-8 digit code
-    any_match = re.search(r"\b(\d{4,8})\b", text)
-    if any_match:
-        return any_match.group(1)
+    # 2. Keyed patterns with trailing colon / separator
+    p2 = re.search(r"(?:code|otp|verification|pin|password|gvcw?)[:\s]+(\d{4,8})", text, re.IGNORECASE)
+    if p2:
+        return p2.group(1)
+
+    # 3. Trailing code at end of message
+    p3 = re.search(r"[:\s]+(\d{4,8})\.?\s*$", text)
+    if p3:
+        return p3.group(1)
+
+    # 4. Standalone 5 or 6 digit codes
+    p4 = re.search(r"\b(\d{5,6})\b", text)
+    if p4:
+        return p4.group(1)
+
+    # 5. Standalone 4-8 digit code
+    p5 = re.search(r"\b(\d{4,8})\b", text)
+    if p5:
+        return p5.group(1)
 
     return None
 
