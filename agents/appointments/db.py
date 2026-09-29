@@ -197,7 +197,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
                         source TEXT DEFAULT 'MANUAL_SYNC',
                         is_valid INTEGER DEFAULT 1,
                         expires_at TEXT,
-                        last_synced_at TEXT NOT NULL,
+                        last_synced_at TEXT NOT NULL DEFAULT '',
                         synced_by TEXT DEFAULT 'staff',
                         notes TEXT DEFAULT ''
                     );
@@ -208,7 +208,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     CREATE TABLE IF NOT EXISTS system_settings (
                         key TEXT PRIMARY KEY,
                         value TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
+                        updated_at TEXT NOT NULL DEFAULT ''
                     );
                 """)
                 # Seed default auth mode if not present
@@ -217,7 +217,49 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     VALUES ('gvc_auth_mode', 'manual', datetime('now'))
                 """)
 
-            logger.info(f"[db] Initialized SQLite database tables at {db_path}")
+                # ── Schema Migrations (Ensure columns exist on existing databases) ────
+                def _ensure_cols(table: str, col_defs: dict[str, str]):
+                    try:
+                        cur = conn.execute(f"PRAGMA table_info({table});")
+                        existing = {row["name"] for row in cur.fetchall()}
+                        for col_name, col_type in col_defs.items():
+                            if col_name not in existing:
+                                try:
+                                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type};")
+                                    logger.info(f"[db] Migrated {table}: added column {col_name} ({col_type})")
+                                except Exception as err:
+                                    logger.warning(f"[db] Column migration error on {table}.{col_name}: {err}")
+                    except Exception as err:
+                        logger.warning(f"[db] Failed to inspect table info for {table}: {err}")
+
+                _ensure_cols("gvc_sessions", {
+                    "bearer_token": "TEXT",
+                    "cookies_json": "TEXT",
+                    "source": "TEXT DEFAULT 'MANUAL_SYNC'",
+                    "is_valid": "INTEGER DEFAULT 1",
+                    "expires_at": "TEXT",
+                    "last_synced_at": "TEXT DEFAULT ''",
+                    "synced_by": "TEXT DEFAULT 'staff'",
+                    "notes": "TEXT DEFAULT ''",
+                })
+                _ensure_cols("system_settings", {
+                    "value": "TEXT NOT NULL DEFAULT ''",
+                    "updated_at": "TEXT NOT NULL DEFAULT ''",
+                })
+                _ensure_cols("client_queue", {
+                    "locked_by_worker": "TEXT",
+                    "locked_at": "TEXT",
+                    "booking_reference": "TEXT",
+                    "booked_date": "TEXT",
+                    "booked_time": "TEXT",
+                    "notes": "TEXT DEFAULT ''",
+                })
+                _ensure_cols("proxies", {
+                    "quarantined_until": "TEXT",
+                    "last_error": "TEXT",
+                })
+
+            logger.info(f"[db] Initialized and verified SQLite database tables at {db_path}")
         finally:
             conn.close()
 
@@ -1320,56 +1362,77 @@ def save_gvc_session(
     Save or update an active GVC session.
     Parses string or dict cookies and normalizes auth_token.
     """
-    now = datetime.utcnow()
-    now_str = now.isoformat()
-    expires_at = (now + timedelta(seconds=expires_in_seconds)).isoformat()
+    try:
+        now = datetime.utcnow()
+        now_str = now.isoformat()
+        expires_at = (now + timedelta(seconds=expires_in_seconds)).isoformat()
 
-    cookies_dict: dict = {}
-    if isinstance(cookies, dict):
-        cookies_dict = cookies
-    elif isinstance(cookies, str) and cookies.strip():
-        for part in cookies.split(";"):
-            part = part.strip()
-            if "=" in part:
-                k, v = part.split("=", 1)
-                cookies_dict[k.strip()] = v.strip()
+        cookies_dict: dict = {}
+        if isinstance(cookies, dict):
+            cookies_dict = {str(k): str(v) for k, v in cookies.items()}
+        elif isinstance(cookies, str) and cookies.strip():
+            raw_str = cookies.strip()
+            if "=" in raw_str:
+                for part in raw_str.split(";"):
+                    part = part.strip()
+                    if "=" in part:
+                        k, v = part.split("=", 1)
+                        cookies_dict[k.strip()] = v.strip()
 
-    clean_token = auth_token.strip() if auth_token else ""
-    if not clean_token and "auth_token" in cookies_dict:
-        clean_token = cookies_dict["auth_token"]
+        clean_token = (auth_token or "").strip()
+        # Strip potential "Bearer " prefix
+        if clean_token.lower().startswith("bearer "):
+            clean_token = clean_token[7:].strip()
 
-    clean_bearer = bearer_token.strip() if bearer_token else clean_token
+        # Check if auth_token was inside cookies
+        if not clean_token and "auth_token" in cookies_dict:
+            clean_token = cookies_dict["auth_token"]
 
-    cookies_json = json.dumps(cookies_dict)
+        clean_bearer = (bearer_token or "").strip()
+        if clean_bearer.lower().startswith("bearer "):
+            clean_bearer = clean_bearer[7:].strip()
 
-    with _lock:
-        conn = get_connection(db_path)
-        try:
-            with conn:
-                conn.execute("UPDATE gvc_sessions SET is_valid = 0 WHERE is_valid = 1")
-                cur = conn.execute("""
-                    INSERT INTO gvc_sessions (
-                        auth_token, bearer_token, cookies_json, source, is_valid,
-                        expires_at, last_synced_at, synced_by, notes
-                    ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
-                """, (
-                    clean_token, clean_bearer, cookies_json, source,
-                    expires_at, now_str, synced_by, notes
-                ))
-                session_id = cur.lastrowid
-            return {
-                "id": session_id,
-                "auth_token": clean_token,
-                "bearer_token": clean_bearer,
-                "cookies_count": len(cookies_dict),
-                "source": source,
-                "is_valid": True,
-                "expires_at": expires_at,
-                "last_synced_at": now_str,
-                "synced_by": synced_by,
-            }
-        finally:
-            conn.close()
+        # If token was passed as cookies string without '='
+        if not clean_token and isinstance(cookies, str) and len(cookies.strip()) > 20 and "=" not in cookies:
+            clean_token = cookies.strip()
+
+        if not clean_bearer:
+            clean_bearer = clean_token
+
+        cookies_json = json.dumps(cookies_dict)
+
+        with _lock:
+            conn = get_connection(db_path)
+            try:
+                with conn:
+                    conn.execute("UPDATE gvc_sessions SET is_valid = 0 WHERE is_valid = 1")
+                    cur = conn.execute("""
+                        INSERT INTO gvc_sessions (
+                            auth_token, bearer_token, cookies_json, source, is_valid,
+                            expires_at, last_synced_at, synced_by, notes
+                        ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+                    """, (
+                        clean_token, clean_bearer, cookies_json, source,
+                        expires_at, now_str, synced_by, notes
+                    ))
+                    session_id = cur.lastrowid
+                logger.info(f"[db] ✓ Saved active GVC session #{session_id} (source={source}, synced_by={synced_by})")
+                return {
+                    "id": session_id,
+                    "auth_token": clean_token,
+                    "bearer_token": clean_bearer,
+                    "cookies_count": len(cookies_dict),
+                    "source": source,
+                    "is_valid": True,
+                    "expires_at": expires_at,
+                    "last_synced_at": now_str,
+                    "synced_by": synced_by,
+                }
+            finally:
+                conn.close()
+    except Exception as e:
+        logger.error(f"[db] Failed to save GVC session: {e}", exc_info=True)
+        raise
 
 
 def get_active_gvc_session(db_path: Path = DB_PATH) -> Optional[dict]:

@@ -1420,67 +1420,85 @@ How can I help you today?</div>
         alert('⚠️ Please switch to your active GVC World tab (pk-gr-services.gvcworld.eu) first, and THEN click this bookmarklet!');
         return;
       }
-      var token='';
-      var allCookies=document.cookie||'';
-      function checkVal(v){
-        if(!v||typeof v!=='string')return '';
-        v=v.trim();
-        if(v.indexOf('Bearer ')===0)v=v.substring(7).trim();
-        if(v.indexOf('eyJ')===0&&v.length>25)return v;
-        try{
-          var p=JSON.parse(v);
-          if(p&&typeof p==='object'){
-            var keys=['token','auth_token','access_token','id_token','jwt','authToken','accessToken'];
-            for(var i=0;i<keys.length;i++){if(p[keys[i]]&&typeof p[keys[i]]==='string'&&p[keys[i]].length>20)return p[keys[i]];}
-            if(p.user&&typeof p.user==='object'){
-              for(var j=0;j<keys.length;j++){if(p.user[keys[j]])return p.user[keys[j]];}
+      var foundToken = '';
+      function inspect(val) {
+        if (!val || foundToken) return;
+        if (typeof val === 'string') {
+          val = val.trim();
+          if (val.indexOf('Bearer ') === 0) val = val.substring(7).trim();
+          if (val.length >= 25 && /^[A-Za-z0-9_\\-\\.]+$/.test(val)) {
+            foundToken = val;
+            return;
+          }
+          try { inspect(JSON.parse(val)); } catch(e) {}
+        } else if (typeof val === 'object') {
+          for (var k in val) {
+            if (foundToken) break;
+            var lk = k.toLowerCase();
+            if (lk.includes('token') || lk.includes('auth') || lk.includes('jwt') || lk.includes('returnobject') || lk.includes('ticket')) {
+              if (typeof val[k] === 'string' && val[k].length >= 25) {
+                foundToken = val[k].trim();
+                if (foundToken.indexOf('Bearer ') === 0) foundToken = foundToken.substring(7).trim();
+                break;
+              }
             }
+            inspect(val[k]);
           }
-        }catch(e){}
-        if(v.length>30&&/^[A-Za-z0-9\\-_=.]+$/.test(v))return v;
-        return '';
-      }
-      try{
-        for(var i=0;i<localStorage.length;i++){
-          var k=localStorage.key(i);
-          var t=checkVal(localStorage.getItem(k));
-          if(t){token=t;break;}
         }
-      }catch(e){}
-      if(!token){
-        try{
-          for(var j=0;j<sessionStorage.length;j++){
-            var sk=sessionStorage.key(j);
-            var st=checkVal(sessionStorage.getItem(sk));
-            if(st){token=st;break;}
+      }
+      try {
+        for (var i = 0; i < localStorage.length; i++) {
+          if (foundToken) break;
+          inspect(localStorage.getItem(localStorage.key(i)));
+        }
+      } catch(e) {}
+      if (!foundToken) {
+        try {
+          for (var j = 0; j < sessionStorage.length; j++) {
+            if (foundToken) break;
+            inspect(sessionStorage.getItem(sessionStorage.key(j)));
           }
-        }catch(e){}
+        } catch(e) {}
       }
-      if(!token&&allCookies){
-        var m=allCookies.match(/(?:auth_token|token|jwt|access_token)=([^;]+)/i);
-        if(m)token=decodeURIComponent(m[1]);
+      if (!foundToken && document.cookie) {
+        var parts = document.cookie.split(';');
+        for (var c = 0; c < parts.length; c++) {
+          var pair = parts[c].trim();
+          if (pair.indexOf('=') !== -1) {
+            var val = pair.split('=')[1];
+            if (val && val.length >= 25) { foundToken = val; break; }
+          }
+        }
       }
-      if(!token&&(allCookies.includes('ASP.NET')||allCookies.includes('GVC')||allCookies.includes('auth'))){
-        token='COOKIE_SESSION';
-      }
-      if(!token){
-        alert('❌ No active login found on this GVC page. Please log in to GVC World and try again.');
+      var allCookies = document.cookie || '';
+      var payload = {
+        token: foundToken || '',
+        cookies: allCookies,
+        source: 'BOOKMARKLET'
+      };
+      if (!foundToken && !allCookies) {
+        alert('⚠️ No active session token found. Please sign in to GVC World first, then click this bookmark.');
         return;
       }
-      var target='${origin}/api/gvc/session/sync';
-      fetch(target,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({token:(token==='COOKIE_SESSION'?'':token),cookies:allCookies,source:'BOOKMARKLET'})
-      }).then(function(r){return r.json();})
-      .then(function(d){
-        if(d.success){
-          alert('🎉 SUCCESS! GVC session synced to Kamal Express!\\nYou can now return to the Kamal Express tab and search/book slots.');
-        }else{
-          alert('❌ Sync error: '+(d.detail||d.message||'Unknown error'));
+      var target = '${origin}/api/gvc/session/sync';
+      fetch(target, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.success) {
+          alert('🎉 SUCCESS! GVC Session synced to Kamal Express!\\nSession ID: #' + (d.session ? d.session.id : 'OK') + '\\nYou can now search & book visa slots.');
+        } else {
+          alert('❌ Sync error: ' + (d.detail || d.message || 'Unknown error'));
         }
-      }).catch(function(err){
-        prompt('⚠️ Browser CSP blocked automatic network sync. Copy this token (Ctrl+C) and paste it into Kamal Express settings:', token==='COOKIE_SESSION'?allCookies:token);
+      }).catch(function(err) {
+        if (foundToken) {
+          try { navigator.clipboard.writeText(foundToken); } catch(e) {}
+          alert('📋 GVC Token Extracted & Copied to Clipboard!\\n(Browser CSP prevented direct background sync)\\n\\nToken: ' + foundToken.slice(0, 30) + '...\\n\\nNow open Kamal Express -> GVC Auth -> Paste Token -> Save.');
+        } else {
+          prompt('Copy this session data into Kamal Express:', allCookies);
+        }
       });
     })();`.replace(/\s+/g, ' ');
 
@@ -1492,7 +1510,7 @@ How can I help you today?</div>
 
   function copyConsoleSnippet() {
     const origin = window.location.origin;
-    const snippet = `fetch('${origin}/api/gvc/session/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:localStorage.getItem('token')||localStorage.getItem('auth_token')||(document.cookie.match(/auth_token=([^;]+)/)||[])[1]||'',cookies:document.cookie,source:'CONSOLE_SYNC'})}).then(r=>r.json()).then(d=>alert('✅ Synced GVC Session ID: '+d.session.id)).catch(e=>alert('❌ '+e));`;
+    const snippet = `(function(){function s(o){if(!o)return'';if(typeof o==='string'){var t=o.trim();if(t.startsWith('Bearer '))t=t.substring(7);if(t.length>=25&&/^[A-Za-z0-9_\\-\\.]+$/.test(t))return t;try{return s(JSON.parse(t));}catch(e){}}else if(typeof o==='object'){for(var k in o){var r=s(o[k]);if(r)return r;}}return'';}var tk='';for(var i=0;i<localStorage.length;i++){tk=s(localStorage.getItem(localStorage.key(i)));if(tk)break;}if(!tk){for(var j=0;j<sessionStorage.length;j++){tk=s(sessionStorage.getItem(sessionStorage.key(j)));if(tk)break;}}fetch('${origin}/api/gvc/session/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tk,cookies:document.cookie,source:'CONSOLE_SYNC'})}).then(r=>r.json()).then(d=>alert(d.success?'🎉 SUCCESS! Synced GVC Session #'+d.session.id:'❌ Sync failed: '+(d.detail||d.message))).catch(e=>alert('❌ '+e));})()`;
     navigator.clipboard.writeText(snippet).then(() => {
       alert('📋 1-Line Console Script copied to clipboard!\n\nTo use:\n1. Open your GVC World tab (pk-gr-services.gvcworld.eu)\n2. Press F12 -> click Console\n3. Press Ctrl+V -> hit Enter!');
     }).catch(() => {
@@ -1612,30 +1630,56 @@ How can I help you today?</div>
 
   async function submitManualGVCAuth() {
     const tokenInput = document.getElementById('gvc-manual-token');
-    const rawVal = tokenInput.value.trim();
+    let rawVal = tokenInput.value.trim();
     if (!rawVal) {
       alert('Please paste an auth token or cookie header.');
       return;
     }
+
+    // Auto-clean user input
+    if (rawVal.toLowerCase().startsWith('bearer ')) {
+      rawVal = rawVal.substring(7).trim();
+    }
+    if (rawVal.startsWith('{') && rawVal.endsWith('}')) {
+      try {
+        const obj = JSON.parse(rawVal);
+        const extracted = obj.token || obj.auth_token || obj.accessToken || obj.returnobject || obj.ReturnObject || obj.jwt || obj.data;
+        if (extracted && typeof extracted === 'string') rawVal = extracted.trim();
+      } catch (e) {}
+    }
+    if (rawVal.includes('auth_token=')) {
+      const match = rawVal.match(/auth_token=([^;]+)/i);
+      if (match) rawVal = decodeURIComponent(match[1]).trim();
+    }
+
     const btn = document.getElementById('btn-save-manual-token');
     btn.disabled = true;
-    btn.textContent = 'Saving...';
+    btn.innerHTML = `<i data-lucide="loader" class="icon"></i> Saving Session...`;
+    renderIcons();
+
     try {
       const resp = await fetch('/api/gvc/session/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: rawVal, cookies: rawVal, source: 'MANUAL_SYNC' }),
+        body: JSON.stringify({ token: rawVal, bearer_token: rawVal, cookies: rawVal, source: 'MANUAL_SYNC' }),
       });
-      const data = await resp.json();
-      if (data.success) {
-        alert('✅ Session token saved and synced successfully!');
+      const text = await resp.text();
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error(`Server HTTP ${resp.status}: ${text.slice(0, 120)}`);
+      }
+
+      if (resp.ok && data.success) {
+        alert('🎉 GVC Session token saved and synced successfully!\n\nSession Status is now Active & Ready.');
         tokenInput.value = '';
         loadGVCAuthStatus();
       } else {
-        alert('❌ Failed to save session: ' + (data.detail || 'Unknown error'));
+        alert('❌ Failed to save session: ' + (data.detail || data.message || `HTTP ${resp.status}`));
       }
     } catch (e) {
-      alert('Connection error: ' + e.message);
+      alert('Sync error: ' + e.message);
     } finally {
       btn.disabled = false;
       btn.innerHTML = `<i data-lucide="save" class="icon"></i> Save & Sync Session Token`;

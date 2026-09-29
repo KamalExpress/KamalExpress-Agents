@@ -29,7 +29,7 @@ if sys.platform == "win32":
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Header, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import HumanMessage
@@ -542,19 +542,35 @@ async def search_slots(
 @app.post("/api/gvc/session/sync")
 async def gvc_sync_session(req: GVCSyncRequest, user: Optional[dict] = Depends(get_optional_user)):
     """Sync active GVC session token/cookies (Option 1: Manual / Bookmarklet)."""
-    username = user.get("username", "staff_sync") if user else "staff_sync"
-    saved = save_gvc_session(
-        auth_token=req.token or "",
-        cookies=req.cookies,
-        bearer_token=req.bearer_token or req.token or "",
-        source=req.source or "MANUAL_SYNC",
-        synced_by=username,
-    )
-    return {
-        "success": True,
-        "session": saved,
-        "message": "GVC session token successfully synced to Kamal Express.",
-    }
+    try:
+        username = user.get("username", "staff_sync") if user else "staff_sync"
+        raw_token = (req.token or "").strip()
+        raw_bearer = (req.bearer_token or "").strip()
+        
+        # Strip potential Bearer prefix
+        if raw_token.lower().startswith("bearer "):
+            raw_token = raw_token[7:].strip()
+        if raw_bearer.lower().startswith("bearer "):
+            raw_bearer = raw_bearer[7:].strip()
+
+        saved = save_gvc_session(
+            auth_token=raw_token,
+            cookies=req.cookies,
+            bearer_token=raw_bearer or raw_token,
+            source=req.source or "MANUAL_SYNC",
+            synced_by=username,
+        )
+        return {
+            "success": True,
+            "session": saved,
+            "message": "GVC session token successfully synced to Kamal Express.",
+        }
+    except Exception as e:
+        logger.error(f"[api] Error syncing GVC session: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "detail": f"Failed to persist session: {str(e)}"},
+        )
 
 
 @app.get("/api/gvc/session/status")
