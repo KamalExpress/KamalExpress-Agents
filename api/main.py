@@ -70,6 +70,8 @@ from agents.appointments.db import (
     set_gvc_auth_mode,
     get_gvc_credentials,
     set_gvc_credentials,
+    get_captcha_settings,
+    set_captcha_settings,
     save_gvc_session,
     get_active_gvc_session,
     invalidate_gvc_session,
@@ -212,6 +214,8 @@ class GVCCredentialsRequest(BaseModel):
     email: str
     password: str
     interval_seconds: int = 300
+    captcha_provider: Optional[str] = "capsolver"
+    captcha_api_key: Optional[str] = None
 
 
 # ── Authentication REST Endpoints ─────────────────────────────────────────────
@@ -579,13 +583,19 @@ async def gvc_session_status(user: dict = Depends(get_current_user)):
     sess = get_active_gvc_session()
     mode = get_gvc_auth_mode()
     creds = get_gvc_credentials()
+    captcha_settings = get_captcha_settings()
     telemetry = solver_worker.get_telemetry()
+    raw_key = captcha_settings.get("api_key", "")
+    masked_key = (raw_key[:5] + "..." + raw_key[-4:]) if len(raw_key) > 9 else ("Configured" if raw_key else "")
     return {
         "auth_mode": mode,
         "has_active_session": bool(sess and sess.get("is_valid")),
         "session": sess,
         "credentials_configured": bool(creds.get("email")),
         "credentials_email": creds.get("email"),
+        "captcha_provider": captcha_settings.get("provider", "capsolver"),
+        "captcha_configured": bool(raw_key),
+        "captcha_api_key_masked": masked_key,
         "solver_worker": telemetry,
     }
 
@@ -605,9 +615,13 @@ async def gvc_set_auth_mode_endpoint(req: GVCModeRequest, user: dict = Depends(g
 
 @app.post("/api/gvc/auth/credentials")
 async def gvc_set_credentials_endpoint(req: GVCCredentialsRequest, admin: dict = Depends(require_admin)):
-    """Store GVC account credentials for autonomous CapSolver login."""
+    """Store GVC account credentials and Captcha solver API key for autonomous login."""
     set_gvc_credentials(req.email, req.password, req.interval_seconds)
-    return {"success": True, "message": "GVC account credentials saved successfully."}
+    if req.captcha_api_key:
+        set_captcha_settings(req.captcha_provider or "capsolver", req.captcha_api_key)
+    elif req.captcha_provider:
+        set_captcha_settings(provider=req.captcha_provider)
+    return {"success": True, "message": "GVC credentials and Captcha settings saved successfully."}
 
 
 @app.post("/api/gvc/auth/solve-now")

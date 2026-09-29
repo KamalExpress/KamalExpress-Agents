@@ -40,12 +40,26 @@ class CaptchaSolver:
         self._api_key = self._cfg.api_key
         self._timeout = self._cfg.timeout
         self._retries = self._cfg.retry_attempts
+        self._refresh_config()
+
+    def _refresh_config(self) -> None:
+        """Dynamically load runtime API key and provider from SQLite database."""
+        try:
+            from .db import get_captcha_settings
+            s = get_captcha_settings()
+            if s.get("api_key"):
+                self._api_key = s["api_key"]
+            if s.get("provider"):
+                self._provider = s["provider"]
+        except Exception:
+            pass
 
     # ── Public API ────────────────────────────────────────────────────
 
     async def solve_recaptcha_v2(self, site_key: str, page_url: str) -> Optional[str]:
         """Solve reCAPTCHA v2 checkbox and return the g-recaptcha-response token."""
-        logger.info(f"[captcha] Solving reCAPTCHA v2 at {page_url}")
+        self._refresh_config()
+        logger.info(f"[captcha] Solving reCAPTCHA v2 at {page_url} via {self._provider}")
         return await self._solve_with_retry(
             self._dispatch_recaptcha_v2, site_key, page_url
         )
@@ -54,32 +68,37 @@ class CaptchaSolver:
         self, site_key: str, page_url: str, action: str = "verify", min_score: float = 0.5
     ) -> Optional[str]:
         """Solve reCAPTCHA v3 and return a high-score token."""
-        logger.info(f"[captcha] Solving reCAPTCHA v3 at {page_url}")
+        self._refresh_config()
+        logger.info(f"[captcha] Solving reCAPTCHA v3 at {page_url} via {self._provider}")
         return await self._solve_with_retry(
             self._dispatch_recaptcha_v3, site_key, page_url, action, min_score
         )
 
     async def solve_hcaptcha(self, site_key: str, page_url: str) -> Optional[str]:
         """Solve hCaptcha and return response token."""
-        logger.info(f"[captcha] Solving hCaptcha at {page_url}")
+        self._refresh_config()
+        logger.info(f"[captcha] Solving hCaptcha at {page_url} via {self._provider}")
         return await self._solve_with_retry(
             self._dispatch_hcaptcha, site_key, page_url
         )
 
     async def solve_turnstile(self, site_key: str, page_url: str) -> Optional[str]:
         """Solve Cloudflare Turnstile and return cf-turnstile-response token."""
-        logger.info(f"[captcha] Solving Turnstile at {page_url}")
+        self._refresh_config()
+        logger.info(f"[captcha] Solving Turnstile at {page_url} via {self._provider}")
         return await self._solve_with_retry(
             self._dispatch_turnstile, site_key, page_url
         )
 
     async def solve_image(self, image_bytes: bytes) -> Optional[str]:
         """Solve an image captcha and return the text."""
-        logger.info("[captcha] Solving image captcha")
+        self._refresh_config()
+        logger.info(f"[captcha] Solving image captcha via {self._provider}")
         return await self._solve_with_retry(self._dispatch_image, image_bytes)
 
     @property
     def enabled(self) -> bool:
+        self._refresh_config()
         return self._provider != "none" and bool(self._api_key)
 
     # ── Retry wrapper ─────────────────────────────────────────────────
@@ -190,35 +209,84 @@ class CaptchaSolver:
 
     # ── CapSolver implementation ──────────────────────────────────────
 
-    async def _capsolver_post(self, task: dict) -> Optional[str]:
-        """Submit and poll a CapSolver task."""
-        base = "https://api.capsolver.com"
-        payload = {"clientKey": self._api_key, "task": task}
-        async with aiohttp.ClientSession() as session:
-            async with session.post(f"{base}/createTask", json=payload) as resp:
-                data = await resp.json()
-                if data.get("errorId"):
-                    raise RuntimeError(f"CapSolver error: {data}")
-                task_id = data["taskId"]
+    async def _capsolver_post(self, task: dict, proxy_string: Optional[str] = None) -> Optional[str]:
+        """
+        Submit and poll a CapSolver task.
+        Directly matches operator-agent/captcha_service.py mechanics.
+        """
+        self._refresh_config()
+        if not self._api_key:
+            logger.error("[capsolver] Cannot solve captcha: CapSolver API key is not configured.")
+            return None
 
-            for _ in range(self._timeout // 3):
-                await asyncio.sleep(3)
-                async with session.post(
-                    f"{base}/getTaskResult",
-                    json={"clientKey": self._api_key, "taskId": task_id},
-                ) as resp:
-                    result = await resp.json()
-                    if result.get("status") == "ready":
-                        sol = result.get("solution", {})
-                        return sol.get("gRecaptchaResponse") or sol.get("token")
-                    if result.get("errorId"):
-                        raise RuntimeError(f"CapSolver error: {result}")
+        base = "https://api.capsolver.com"
+        
+        if proxy_string:
+            from urllib.parse import urlparse
+            parsed = urlparse(proxy_string)
+            if parsed.hostname:
+                clean_type = task["type"].replace("ProxyLess", "").replace("Proxyless", "")
+                task["type"] = clean_type
+                task["proxyType"] = "http"
+                task["proxyAddress"] = parsed.hostname
+                task["proxyPort"] = parsed.port
+                if parsed.username:
+                    task["proxyLogin"] = parsed.username
+                    task["proxyPassword"] = parsed.password
+        else:
+            if not task.get("type", "").endswith("Proxyless") and not task.get("type", "").endswith("ProxyLess"):
+                task["type"] = task.get("type") + "Proxyless"
+
+        payload = {"clientKey": self._api_key, "task": task}
+        logger.info(f"[capsolver] Submitting task ({task.get('type')}) to CapSolver API...")
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{base}/createTask", json=payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                    data = await resp.json()
+                    if data.get("errorId") and data.get("errorId") != 0:
+                        err_code = data.get("errorCode", "")
+                        err_desc = data.get("errorDescription", "")
+                        logger.error(f"[capsolver] CapSolver creation failed (Code: {err_code}): {err_desc}")
+                        if err_code == "ERROR_ZERO_BALANCE":
+                            logger.error("[capsolver] CRITICAL: CapSolver service balance is ZERO (ERROR_ZERO_BALANCE). Top-up required immediately!")
+                        return None
+                    task_id = data.get("taskId")
+
+                if not task_id:
+                    logger.error("[capsolver] No taskId returned in CapSolver creation response.")
+                    return None
+
+                logger.info(f"[capsolver] Task #{task_id} submitted. Polling for solution (max 150s)...")
+                poll_timeout = max(30, self._timeout or 150)
+                for _ in range(poll_timeout // 3):
+                    await asyncio.sleep(3)
+                    async with session.post(
+                        f"{base}/getTaskResult",
+                        json={"clientKey": self._api_key, "taskId": task_id},
+                        timeout=aiohttp.ClientTimeout(total=15),
+                    ) as resp:
+                        result = await resp.json()
+                        status = result.get("status")
+                        if status == "ready":
+                            sol = result.get("solution", {})
+                            token = sol.get("gRecaptchaResponse") or sol.get("token")
+                            logger.info(f"[capsolver] ✓ Solved CAPTCHA successfully! (Token length: {len(token) if token else 0})")
+                            return token
+                        elif status == "failed" or (result.get("errorId") and result.get("errorId") != 0):
+                            err_desc = result.get("errorDescription") or result.get("errorCode") or "Unknown error"
+                            logger.error(f"[capsolver] Task failed ({err_desc}).")
+                            return None
+        except Exception as e:
+            logger.error(f"[capsolver] Network/API error during CapSolver execution: {e}")
+
         return None
 
     async def _capsolver_recaptcha_v2(self, site_key, page_url):
         return await self._capsolver_post({
-            "type": "ReCaptchaV2TaskProxyLess",
-            "websiteURL": page_url, "websiteKey": site_key,
+            "type": "ReCaptchaV2TaskProxyless",
+            "websiteURL": page_url,
+            "websiteKey": site_key,
         })
 
     async def _capsolver_recaptcha_v3(self, site_key, page_url, action, min_score):

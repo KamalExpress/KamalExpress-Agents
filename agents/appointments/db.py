@@ -1348,6 +1348,22 @@ def set_gvc_credentials(email: str, password: str, interval_seconds: int = 300, 
     set_setting("auto_solver_interval_seconds", str(max(60, interval_seconds)), db_path=db_path)
 
 
+def get_captcha_settings(db_path: Path = DB_PATH) -> dict:
+    """Get saved Captcha solver settings (CapSolver / 2Captcha)."""
+    return {
+        "provider": get_setting("captcha_provider", default=os.getenv("CAPTCHA_PROVIDER", "capsolver"), db_path=db_path),
+        "api_key": get_setting("captcha_api_key", default=os.getenv("CAPTCHA_API_KEY", ""), db_path=db_path),
+    }
+
+
+def set_captcha_settings(provider: str = "capsolver", api_key: str = "", db_path: Path = DB_PATH) -> None:
+    """Save Captcha solver settings (CapSolver / 2Captcha) to persistent SQLite."""
+    if provider:
+        set_setting("captcha_provider", provider.strip().lower(), db_path=db_path)
+    if api_key is not None:
+        set_setting("captcha_api_key", api_key.strip(), db_path=db_path)
+
+
 def save_gvc_session(
     auth_token: str = "",
     cookies: Optional[dict | str] = None,

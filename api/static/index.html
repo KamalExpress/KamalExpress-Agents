@@ -996,6 +996,13 @@ How can I help you today?</div>
             <input type="password" id="gvc-acc-password" required placeholder="••••••••••••" autocomplete="new-password">
           </div>
           <div class="form-group" style="margin-bottom:0;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label>CapSolver API Key *</label>
+              <span id="capsolver-key-status" style="font-size:11px; color:var(--muted-foreground);">Checking...</span>
+            </div>
+            <input type="password" id="gvc-capsolver-key" placeholder="Enter CapSolver API Key (CAP-...)" autocomplete="off">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
             <label>Auto-Renew Interval (Seconds)</label>
             <input type="number" id="gvc-acc-interval" min="60" value="300" placeholder="300">
           </div>
@@ -1606,6 +1613,20 @@ How can I help you today?</div>
       if (accEmail && data.credentials_email && !accEmail.value) {
         accEmail.value = data.credentials_email;
       }
+
+      // Update CapSolver Status
+      const capsolverStatus = document.getElementById('capsolver-key-status');
+      const capsolverInput = document.getElementById('gvc-capsolver-key');
+      if (capsolverStatus) {
+        if (data.captcha_configured) {
+          capsolverStatus.innerHTML = `<span style="color:#16a34a; font-weight:600;">✓ Configured (${data.captcha_api_key_masked || 'Active'})</span>`;
+          if (capsolverInput && !capsolverInput.value && !capsolverInput.placeholder.includes('Configured')) {
+            capsolverInput.placeholder = `Configured: ${data.captcha_api_key_masked || '••••••••'}`;
+          }
+        } else {
+          capsolverStatus.innerHTML = `<span style="color:#dc2626; font-weight:600;">⚠️ Key Required</span>`;
+        }
+      }
       renderIcons();
     } catch (e) {
       console.error('Failed to load GVC auth status:', e);
@@ -1691,6 +1712,7 @@ How can I help you today?</div>
     const email = document.getElementById('gvc-acc-email').value.trim();
     const password = document.getElementById('gvc-acc-password').value;
     const interval = parseInt(document.getElementById('gvc-acc-interval').value || '300');
+    const capsolverKey = (document.getElementById('gvc-capsolver-key').value || '').trim();
 
     if (!email || !password) {
       alert('Please enter both GVC email and password.');
@@ -1698,14 +1720,25 @@ How can I help you today?</div>
     }
 
     try {
+      const payload = {
+        email,
+        password,
+        interval_seconds: interval,
+        captcha_provider: 'capsolver',
+      };
+      if (capsolverKey) {
+        payload.captcha_api_key = capsolverKey;
+      }
+
       const resp = await fetch('/api/gvc/auth/credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, interval_seconds: interval }),
+        body: JSON.stringify(payload),
       });
       const data = await resp.json();
       if (data.success) {
-        alert('✅ GVC account credentials saved successfully.');
+        alert('✅ GVC account credentials & CapSolver settings saved successfully.');
+        document.getElementById('gvc-capsolver-key').value = '';
         loadGVCAuthStatus();
       } else {
         alert('❌ Failed: ' + (data.detail || 'Error'));
