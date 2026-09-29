@@ -234,6 +234,7 @@ class GVCAuthSolver:
                             auth_token=token,
                             cookies=session_cookies,
                             bearer_token=token,
+                            proxy_url=proxy,
                             source="AUTO_SOLVER",
                             synced_by="auto_solver",
                             notes=f"Autonomous login successful for {email}",

@@ -89,6 +89,7 @@ class GVCPortalDriver:
         self._cfg = get_settings().browser
         self._session_cookies: Dict[str, str] = {}
         self._bearer_token: Optional[str] = None
+        self._session_proxy: Optional[str] = None
         self._last_cookie_sync = 0.0
         self.cdp_connected: bool = False
         self.last_search_status: Dict[str, Any] = {"status": "INITIAL", "code": 0, "error": None}
@@ -96,11 +97,12 @@ class GVCPortalDriver:
     # ── Multi-Source Session Management ─────────────────────────
 
     def _load_active_session_from_db(self) -> bool:
-        """Load active session token and cookies from persistent SQLite database."""
+        """Load active session token, cookies, and sticky proxy from persistent SQLite database."""
         sess = get_active_gvc_session()
         if sess and sess.get("is_valid") and (sess.get("bearer_token") or sess.get("auth_token")):
             self._bearer_token = sess.get("bearer_token") or sess.get("auth_token")
             self._session_cookies = sess.get("cookies") or {}
+            self._session_proxy = sess.get("proxy_url")
             if self._bearer_token and "auth_token" not in self._session_cookies:
                 self._session_cookies["auth_token"] = self._bearer_token
             return True
@@ -266,13 +268,15 @@ class GVCPortalDriver:
 
                     browser.close()
 
-                    # Update SQLite database session with the fresh cookies
+                    # Update SQLite database session with the fresh cookies and proxy
                     active_sess = get_active_gvc_session()
                     if active_sess and (active_sess.get("auth_token") or active_sess.get("bearer_token")):
+                        self._session_proxy = proxy
                         save_gvc_session(
                             auth_token=active_sess.get("auth_token"),
                             bearer_token=active_sess.get("bearer_token"),
                             cookies=self._session_cookies,
+                            proxy_url=proxy,
                             source=active_sess.get("source", "MANUAL_SYNC"),
                             synced_by="waf_refresher",
                         )
@@ -334,7 +338,7 @@ class GVCPortalDriver:
         # 1. Primary path: Direct Authenticated HTTP REST Request with Proxy via curl_cffi
         has_db_session = self._load_active_session_from_db()
         if has_db_session and self._bearer_token:
-            proxy = self.proxy_manager.get_proxy_url()
+            proxy = self._session_proxy or self.proxy_manager.get_proxy_url()
             url = f"{self.base_url}/api/v1/periodslot/slots"
             proxies = {"http": proxy, "https": proxy} if proxy else None
             try:
@@ -626,7 +630,7 @@ class GVCPortalDriver:
 
         last_err = None
         for attempt in range(max_retries):
-            proxy = self.proxy_manager.get_proxy_url()
+            proxy = (self._session_proxy if attempt == 0 else None) or self.proxy_manager.get_proxy_url()
             proxies = {"http": proxy, "https": proxy} if proxy else None
             try:
                 async with AsyncSession(impersonate="chrome120") as session:
@@ -713,7 +717,7 @@ class GVCPortalDriver:
 
         last_error = None
         for attempt in range(max_retries):
-            proxy = self.proxy_manager.get_proxy_url()
+            proxy = (self._session_proxy if attempt == 0 else None) or self.proxy_manager.get_proxy_url()
             proxies = {"http": proxy, "https": proxy} if proxy else None
             try:
                 async with AsyncSession(impersonate="chrome120") as session:

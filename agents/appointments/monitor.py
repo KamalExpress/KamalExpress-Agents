@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from .db import claim_next_client, get_all_clients, update_client_status
+from .otp import wait_for_otp
 from .portals.gvc import GVCPortalDriver
 from .schemas import AvailableSlot, ClientProfile
 
@@ -176,7 +177,40 @@ class AutonomousSlotMonitor:
                                 break  # No more matching clients waiting
 
                             self.log_event(
-                                f"Autonomous Booker dispatching: Booking {slot.date} @ {slot.time} for {client.first_name} {client.last_name} ({client.passport_number})..."
+                                f"Autonomous Booker dispatching: Preparing booking on {slot.date} @ {slot.time} for {client.first_name} {client.last_name} ({client.passport_number})..."
+                            )
+
+                            # 1. Request GVC portal to dispatch SMS OTP to applicant's phone
+                            otp_trigger_res = await self._gvc_driver.trigger_booking_otp(phone_number=client.phone_number)
+                            if not otp_trigger_res.get("success"):
+                                self.log_event(
+                                    f"⚠️ OTP trigger returned note for {client.passport_number} (+92-{client.phone_number}): {otp_trigger_res.get('message') or otp_trigger_res.get('error')}",
+                                    level="WARNING"
+                                )
+                            else:
+                                self.log_event(
+                                    f"📱 OTP dispatched to +92-{client.phone_number}. Awaiting SMS forwarder / staff input (up to 75s)...",
+                                    level="INFO"
+                                )
+
+                            # 2. Await OTP arrival from Android SMS forwarder webhook or dashboard manual submit
+                            otp_code = await wait_for_otp(phone=client.phone_number, timeout=75.0)
+
+                            if not otp_code:
+                                update_client_status(
+                                    client_id=client.id,
+                                    status="FAILED",
+                                    notes="Auto-booking aborted: OTP verification code timed out after 75s."
+                                )
+                                self.log_event(
+                                    f"❌ Auto-booking aborted for {client.passport_number}: No OTP received within 75s.",
+                                    level="WARNING"
+                                )
+                                continue
+
+                            self.log_event(
+                                f"⚡ OTP '{otp_code}' intercepted for +92-{client.phone_number}! Submitting final booking to GVC...",
+                                level="SUCCESS"
                             )
 
                             result = await self._gvc_driver.submit_booking(
@@ -184,7 +218,7 @@ class AutonomousSlotMonitor:
                                 slot_id=slot.slot_id,
                                 target_date=slot.date,
                                 target_time=slot.time,
-                                otp_code="",  # Auto-submit
+                                otp_code=otp_code,
                                 vac_id=vac_id,
                                 visa_type=visa_type
                             )

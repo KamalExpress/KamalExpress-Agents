@@ -603,6 +603,9 @@
     <button class="nav-tab" data-view="proxy-view" id="tab-proxy-view">
       <i data-lucide="globe-2" class="icon"></i> Residential Proxies
     </button>
+    <button class="nav-tab" data-view="otp-view" id="tab-otp-view">
+      <i data-lucide="smartphone" class="icon"></i> OTP & Webhook
+    </button>
     <button class="nav-tab" data-view="users-view" id="tab-users-view" style="display:none;">
       <i data-lucide="users" class="icon"></i> Staff & Roles
     </button>
@@ -1126,7 +1129,122 @@ How can I help you today?</div>
   </div>
 </div>
 
-<!-- ── VIEW 6: USER & ROLE MANAGEMENT (ADMIN ONLY) ── -->
+<!-- ── VIEW 6: OTP & MOBILE SMS FORWARDER ── -->
+<div class="view-container" id="otp-view" style="padding:18px; overflow-y:auto;">
+  <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
+    
+    <!-- Top Row: Setup Guide & Simulator -->
+    <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:16px;">
+      
+      <!-- Android SMS Forwarder Webhook Setup -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <i data-lucide="smartphone" class="icon"></i> Mobile SMS Forwarder Integration
+          </div>
+          <span class="badge badge-booked">ACTIVE EVENT BUS</span>
+        </div>
+        <div style="font-size:12.5px; color:var(--muted-foreground); line-height:1.5;">
+          Forward SMS OTPs received on agency staff phones directly to the server in &lt;300ms for instant automated booking confirmation.
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Webhook Endpoint URL (POST)</label>
+            <div style="display:flex; gap:6px;">
+              <input type="text" id="otp-webhook-url-input" readonly value="" style="font-family:monospace; font-size:12px; background:var(--secondary);" />
+              <button class="btn btn-outline btn-sm" onclick="copyWebhookUrl()">
+                <i data-lucide="copy" class="icon"></i> Copy
+              </button>
+            </div>
+          </div>
+
+          <div style="background:var(--secondary); padding:10px 12px; border-radius:var(--radius); font-size:12px; border:1px solid var(--border);">
+            <div style="font-weight:600; margin-bottom:4px; color:var(--foreground);">📱 3-Minute Phone Setup Guide:</div>
+            <ol style="padding-left:16px; margin:0; display:flex; flex-direction:column; gap:4px; color:var(--muted-foreground);">
+              <li>Install <b>SMS Forwarder</b> (or MacroDroid/Tasker) from Play Store / F-Droid.</li>
+              <li>Add Webhook Rule: Match SMS where Sender/Text contains <code>GVC</code>, <code>GVCWORLD</code>, or <code>verification</code>.</li>
+              <li>Target: HTTP POST to the Webhook URL above with payload <code>{"phone": "[from]", "message": "[content]"}</code>.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Simulator & Manual Entry -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <i data-lucide="flask-conical" class="icon"></i> Test Simulator & Manual Entry
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <!-- Simulation Form -->
+          <form onsubmit="event.preventDefault(); simulateOtpTest();" style="display:flex; flex-direction:column; gap:8px;">
+            <div style="font-weight:600; font-size:12px; color:var(--foreground);">Simulate GVC OTP Dispatch:</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <input type="text" id="sim-phone" placeholder="Phone e.g. 03001234567" value="03001234567" style="font-size:12px;">
+              <input type="text" id="sim-code" placeholder="Code e.g. 583921 (Optional)" style="font-size:12px;">
+            </div>
+            <button type="submit" id="btn-sim-otp" class="btn btn-outline btn-sm" style="align-self:flex-start;">
+              <i data-lucide="zap" class="icon"></i> Simulate Incoming SMS
+            </button>
+          </form>
+
+          <div style="border-top:1px solid var(--border); padding-top:10px;">
+            <form onsubmit="event.preventDefault(); submitManualOtp();" style="display:flex; flex-direction:column; gap:8px;">
+              <div style="font-weight:600; font-size:12px; color:var(--foreground);">Manual Emergency OTP Override:</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <input type="text" id="man-phone" placeholder="Phone e.g. 3001234567" style="font-size:12px;">
+                <input type="text" id="man-code" required placeholder="6-digit OTP code" style="font-size:12px;">
+              </div>
+              <button type="submit" id="btn-man-otp" class="btn btn-primary btn-sm" style="align-self:flex-start;">
+                <i data-lucide="check" class="icon"></i> Submit OTP Code Now
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Live Intercepted OTPs Table -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            <i data-lucide="inbox" class="icon"></i> Live Intercepted OTP Stream
+          </div>
+          <div class="card-desc">Recent SMS/WhatsApp OTPs ingested by the event bus. Automatically resolves in-flight booking tasks.</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="loadOtpStream()">
+          <i data-lucide="rotate-cw" class="icon"></i> Refresh Stream
+        </button>
+      </div>
+
+      <div class="queue-table-wrap" style="max-height:360px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Phone Number</th>
+              <th>Extracted OTP</th>
+              <th>Source / Sender</th>
+              <th>Age</th>
+              <th>Raw Message / Note</th>
+            </tr>
+          </thead>
+          <tbody id="otp-stream-tbody">
+            <tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:20px;">No OTPs received yet. Use the simulator above or configure your Android app to send a test ping.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── VIEW 7: USER & ROLE MANAGEMENT (ADMIN ONLY) ── -->
 <div class="view-container" id="users-view" style="padding:18px; overflow-y:auto;">
   <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
     
@@ -1322,7 +1440,9 @@ How can I help you today?</div>
     }
     initGVCBookmarklet();
     checkAuth();
+    loadOtpStream();
     setInterval(loadGVCAuthStatus, 8000);
+    setInterval(loadOtpStream, 10000);
     renderIcons();
   });
 
@@ -1809,6 +1929,8 @@ How can I help you today?</div>
         refreshTelemetry();
       } else if (tab.dataset.view === 'proxy-view') {
         loadProxies();
+      } else if (tab.dataset.view === 'otp-view') {
+        loadOtpStream();
       } else if (tab.dataset.view === 'users-view') {
         loadUsers();
       } else if (tab.dataset.view === 'auth-view') {
@@ -2334,6 +2456,107 @@ How can I help you today?</div>
     if (!confirm(`Delete user account #${id}?`)) return;
     await fetch(`/api/users/${id}`, { method: 'DELETE' });
     loadUsers();
+  }
+
+  // ── OTP & Mobile SMS Webhook Management ──────────────────────
+  function copyWebhookUrl() {
+    const url = window.location.origin + '/api/otp/webhook';
+    navigator.clipboard.writeText(url).then(() => {
+      alert('📋 Webhook URL copied to clipboard:\n' + url + '\n\nPaste this into your Android SMS Forwarder HTTP POST configuration.');
+    }).catch(() => {
+      prompt('Copy your Webhook URL:', url);
+    });
+  }
+
+  async function loadOtpStream() {
+    try {
+      const resp = await fetch('/api/otp/status');
+      if (resp.status === 401) return;
+      const data = await resp.json();
+
+      const urlInput = document.getElementById('otp-webhook-url-input');
+      if (urlInput) urlInput.value = window.location.origin + '/api/otp/webhook';
+
+      const tbody = document.getElementById('otp-stream-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      if (!data.recent_otps || data.recent_otps.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:20px;">No OTPs in cache. Incoming SMS OTPs will appear here in real-time.</td></tr>`;
+        return;
+      }
+
+      data.recent_otps.forEach(item => {
+        const tr = document.createElement('tr');
+        const isFresh = item.age_seconds <= 180;
+        tr.innerHTML = `
+          <td><span style="font-family:monospace; font-size:11px;">${item.created_at || 'Just now'}</span></td>
+          <td><b>+92-${escapeHtml(item.phone || 'UNKNOWN')}</b></td>
+          <td><span class="badge ${isFresh ? 'badge-booked' : 'badge-disabled'}" style="font-size:13px; font-weight:700; letter-spacing:1px; font-family:monospace;">${escapeHtml(item.code)}</span></td>
+          <td><span class="badge badge-active">${escapeHtml(item.sender || 'SMS_FORWARDER')}</span></td>
+          <td><span style="font-size:11.5px; color:${isFresh ? 'var(--success)' : 'var(--muted-foreground)'};">${item.age_seconds}s ago</span></td>
+          <td style="font-size:11px; color:var(--muted-foreground); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(item.raw_message || '—')}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      renderIcons();
+    } catch (err) {
+      console.error("Failed to load OTP stream:", err);
+    }
+  }
+
+  async function simulateOtpTest() {
+    const phone = document.getElementById('sim-phone').value.trim() || '03001234567';
+    const code = document.getElementById('sim-code').value.trim();
+    const btn = document.getElementById('btn-sim-otp');
+    btn.disabled = true;
+
+    try {
+      const url = `/api/otp/simulate?phone=${encodeURIComponent(phone)}` + (code ? `&code=${encodeURIComponent(code)}` : '');
+      const resp = await fetch(url, { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`⚡ SUCCESS!\nSimulated incoming SMS OTP '${data.record.code}' for +92-${data.record.phone}.\nAny active booking coroutines have been notified!`);
+        document.getElementById('sim-code').value = '';
+        loadOtpStream();
+      } else {
+        alert(`❌ Simulation failed: ${data.detail || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Simulation error: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      renderIcons();
+    }
+  }
+
+  async function submitManualOtp() {
+    const phone = document.getElementById('man-phone').value.trim();
+    const code = document.getElementById('man-code').value.trim();
+    const btn = document.getElementById('btn-man-otp');
+    if (!code) { alert('Please enter the 6-digit OTP code.'); return; }
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch('/api/otp/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, otp_code: code }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`✅ OTP '${code}' submitted successfully and dispatched to active booking tasks.`);
+        document.getElementById('man-code').value = '';
+        loadOtpStream();
+      } else {
+        alert(`❌ Error submitting OTP: ${data.detail || 'Failed'}`);
+      }
+    } catch (e) {
+      alert(`Submit error: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      renderIcons();
+    }
   }
 
   function escapeHtml(str) {

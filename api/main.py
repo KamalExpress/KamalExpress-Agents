@@ -670,7 +670,15 @@ async def toggle_monitor(req: MonitorToggleRequest, admin: dict = Depends(requir
         return {"status": res["status"], "running": False}
 
 
-# ── OTP Ingestion Webhook Endpoints ───────────────────────────────────────────
+# ── OTP Ingestion & Event Bus Endpoints ───────────────────────────────────────────
+
+from agents.appointments.otp import (
+    record_incoming_otp,
+    get_latest_cached_otp,
+    get_all_cached_otps,
+    normalize_phone,
+)
+
 
 class OTPWebhookPayload(BaseModel):
     phone: Optional[str] = None
@@ -679,66 +687,102 @@ class OTPWebhookPayload(BaseModel):
     sender: Optional[str] = None
 
 
-# In-memory OTP cache: phone -> {"code": "123456", "timestamp": float, ...}
-OTP_STORE: dict[str, dict] = {}
+class ManualOTPSubmitRequest(BaseModel):
+    phone: Optional[str] = None
+    otp_code: str
 
 
 @app.post("/api/otp/webhook")
 async def receive_otp_webhook(payload: OTPWebhookPayload, x_webhook_secret: Optional[str] = Header(None)):
     """
     Webhook endpoint to ingest SMS/WhatsApp OTPs forwarded from mobile devices.
-    Auto-extracts 6-digit verification codes from message texts.
+    Auto-extracts numerical verification codes from message texts and triggers in-flight listeners.
     """
-    import re
-    import time
-
     auth_cfg = get_settings().auth
     if auth_cfg.webhook_secret and x_webhook_secret != auth_cfg.webhook_secret:
-        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+        raise HTTPException(status_code=403, detail="Invalid webhook secret header (X-Webhook-Secret)")
 
-    phone = (payload.phone or "").lstrip("+").lstrip("0")
-    code = payload.otp_code
+    try:
+        record = record_incoming_otp(
+            phone=payload.phone,
+            code=payload.otp_code,
+            raw_message=payload.message,
+            sender=payload.sender or "ANDROID_SMS_FORWARDER",
+        )
+        return {
+            "success": True,
+            "message": f"OTP {record['code']} received and dispatched to active booking tasks.",
+            "record": record,
+        }
+    except ValueError as val_err:
+        raise HTTPException(status_code=400, detail=str(val_err))
+    except Exception as err:
+        logger.error(f"[otp] Error processing webhook: {err}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error processing OTP webhook: {err}")
 
-    if not code and payload.message:
-        match = re.search(r"\b\d{6}\b", payload.message)
-        if match:
-            code = match.group(0)
 
-    if not code:
-        raise HTTPException(status_code=400, detail="No 6-digit OTP code detected in payload")
+@app.post("/api/otp/submit")
+async def submit_otp_manually(req: ManualOTPSubmitRequest, user: dict = Depends(get_current_user)):
+    """Submit an OTP manually from the web dashboard for an active booking."""
+    if not req.otp_code or not req.otp_code.strip():
+        raise HTTPException(status_code=400, detail="OTP code cannot be empty.")
 
-    record = {
-        "code": code,
-        "phone": phone,
-        "timestamp": time.time(),
-        "sender": payload.sender or "SMS_FORWARDER",
+    record = record_incoming_otp(
+        phone=req.phone,
+        code=req.otp_code.strip(),
+        raw_message=f"Manual submission by {user.get('username', 'staff')}",
+        sender=f"MANUAL_ENTRY_{user.get('username', 'staff').upper()}",
+    )
+    return {
+        "success": True,
+        "message": f"OTP {record['code']} submitted manually and dispatched.",
+        "record": record,
     }
-    OTP_STORE[phone] = record
-    OTP_STORE["latest"] = record
-
-    logger.info(f"[otp-webhook] ✓ Received OTP {code} for phone +92-{phone}")
-    return {"success": True, "message": f"OTP {code} received and cached", "phone": phone, "code": code}
 
 
 @app.get("/api/otp/latest")
 async def get_latest_otp(phone: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
     """Retrieve the latest valid OTP from cache (expires after 3 minutes)."""
-    import time
-    clean_phone = (phone or "").lstrip("+").lstrip("0")
-    record = OTP_STORE.get(clean_phone) or OTP_STORE.get("latest")
-
-    if not record:
+    rec = get_latest_cached_otp(phone=phone, max_age_seconds=180.0)
+    if not rec:
         return {"found": False, "message": "No active OTP in cache"}
-
-    age = time.time() - record["timestamp"]
-    if age > 180:
-        return {"found": False, "message": "OTP expired (> 3 mins old)"}
-
     return {
         "found": True,
-        "code": record["code"],
-        "phone": record["phone"],
-        "age_seconds": int(age),
+        "code": rec["code"],
+        "phone": rec["phone"],
+        "sender": rec.get("sender", "UNKNOWN"),
+        "age_seconds": rec.get("age_seconds", 0),
+        "created_at": rec.get("created_at"),
+    }
+
+
+@app.get("/api/otp/status")
+async def get_otp_system_status(user: dict = Depends(get_current_user)):
+    """Return OTP event bus telemetry and webhook configuration info."""
+    auth_cfg = get_settings().auth
+    return {
+        "webhook_url": "/api/otp/webhook",
+        "webhook_secret_configured": bool(auth_cfg.webhook_secret),
+        "total_cached": len(get_all_cached_otps()),
+        "recent_otps": get_all_cached_otps()[:10],
+    }
+
+
+@app.post("/api/otp/simulate")
+async def simulate_test_otp(phone: Optional[str] = Query("3001234567"), code: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
+    """Simulate receiving a test SMS OTP from GVC to verify phone webhook configuration and event bus."""
+    import random
+    sim_code = code or f"{random.randint(100000, 999999)}"
+    record = record_incoming_otp(
+        phone=phone,
+        code=sim_code,
+        raw_message=f"Your GVC World verification code is {sim_code}. Valid for 3 minutes.",
+        sender="TEST_SIMULATOR",
+    )
+    return {
+        "success": True,
+        "message": f"Test OTP {sim_code} simulated successfully for +92-{record['phone']}.",
+        "record": record,
     }
 
 

@@ -195,6 +195,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
                         auth_token TEXT,
                         bearer_token TEXT,
                         cookies_json TEXT,
+                        proxy_url TEXT,
                         source TEXT DEFAULT 'MANUAL_SYNC',
                         is_valid INTEGER DEFAULT 1,
                         expires_at TEXT,
@@ -236,6 +237,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 _ensure_cols("gvc_sessions", {
                     "bearer_token": "TEXT",
                     "cookies_json": "TEXT",
+                    "proxy_url": "TEXT",
                     "source": "TEXT DEFAULT 'MANUAL_SYNC'",
                     "is_valid": "INTEGER DEFAULT 1",
                     "expires_at": "TEXT",
@@ -1369,6 +1371,7 @@ def save_gvc_session(
     auth_token: str = "",
     cookies: Optional[dict | str] = None,
     bearer_token: Optional[str] = None,
+    proxy_url: Optional[str] = None,
     source: str = "MANUAL_SYNC",
     synced_by: str = "staff",
     expires_in_seconds: int = 14400,
@@ -1377,7 +1380,7 @@ def save_gvc_session(
 ) -> dict:
     """
     Save or update an active GVC session.
-    Parses string or dict cookies and normalizes auth_token.
+    Parses string or dict cookies, normalizes auth_token, and preserves proxy affinity.
     """
     try:
         now = datetime.utcnow()
@@ -1421,24 +1424,31 @@ def save_gvc_session(
         with _lock:
             conn = get_connection(db_path)
             try:
+                # If proxy_url not provided, inherit existing active session proxy if any
+                if not proxy_url:
+                    prev = conn.execute("SELECT proxy_url FROM gvc_sessions WHERE is_valid = 1 ORDER BY id DESC LIMIT 1").fetchone()
+                    if prev and prev["proxy_url"]:
+                        proxy_url = prev["proxy_url"]
+
                 with conn:
                     conn.execute("UPDATE gvc_sessions SET is_valid = 0 WHERE is_valid = 1")
                     cur = conn.execute("""
                         INSERT INTO gvc_sessions (
-                            auth_token, bearer_token, cookies_json, source, is_valid,
+                            auth_token, bearer_token, cookies_json, proxy_url, source, is_valid,
                             expires_at, last_synced_at, synced_by, notes
-                        ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
                     """, (
-                        clean_token, clean_bearer, cookies_json, source,
+                        clean_token, clean_bearer, cookies_json, proxy_url, source,
                         expires_at, now_str, synced_by, notes
                     ))
                     session_id = cur.lastrowid
-                logger.info(f"[db] ✓ Saved active GVC session #{session_id} (source={source}, synced_by={synced_by})")
+                logger.info(f"[db] ✓ Saved active GVC session #{session_id} (source={source}, synced_by={synced_by}, proxy={proxy_url or 'direct'})")
                 return {
                     "id": session_id,
                     "auth_token": clean_token,
                     "bearer_token": clean_bearer,
                     "cookies_count": len(cookies_dict),
+                    "proxy_url": proxy_url,
                     "source": source,
                     "is_valid": True,
                     "expires_at": expires_at,
@@ -1457,7 +1467,7 @@ def get_active_gvc_session(db_path: Path = DB_PATH) -> Optional[dict]:
     conn = get_connection(db_path)
     try:
         row = conn.execute("""
-            SELECT id, auth_token, bearer_token, cookies_json, source, is_valid,
+            SELECT id, auth_token, bearer_token, cookies_json, proxy_url, source, is_valid,
                    expires_at, last_synced_at, synced_by, notes
             FROM gvc_sessions
             WHERE is_valid = 1
@@ -1487,6 +1497,7 @@ def get_active_gvc_session(db_path: Path = DB_PATH) -> Optional[dict]:
             "auth_token": row["auth_token"] or "",
             "bearer_token": row["bearer_token"] or row["auth_token"] or "",
             "cookies": cookies,
+            "proxy_url": row["proxy_url"] if "proxy_url" in row.keys() else None,
             "source": row["source"],
             "is_valid": bool(row["is_valid"]) and not is_expired,
             "is_expired": is_expired,
