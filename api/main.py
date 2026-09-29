@@ -27,7 +27,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Header, Query, Response, status
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Header, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
