@@ -374,10 +374,18 @@ class GVCPortalDriver:
                         resp = await client.put(url, json=payload, headers=self._get_headers())
 
                 body_text = resp.text.strip()
+                headers_str = str(getattr(resp, "headers", {})).lower()
+                is_unauthorized = (
+                    resp.status_code == 401
+                    or (resp.status_code == 200 and "unauthorized" in body_text.lower() and "login" in body_text.lower())
+                )
                 is_waf_block = (
-                    "_Incapsula_Resource" in body_text
-                    or body_text.lower().startswith("<html")
-                    or "<head" in body_text.lower()
+                    not is_unauthorized
+                    and (
+                        "_incapsula_resource" in body_text.lower()
+                        or (resp.status_code == 200 and body_text.lower().startswith("<html"))
+                        or (resp.status_code in [403, 502, 503, 504, 522] and ("_incapsula_resource" in body_text.lower() or "incapsula" in headers_str or "imperva" in headers_str))
+                    )
                 )
 
                 # If WAF block, auto-refresh WAF cookies via Playwright and retry once
@@ -401,13 +409,42 @@ class GVCPortalDriver:
                             async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=20.0, follow_redirects=True) as client:
                                 resp = await client.put(url, json=payload, headers=self._get_headers())
                         body_text = resp.text.strip()
+                        headers_str = str(getattr(resp, "headers", {})).lower()
+                        is_unauthorized = (
+                            resp.status_code == 401
+                            or (resp.status_code == 200 and "unauthorized" in body_text.lower() and "login" in body_text.lower())
+                        )
                         is_waf_block = (
-                            "_Incapsula_Resource" in body_text
-                            or body_text.lower().startswith("<html")
-                            or "<head" in body_text.lower()
+                            not is_unauthorized
+                            and (
+                                "_incapsula_resource" in body_text.lower()
+                                or (resp.status_code == 200 and body_text.lower().startswith("<html"))
+                                or (resp.status_code in [403, 502, 503, 504, 522] and ("_incapsula_resource" in body_text.lower() or "incapsula" in headers_str or "imperva" in headers_str))
+                            )
                         )
                     except Exception as re_err:
                         logger.warning(f"[gvc] Retry after WAF refresh failed: {re_err}")
+
+                if is_unauthorized:
+                    logger.warning(f"[gvc] Session token was rejected (HTTP 401 Unauthorized). The token has expired or is bound to a different client IP.")
+                    invalidate_gvc_session()
+                    self._bearer_token = None
+
+                    # If Auto-Solver mode is enabled, trigger autonomous login immediately
+                    if get_gvc_auth_mode() == "auto_solver":
+                        logger.info("[gvc] Auto-Solver mode active. Triggering background login renewal...")
+                        from .gvc_auth import gvc_auth_solver
+                        login_res = await gvc_auth_solver.login_with_credentials()
+                        if login_res.get("success"):
+                            logger.info("[gvc] ✓ Re-authentication succeeded. Retrying slot search with fresh session...")
+                            return await self.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=date_from, date_to=date_to)
+
+                    self.last_search_status = {
+                        "status": "UNAUTHENTICATED",
+                        "code": 401,
+                        "error": "GVC session is unauthenticated or expired. Please sync your active GVC token via Option 1 or switch to Auto-Solver (Option 3).",
+                    }
+                    return []
 
                 if resp.status_code == 200 and not is_waf_block:
                     if proxy:
@@ -462,16 +499,6 @@ class GVCPortalDriver:
                     }
                     return []
 
-                elif resp.status_code == 401 or (resp.status_code == 403 and not is_waf_block):
-                    logger.warning(f"[gvc] Direct REST returned genuine HTTP {resp.status_code}. Session expired/invalid.")
-                    invalidate_gvc_session()
-                    self._bearer_token = None
-                    self.last_search_status = {
-                        "status": "UNAUTHENTICATED",
-                        "code": 401,
-                        "error": "GVC portal session expired. Please re-sync your session token using Option 1 or Auto-Solver (Option 3).",
-                    }
-                    return []
                 else:
                     logger.warning(f"[gvc] Direct REST returned HTTP {resp.status_code}: {resp.text[:120]}")
                     if proxy:

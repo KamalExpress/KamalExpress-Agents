@@ -57,13 +57,10 @@ class GVCAuthSolver:
         return {
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
-            "Content-Type": "application/json",
+            "Connection": "keep-alive",
             "Origin": self.base_url,
-            "Referer": f"{self.base_url}/en/login",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Sec-Ch-Ua": '"Google Chrome";v="128", "Chromium";v="128", "Not;A=Brand";v="24"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Referer": f"{self.base_url}/?lang=en_US",
+            "X-Requested-With": "XMLHttpRequest",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
@@ -77,6 +74,7 @@ class GVCAuthSolver:
     ) -> Dict[str, Any]:
         """
         Execute automated login via CapSolver + GVC REST API.
+        Directly matches operator-agent/main_operator.py login mechanics.
         """
         creds = get_gvc_credentials()
         email = (email or creds.get("email") or "").strip()
@@ -94,7 +92,7 @@ class GVCAuthSolver:
                 "error": "Captcha solver is not configured (CAPTCHA_API_KEY is empty). Please configure CapSolver or 2Captcha.",
             }
 
-        login_url = f"{self.base_url}/api/v1/user/login"
+        login_url = f"{self.base_url}/api/v1/auth/login"
         logger.info(f"[gvc_auth] Initiating autonomous GVC login for account: {email}...")
 
         last_error = None
@@ -103,28 +101,59 @@ class GVCAuthSolver:
             logger.info(f"[gvc_auth] Attempt {attempt}/{max_retries} via proxy {proxy or 'direct'}...")
 
             try:
-                # 1. Solve reCAPTCHA
-                page_url = f"{self.base_url}/en/login"
+                # 1. Pre-flight navigation to establish Incapsula TLS trust on proxy
+                proxies = {"http": proxy, "https": proxy} if proxy else None
+                preflight_cookies: Dict[str, str] = {}
+                if HAS_CURL_CFFI and AsyncSession:
+                    try:
+                        async with AsyncSession(impersonate="chrome120") as pf_sess:
+                            await pf_sess.get(
+                                f"{self.base_url}/?lang=en_US",
+                                headers={
+                                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                                    "Sec-Fetch-Dest": "document",
+                                    "Sec-Fetch-Mode": "navigate",
+                                    "Sec-Fetch-Site": "none",
+                                },
+                                proxies=proxies,
+                                timeout=15,
+                            )
+                            if hasattr(pf_sess, "cookies"):
+                                preflight_cookies = pf_sess.cookies.get_dict()
+                    except Exception as pf_err:
+                        logger.debug(f"[gvc_auth] Preflight note: {pf_err}")
+
+                # 2. Solve reCAPTCHA
+                page_url = f"{self.base_url}/login"
                 captcha_token = await self.captcha_solver.solve_recaptcha_v2(self.sitekey, page_url)
                 if not captcha_token:
                     logger.warning(f"[gvc_auth] Captcha solving returned empty on attempt {attempt}.")
                     continue
 
                 payload = {
-                    "email": email,
+                    "username": email,
                     "password": password,
-                    "captcha": captcha_token,
-                    "recaptcha": captcha_token,
+                    "g-recaptcha-response": captcha_token,
                 }
 
-                # 2. Dispatch login request
-                proxies = {"http": proxy, "https": proxy} if proxy else None
+                # 3. Dispatch login request
+                session_cookies = dict(preflight_cookies)
                 if HAS_CURL_CFFI and AsyncSession:
                     async with AsyncSession(impersonate="chrome120") as session:
-                        resp = await session.post(login_url, json=payload, headers=self._get_headers(), proxies=proxies, timeout=30)
+                        resp = await session.post(
+                            login_url,
+                            json=payload,
+                            headers=self._get_headers(),
+                            cookies=session_cookies,
+                            proxies=proxies,
+                            timeout=30,
+                        )
+                        if hasattr(session, "cookies"):
+                            session_cookies.update(session.cookies.get_dict())
                 else:
-                    async with httpx.AsyncClient(proxy=proxy, timeout=30.0, follow_redirects=True) as client:
+                    async with httpx.AsyncClient(cookies=session_cookies, proxy=proxy, timeout=30.0, follow_redirects=True) as client:
                         resp = await client.post(login_url, json=payload, headers=self._get_headers())
+                        session_cookies.update(dict(resp.cookies))
                     
                 if resp.status_code in [200, 201]:
                     data = {}
@@ -145,16 +174,15 @@ class GVCAuthSolver:
                             token = data.get("token") or data.get("auth_token") or ""
 
                     # Extract from cookies
-                    cookies = dict(resp.cookies)
-                    if not token and "auth_token" in cookies:
-                        token = cookies["auth_token"]
+                    if not token and "auth_token" in session_cookies:
+                        token = session_cookies["auth_token"]
 
-                    if token or len(cookies) > 0:
+                    if token or len(session_cookies) > 0:
                         if proxy:
                             self.proxy_manager.mark_proxy_success(proxy)
                         saved = save_gvc_session(
-                            auth_token=token,
-                            cookies=cookies,
+                            auth_token=token or session_cookies.get("auth_token", "cookie-session"),
+                            cookies=session_cookies,
                             bearer_token=token,
                             source="AUTO_SOLVER",
                             synced_by="auto_solver",
