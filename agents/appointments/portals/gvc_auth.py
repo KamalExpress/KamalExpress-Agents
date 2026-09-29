@@ -83,13 +83,14 @@ class GVCAuthSolver:
         if not email or not password:
             return {
                 "success": False,
-                "error": "No GVC account credentials configured. Please set Email and Password in GVC Auth settings.",
+                "error": "No GVC account credentials configured. Please enter your GVC Account Email and Password in Option 3 settings.",
             }
 
+        self.captcha_solver._refresh_config()
         if not self.captcha_solver.enabled:
             return {
                 "success": False,
-                "error": "Captcha solver is not configured (CAPTCHA_API_KEY is empty). Please configure CapSolver or 2Captcha.",
+                "error": "CapSolver API Key is empty. Please enter your CapSolver API Key (CAP-...) in Option 3 settings and save.",
             }
 
         login_url = f"{self.base_url}/api/v1/auth/login"

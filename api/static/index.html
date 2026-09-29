@@ -1753,11 +1753,32 @@ How can I help you today?</div>
     btn.disabled = true;
     btn.textContent = '⏳ Solving reCAPTCHA & Logging in...';
 
+    const email = document.getElementById('gvc-acc-email').value.trim();
+    const password = document.getElementById('gvc-acc-password').value;
+    const capsolverKey = (document.getElementById('gvc-capsolver-key').value || '').trim();
+
+    const payload = {};
+    if (email && password) {
+      payload.email = email;
+      payload.password = password;
+    }
+    if (capsolverKey) {
+      payload.captcha_api_key = capsolverKey;
+      payload.captcha_provider = 'capsolver';
+    }
+
     try {
-      const resp = await fetch('/api/gvc/auth/solve-now', { method: 'POST' });
+      const resp = await fetch('/api/gvc/auth/solve-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       const data = await resp.json();
       if (data.success) {
         alert('🎉 SUCCESS: ' + (data.message || 'Authenticated successfully!'));
+        if (capsolverKey) {
+          document.getElementById('gvc-capsolver-key').value = '';
+        }
         loadGVCAuthStatus();
       } else {
         alert('❌ Auto-login test failed: ' + (data.error || JSON.stringify(data)));

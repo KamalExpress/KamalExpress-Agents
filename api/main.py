@@ -613,8 +613,15 @@ async def gvc_set_auth_mode_endpoint(req: GVCModeRequest, user: dict = Depends(g
     }
 
 
+class GVCSolveNowRequest(BaseModel):
+    email: Optional[str] = None
+    password: Optional[str] = None
+    captcha_api_key: Optional[str] = None
+    captcha_provider: Optional[str] = "capsolver"
+
+
 @app.post("/api/gvc/auth/credentials")
-async def gvc_set_credentials_endpoint(req: GVCCredentialsRequest, admin: dict = Depends(require_admin)):
+async def gvc_set_credentials_endpoint(req: GVCCredentialsRequest, user: dict = Depends(get_current_user)):
     """Store GVC account credentials and Captcha solver API key for autonomous login."""
     set_gvc_credentials(req.email, req.password, req.interval_seconds)
     if req.captcha_api_key:
@@ -625,9 +632,19 @@ async def gvc_set_credentials_endpoint(req: GVCCredentialsRequest, admin: dict =
 
 
 @app.post("/api/gvc/auth/solve-now")
-async def gvc_solve_now_endpoint(admin: dict = Depends(require_admin)):
+async def gvc_solve_now_endpoint(
+    req: Optional[GVCSolveNowRequest] = None,
+    user: dict = Depends(get_current_user),
+):
     """Trigger an immediate CapSolver login attempt."""
-    res = await gvc_auth_solver.login_with_credentials()
+    email = req.email if req else None
+    password = req.password if req else None
+    if req:
+        if req.email and req.password:
+            set_gvc_credentials(req.email, req.password)
+        if req.captcha_api_key:
+            set_captcha_settings(req.captcha_provider or "capsolver", req.captcha_api_key)
+    res = await gvc_auth_solver.login_with_credentials(email=email, password=password)
     return res
 
 
