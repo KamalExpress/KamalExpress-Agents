@@ -16,7 +16,7 @@ services:
     container_name: kamal-express-agents
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8085}:8080"
     environment:
       # API Server
       - API_HOST=0.0.0.0
