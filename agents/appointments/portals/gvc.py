@@ -183,17 +183,14 @@ class GVCPortalDriver:
             return self._session_cookies
 
     def _get_headers(self) -> Dict[str, str]:
-        """Construct realistic browser headers."""
+        """Construct realistic browser headers matching curl_cffi and Playwright context."""
         headers = {
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
-            "Content-Type": "application/json",
+            "Connection": "keep-alive",
             "Origin": self.base_url,
-            "Referer": f"{self.base_url}/",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Sec-Ch-Ua": '"Google Chrome";v="128", "Chromium";v="128", "Not;A=Brand";v="24"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Referer": f"{self.base_url}/?lang=en_US",
+            "X-Requested-With": "XMLHttpRequest",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
@@ -201,6 +198,74 @@ class GVCPortalDriver:
         if self._bearer_token:
             headers["Authorization"] = f"Bearer {self._bearer_token}"
         return headers
+
+    async def refresh_waf_cookies(self, proxy: Optional[str] = None) -> Dict[str, str]:
+        """
+        Execute headless Playwright flow to quickly solve Imperva JS challenge and extract fresh Incapsula cookies.
+        Directly adapted from operator-agent/main_operator.py.
+        """
+        logger.info("[gvc] Refreshing Imperva WAF cookies via Headless Playwright...")
+
+        def _sync_worker():
+            try:
+                from playwright.sync_api import sync_playwright
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(
+                        headless=True,
+                        args=["--disable-blink-features=AutomationControlled"]
+                    )
+                    context_kwargs = {
+                        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "viewport": {"width": 1280, "height": 720},
+                        "extra_http_headers": {
+                            "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                            "sec-ch-ua-mobile": "?0",
+                            "sec-ch-ua-platform": '"Windows"',
+                        }
+                    }
+                    if proxy:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(proxy)
+                        if parsed.hostname:
+                            proxy_conf = {"server": f"http://{parsed.hostname}:{parsed.port}"}
+                            if parsed.username:
+                                proxy_conf["username"] = parsed.username
+                                proxy_conf["password"] = parsed.password
+                            context_kwargs["proxy"] = proxy_conf
+
+                    context = browser.new_context(**context_kwargs)
+                    page = context.new_page()
+
+                    target_url = f"{self.base_url}/login"
+                    logger.info(f"[gvc] Navigating to {target_url} to clear Imperva challenge...")
+                    page.goto(target_url, wait_until="commit", timeout=60000)
+
+                    username_selector = 'input[name="username"], input[type="email"], input[id*="user"], #email, form'
+                    page.wait_for_selector(username_selector, timeout=45000)
+                    logger.info("[gvc] Login form rendered! Imperva WAF challenge successfully bypassed.")
+
+                    cookies = context.cookies()
+                    for c in cookies:
+                        self._session_cookies[c["name"]] = c["value"]
+
+                    browser.close()
+
+                    # Update SQLite database session with the fresh cookies
+                    active_sess = get_active_gvc_session()
+                    if active_sess and (active_sess.get("auth_token") or active_sess.get("bearer_token")):
+                        save_gvc_session(
+                            auth_token=active_sess.get("auth_token"),
+                            bearer_token=active_sess.get("bearer_token"),
+                            cookies=self._session_cookies,
+                            source=active_sess.get("source", "MANUAL_SYNC"),
+                            synced_by="waf_refresher",
+                        )
+                    return self._session_cookies
+            except Exception as err:
+                logger.warning(f"[gvc] Headless Playwright WAF cookie refresh encountered: {err}")
+                return self._session_cookies
+
+        return await asyncio.to_thread(_sync_worker)
 
     # ── Session Health Check ────────────────────────────────────
 
@@ -278,6 +343,33 @@ class GVCPortalDriver:
                     or "<head" in body_text.lower()
                 )
 
+                # If WAF block, auto-refresh WAF cookies via Playwright and retry once
+                if is_waf_block:
+                    logger.warning(f"[gvc] Imperva WAF challenge encountered on {proxy or 'direct'}. Auto-refreshing WAF cookies via Playwright...")
+                    await self.refresh_waf_cookies(proxy=proxy)
+                    try:
+                        if HAS_CURL_CFFI and AsyncSession:
+                            async with AsyncSession(impersonate="chrome120") as retry_session:
+                                resp = await retry_session.put(
+                                    url,
+                                    json=payload,
+                                    headers=self._get_headers(),
+                                    cookies=self._session_cookies,
+                                    proxies=proxies,
+                                    timeout=20,
+                                )
+                        else:
+                            async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=20.0, follow_redirects=True) as client:
+                                resp = await client.put(url, json=payload, headers=self._get_headers())
+                        body_text = resp.text.strip()
+                        is_waf_block = (
+                            "_Incapsula_Resource" in body_text
+                            or body_text.lower().startswith("<html")
+                            or "<head" in body_text.lower()
+                        )
+                    except Exception as re_err:
+                        logger.warning(f"[gvc] Retry after WAF refresh failed: {re_err}")
+
                 if resp.status_code == 200 and not is_waf_block:
                     if proxy:
                         self.proxy_manager.mark_proxy_success(proxy)
@@ -321,7 +413,7 @@ class GVCPortalDriver:
                     return found_slots
 
                 elif is_waf_block:
-                    logger.warning(f"[gvc] Imperva WAF challenge page encountered on proxy {proxy or 'direct'}. Session is preserved.")
+                    logger.warning(f"[gvc] Imperva WAF challenge page still active after refresh attempt on proxy {proxy or 'direct'}. Session is preserved.")
                     if proxy:
                         self.proxy_manager.mark_proxy_failed(proxy)
                     self.last_search_status = {
