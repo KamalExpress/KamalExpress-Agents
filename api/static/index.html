@@ -1996,6 +1996,27 @@ How can I help you today?</div>
         return;
       }
 
+      if (data.status === "WAF_CHALLENGE") {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px;">
+          <div style="max-width:550px; margin:0 auto; background:var(--accent-light); border:1px solid #fed7aa; border-radius:var(--radius); padding:16px;">
+            <div style="font-weight:600; color:#c2410c; font-size:13.5px; margin-bottom:6px; display:flex; align-items:center; justify-content:center; gap:6px;">
+              <i data-lucide="shield-alert" class="icon" style="width:16px; height:16px;"></i> Imperva WAF Protection Active
+            </div>
+            <p style="font-size:12px; color:#9a3412; margin-bottom:12px;">${escapeHtml(data.error || 'Imperva WAF challenge encountered on server IP. Rotating Pakistan residential proxy...')}</p>
+            <div style="display:flex; justify-content:center; gap:8px;">
+              <button class="btn btn-primary btn-sm" onclick="executeSlotSearch()">
+                <i data-lucide="refresh-cw" class="icon"></i> Retry Slot Search
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="switchNavTab('proxy-view')">
+                <i data-lucide="globe" class="icon"></i> Check Proxy Pool
+              </button>
+            </div>
+          </div>
+        </td></tr>`;
+        renderIcons();
+        return;
+      }
+
       if (data.status === "ERROR") {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--destructive); padding:20px;">Search error: ${escapeHtml(data.error || 'Network error')}</td></tr>`;
         return;

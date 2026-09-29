@@ -19,6 +19,7 @@ import time
 from typing import Any, Dict, Optional
 
 import httpx
+from curl_cffi.requests import AsyncSession
 
 from config.settings import get_settings
 from ..captcha import CaptchaSolver
@@ -111,8 +112,9 @@ class GVCAuthSolver:
                 }
 
                 # 2. Dispatch login request
-                async with httpx.AsyncClient(proxy=proxy, timeout=30.0, follow_redirects=True) as client:
-                    resp = await client.post(login_url, json=payload, headers=self._get_headers())
+                proxies = {"http": proxy, "https": proxy} if proxy else None
+                async with AsyncSession(impersonate="chrome120") as session:
+                    resp = await session.post(login_url, json=payload, headers=self._get_headers(), proxies=proxies, timeout=30)
                     
                     if resp.status_code in [200, 201]:
                         data = {}

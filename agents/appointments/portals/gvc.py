@@ -34,6 +34,7 @@ if sys.platform == "win32":
         pass
 
 import httpx
+from curl_cffi.requests import AsyncSession
 
 from config.settings import get_settings
 from ..captcha import CaptchaSolver
@@ -243,21 +244,31 @@ class GVCPortalDriver:
         logger.info(f"[gvc] Querying slots on {vac_meta['name']} for {type_name} starting {date_from}...")
         found_slots: List[AvailableSlot] = []
 
-        # 1. Primary path: Direct Authenticated HTTP REST Request with Proxy
+        # 1. Primary path: Direct Authenticated HTTP REST Request with Proxy via curl_cffi
         has_db_session = self._load_active_session_from_db()
         if has_db_session and self._bearer_token:
             proxy = self.proxy_manager.get_proxy_url()
             url = f"{self.base_url}/api/v1/periodslot/slots"
+            proxies = {"http": proxy, "https": proxy} if proxy else None
             try:
-                async with httpx.AsyncClient(
-                    cookies=self._session_cookies,
-                    proxy=proxy,
-                    timeout=20.0,
-                    follow_redirects=True,
-                ) as client:
-                    resp = await client.put(url, json=payload, headers=self._get_headers())
-                    
-                    if resp.status_code == 200:
+                async with AsyncSession(impersonate="chrome120") as session:
+                    resp = await session.put(
+                        url,
+                        json=payload,
+                        headers=self._get_headers(),
+                        cookies=self._session_cookies,
+                        proxies=proxies,
+                        timeout=20,
+                    )
+
+                    body_text = resp.text.strip()
+                    is_waf_block = (
+                        "_Incapsula_Resource" in body_text
+                        or body_text.lower().startswith("<html")
+                        or "<head" in body_text.lower()
+                    )
+
+                    if resp.status_code == 200 and not is_waf_block:
                         if proxy:
                             self.proxy_manager.mark_proxy_success(proxy)
                         data = {}
@@ -299,18 +310,47 @@ class GVCPortalDriver:
                         logger.info(f"[gvc] ✓ Direct REST slot query returned {len(found_slots)} open slots.")
                         return found_slots
 
-                    elif resp.status_code in [401, 403]:
-                        logger.warning(f"[gvc] Direct REST returned HTTP {resp.status_code}. Session expired/invalid.")
+                    elif is_waf_block:
+                        logger.warning(f"[gvc] Imperva WAF challenge page encountered on proxy {proxy or 'direct'}. Session is preserved.")
+                        if proxy:
+                            self.proxy_manager.mark_proxy_failed(proxy)
+                        self.last_search_status = {
+                            "status": "WAF_CHALLENGE",
+                            "code": 403,
+                            "error": "Imperva WAF challenge encountered on server connection. Rotating Pakistan residential proxy...",
+                        }
+                        return []
+
+                    elif resp.status_code == 401 or (resp.status_code == 403 and not is_waf_block):
+                        logger.warning(f"[gvc] Direct REST returned genuine HTTP {resp.status_code}. Session expired/invalid.")
                         invalidate_gvc_session()
                         self._bearer_token = None
+                        self.last_search_status = {
+                            "status": "UNAUTHENTICATED",
+                            "code": 401,
+                            "error": "GVC portal session expired. Please re-sync your session token using Option 1 or Auto-Solver (Option 3).",
+                        }
+                        return []
                     else:
                         logger.warning(f"[gvc] Direct REST returned HTTP {resp.status_code}: {resp.text[:120]}")
                         if proxy:
                             self.proxy_manager.mark_proxy_failed(proxy)
+                        self.last_search_status = {
+                            "status": "ERROR",
+                            "code": resp.status_code,
+                            "error": f"GVC Portal responded with HTTP {resp.status_code}: {resp.text[:120]}",
+                        }
+                        return []
             except Exception as e:
                 logger.warning(f"[gvc] Direct REST slot query failed: {e}")
                 if proxy:
                     self.proxy_manager.mark_proxy_failed(proxy)
+                self.last_search_status = {
+                    "status": "ERROR",
+                    "code": 500,
+                    "error": f"Network error during slot query: {str(e)}",
+                }
+                return []
 
         # 2. Secondary path: Local Chrome CDP execution (if connected)
         async def _cdp_fetch():
@@ -391,7 +431,7 @@ class GVCPortalDriver:
         except Exception:
             pass
 
-        # 3. Handle unauthenticated failure with clear mode-aware error message
+        # 3. Handle unauthenticated state with mode-aware message
         auth_mode = get_gvc_auth_mode()
         if auth_mode == "auto_solver":
             err_msg = "GVC session is unauthenticated. Auto-Solver is currently solving reCAPTCHA and authenticating in the background. Please retry in a few seconds."
@@ -419,9 +459,10 @@ class GVCPortalDriver:
         last_err = None
         for attempt in range(max_retries):
             proxy = self.proxy_manager.get_proxy_url()
+            proxies = {"http": proxy, "https": proxy} if proxy else None
             try:
-                async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=25.0) as client:
-                    resp = await client.post(url, headers=self._get_headers())
+                async with AsyncSession(impersonate="chrome120") as session:
+                    resp = await session.post(url, headers=self._get_headers(), cookies=self._session_cookies, proxies=proxies, timeout=25)
                     if resp.status_code in [200, 204]:
                         if proxy:
                             self.proxy_manager.mark_proxy_success(proxy)
@@ -505,9 +546,10 @@ class GVCPortalDriver:
         last_error = None
         for attempt in range(max_retries):
             proxy = self.proxy_manager.get_proxy_url()
+            proxies = {"http": proxy, "https": proxy} if proxy else None
             try:
-                async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=30.0) as client:
-                    resp = await client.post(url, json=sub_payload, headers=self._get_headers())
+                async with AsyncSession(impersonate="chrome120") as session:
+                    resp = await session.post(url, json=sub_payload, headers=self._get_headers(), cookies=self._session_cookies, proxies=proxies, timeout=30)
                     
                     if resp.status_code in [200, 201]:
                         if proxy:
