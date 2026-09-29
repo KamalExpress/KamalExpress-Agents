@@ -2468,6 +2468,8 @@ How can I help you today?</div>
     });
   }
 
+  let latestOtpList = [];
+
   async function loadOtpStream() {
     try {
       const resp = await fetch('/api/otp/status');
@@ -2481,13 +2483,19 @@ How can I help you today?</div>
       if (!tbody) return;
       tbody.innerHTML = '';
 
-      if (!data.recent_otps || data.recent_otps.length === 0) {
+      latestOtpList = data.recent_otps || [];
+
+      if (!latestOtpList || latestOtpList.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:20px;">No OTPs in cache. Incoming SMS OTPs will appear here in real-time.</td></tr>`;
         return;
       }
 
-      data.recent_otps.forEach(item => {
+      latestOtpList.forEach((item, idx) => {
         const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.title = 'Click to inspect raw JSON payload from mobile device';
+        tr.onclick = () => showOtpDetails(idx);
+
         const isFresh = item.age_seconds <= 180;
         const isOtp = item.is_otp !== false && item.code !== 'TEST_MSG';
         const badgeClass = isOtp ? (isFresh ? 'badge-booked' : 'badge-disabled') : 'badge-in_progress';
@@ -2507,6 +2515,20 @@ How can I help you today?</div>
     } catch (err) {
       console.error("Failed to load OTP stream:", err);
     }
+  }
+
+  function showOtpDetails(idx) {
+    const item = latestOtpList[idx];
+    if (!item) return;
+    const details = `📱 Ingested SMS Inspection:\n\n` +
+      `• Timestamp: ${item.created_at}\n` +
+      `• Extracted Code: ${item.code} (Is OTP: ${item.is_otp})\n` +
+      `• Normalized Phone: +92-${item.phone}\n` +
+      `• Raw Sender / From: ${item.raw_phone || item.sender}\n` +
+      `• Client Device IP: ${item.client_ip || 'unknown'}\n` +
+      `• Raw Message Text:\n"${item.raw_message}"\n\n` +
+      `• Full Raw JSON / Payload:\n${item.raw_payload || item.raw_message}`;
+    alert(details);
   }
 
   async function simulateOtpTest() {

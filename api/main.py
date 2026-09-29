@@ -799,12 +799,17 @@ async def receive_otp_webhook(request: Request):
     if not code:
         code = extract_otp_code(str(message)) or extract_otp_code(raw_body_str)
 
+    client_ip = request.client.host if request.client else None
+    logger.info(f"[otp-webhook] Incoming SMS from IP {client_ip or 'unknown'} | raw_body: {raw_body_str[:300]}")
+
     try:
         record = record_incoming_otp(
             phone=str(phone) if phone else None,
             code=str(code) if code else None,
             raw_message=str(message),
             sender=str(sender_name),
+            raw_payload=raw_body_str,
+            client_ip=client_ip,
         )
         status_code_name = "OTP_INTERCEPTED" if record.get("is_otp") else "TEST_MSG_LOGGED"
         msg = f"OTP {record['code']} received and dispatched to active booking tasks." if record.get("is_otp") else "Test SMS logged to stream successfully."

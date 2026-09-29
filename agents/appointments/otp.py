@@ -81,6 +81,8 @@ def record_incoming_otp(
     code: Optional[str] = None,
     raw_message: Optional[str] = None,
     sender: str = "SMS_FORWARDER",
+    raw_payload: Optional[str] = None,
+    client_ip: Optional[str] = None,
 ) -> dict:
     """
     Ingest and cache an incoming SMS/OTP, immediately notifying all awaiting listeners.
@@ -99,6 +101,8 @@ def record_incoming_otp(
         "phone": clean_phone,
         "raw_phone": phone or "",
         "raw_message": raw_message or "",
+        "raw_payload": raw_payload or raw_message or "",
+        "client_ip": client_ip or "",
         "sender": sender,
         "timestamp": time.time(),
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -128,8 +132,9 @@ def record_incoming_otp(
                 OTP_WAITERS[key] = []
 
     logger.info(
-        f"[otp] ✓ Ingested SMS (Code: '{display_code}', IsOTP: {has_valid_otp}) "
-        f"for phone +92-{clean_phone} from {sender}. (Notified {notified_count} tasks)"
+        f"[otp] ✓ Intercepted SMS: code='{display_code}', is_otp={has_valid_otp}, "
+        f"phone=+92-{clean_phone}, sender='{sender}', ip='{client_ip or 'unknown'}', "
+        f"raw_text='{raw_message[:120] if raw_message else ''}'. (Woke up {notified_count} tasks)"
     )
     return record
 
