@@ -34,7 +34,13 @@ if sys.platform == "win32":
         pass
 
 import httpx
-from curl_cffi.requests import AsyncSession
+
+try:
+    from curl_cffi.requests import AsyncSession
+    HAS_CURL_CFFI = True
+except ImportError:
+    AsyncSession = None
+    HAS_CURL_CFFI = False
 
 from config.settings import get_settings
 from ..captcha import CaptchaSolver
@@ -251,96 +257,100 @@ class GVCPortalDriver:
             url = f"{self.base_url}/api/v1/periodslot/slots"
             proxies = {"http": proxy, "https": proxy} if proxy else None
             try:
-                async with AsyncSession(impersonate="chrome120") as session:
-                    resp = await session.put(
-                        url,
-                        json=payload,
-                        headers=self._get_headers(),
-                        cookies=self._session_cookies,
-                        proxies=proxies,
-                        timeout=20,
-                    )
+                if HAS_CURL_CFFI and AsyncSession:
+                    async with AsyncSession(impersonate="chrome120") as session:
+                        resp = await session.put(
+                            url,
+                            json=payload,
+                            headers=self._get_headers(),
+                            cookies=self._session_cookies,
+                            proxies=proxies,
+                            timeout=20,
+                        )
+                else:
+                    async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=20.0, follow_redirects=True) as client:
+                        resp = await client.put(url, json=payload, headers=self._get_headers())
 
-                    body_text = resp.text.strip()
-                    is_waf_block = (
-                        "_Incapsula_Resource" in body_text
-                        or body_text.lower().startswith("<html")
-                        or "<head" in body_text.lower()
-                    )
+                body_text = resp.text.strip()
+                is_waf_block = (
+                    "_Incapsula_Resource" in body_text
+                    or body_text.lower().startswith("<html")
+                    or "<head" in body_text.lower()
+                )
 
-                    if resp.status_code == 200 and not is_waf_block:
-                        if proxy:
-                            self.proxy_manager.mark_proxy_success(proxy)
-                        data = {}
-                        try:
-                            data = resp.json()
-                        except Exception:
-                            pass
+                if resp.status_code == 200 and not is_waf_block:
+                    if proxy:
+                        self.proxy_manager.mark_proxy_success(proxy)
+                    data = {}
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        pass
 
-                        slot_items = []
-                        if isinstance(data, list):
-                            slot_items = data
-                        elif isinstance(data, dict):
-                            slot_obj = data.get("returnobject") or {}
-                            if isinstance(slot_obj, dict):
-                                slot_items = slot_obj.get("slots") or []
-                            elif isinstance(slot_obj, list):
-                                slot_items = slot_obj
+                    slot_items = []
+                    if isinstance(data, list):
+                        slot_items = data
+                    elif isinstance(data, dict):
+                        slot_obj = data.get("returnobject") or {}
+                        if isinstance(slot_obj, dict):
+                            slot_items = slot_obj.get("slots") or []
+                        elif isinstance(slot_obj, list):
+                            slot_items = slot_obj
 
-                        self.last_search_status = {"status": "SUCCESS", "code": 200, "error": None}
-                        for item in slot_items:
-                            slot_date = item.get("date") or item.get("slotdate") or date_from
-                            slot_time = item.get("starttime") or item.get("time") or "09:00"
-                            slot_id = str(item.get("periodslotid") or item.get("id") or item.get("slotId") or "0")
-                            capacity = int(item.get("capacity") or item.get("available") or 1)
+                    self.last_search_status = {"status": "SUCCESS", "code": 200, "error": None}
+                    for item in slot_items:
+                        slot_date = item.get("date") or item.get("slotdate") or date_from
+                        slot_time = item.get("starttime") or item.get("time") or "09:00"
+                        slot_id = str(item.get("periodslotid") or item.get("id") or item.get("slotId") or "0")
+                        capacity = int(item.get("capacity") or item.get("available") or 1)
 
-                            if capacity > 0:
-                                found_slots.append(
-                                    AvailableSlot(
-                                        date=slot_date,
-                                        time=slot_time,
-                                        slot_id=slot_id,
-                                        vac_id=str(vac_meta["id"]),
-                                        vac_name=vac_meta["name"],
-                                        visa_type=str(visa_type),
-                                        available_capacity=capacity,
-                                    )
+                        if capacity > 0:
+                            found_slots.append(
+                                AvailableSlot(
+                                    date=slot_date,
+                                    time=slot_time,
+                                    slot_id=slot_id,
+                                    vac_id=str(vac_meta["id"]),
+                                    vac_name=vac_meta["name"],
+                                    visa_type=str(visa_type),
+                                    available_capacity=capacity,
                                 )
+                            )
 
-                        logger.info(f"[gvc] ✓ Direct REST slot query returned {len(found_slots)} open slots.")
-                        return found_slots
+                    logger.info(f"[gvc] ✓ Direct REST slot query returned {len(found_slots)} open slots.")
+                    return found_slots
 
-                    elif is_waf_block:
-                        logger.warning(f"[gvc] Imperva WAF challenge page encountered on proxy {proxy or 'direct'}. Session is preserved.")
-                        if proxy:
-                            self.proxy_manager.mark_proxy_failed(proxy)
-                        self.last_search_status = {
-                            "status": "WAF_CHALLENGE",
-                            "code": 403,
-                            "error": "Imperva WAF challenge encountered on server connection. Rotating Pakistan residential proxy...",
-                        }
-                        return []
+                elif is_waf_block:
+                    logger.warning(f"[gvc] Imperva WAF challenge page encountered on proxy {proxy or 'direct'}. Session is preserved.")
+                    if proxy:
+                        self.proxy_manager.mark_proxy_failed(proxy)
+                    self.last_search_status = {
+                        "status": "WAF_CHALLENGE",
+                        "code": 403,
+                        "error": "Imperva WAF challenge encountered on server connection. Rotating Pakistan residential proxy...",
+                    }
+                    return []
 
-                    elif resp.status_code == 401 or (resp.status_code == 403 and not is_waf_block):
-                        logger.warning(f"[gvc] Direct REST returned genuine HTTP {resp.status_code}. Session expired/invalid.")
-                        invalidate_gvc_session()
-                        self._bearer_token = None
-                        self.last_search_status = {
-                            "status": "UNAUTHENTICATED",
-                            "code": 401,
-                            "error": "GVC portal session expired. Please re-sync your session token using Option 1 or Auto-Solver (Option 3).",
-                        }
-                        return []
-                    else:
-                        logger.warning(f"[gvc] Direct REST returned HTTP {resp.status_code}: {resp.text[:120]}")
-                        if proxy:
-                            self.proxy_manager.mark_proxy_failed(proxy)
-                        self.last_search_status = {
-                            "status": "ERROR",
-                            "code": resp.status_code,
-                            "error": f"GVC Portal responded with HTTP {resp.status_code}: {resp.text[:120]}",
-                        }
-                        return []
+                elif resp.status_code == 401 or (resp.status_code == 403 and not is_waf_block):
+                    logger.warning(f"[gvc] Direct REST returned genuine HTTP {resp.status_code}. Session expired/invalid.")
+                    invalidate_gvc_session()
+                    self._bearer_token = None
+                    self.last_search_status = {
+                        "status": "UNAUTHENTICATED",
+                        "code": 401,
+                        "error": "GVC portal session expired. Please re-sync your session token using Option 1 or Auto-Solver (Option 3).",
+                    }
+                    return []
+                else:
+                    logger.warning(f"[gvc] Direct REST returned HTTP {resp.status_code}: {resp.text[:120]}")
+                    if proxy:
+                        self.proxy_manager.mark_proxy_failed(proxy)
+                    self.last_search_status = {
+                        "status": "ERROR",
+                        "code": resp.status_code,
+                        "error": f"GVC Portal responded with HTTP {resp.status_code}: {resp.text[:120]}",
+                    }
+                    return []
             except Exception as e:
                 logger.warning(f"[gvc] Direct REST slot query failed: {e}")
                 if proxy:

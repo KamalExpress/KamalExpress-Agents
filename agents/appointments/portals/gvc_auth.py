@@ -19,7 +19,13 @@ import time
 from typing import Any, Dict, Optional
 
 import httpx
-from curl_cffi.requests import AsyncSession
+
+try:
+    from curl_cffi.requests import AsyncSession
+    HAS_CURL_CFFI = True
+except ImportError:
+    AsyncSession = None
+    HAS_CURL_CFFI = False
 
 from config.settings import get_settings
 from ..captcha import CaptchaSolver
@@ -113,63 +119,67 @@ class GVCAuthSolver:
 
                 # 2. Dispatch login request
                 proxies = {"http": proxy, "https": proxy} if proxy else None
-                async with AsyncSession(impersonate="chrome120") as session:
-                    resp = await session.post(login_url, json=payload, headers=self._get_headers(), proxies=proxies, timeout=30)
+                if HAS_CURL_CFFI and AsyncSession:
+                    async with AsyncSession(impersonate="chrome120") as session:
+                        resp = await session.post(login_url, json=payload, headers=self._get_headers(), proxies=proxies, timeout=30)
+                else:
+                    async with httpx.AsyncClient(proxy=proxy, timeout=30.0, follow_redirects=True) as client:
+                        resp = await client.post(login_url, json=payload, headers=self._get_headers())
                     
-                    if resp.status_code in [200, 201]:
-                        data = {}
-                        try:
-                            data = resp.json()
-                        except Exception:
-                            pass
+                if resp.status_code in [200, 201]:
+                    data = {}
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        pass
 
-                        # Extract token from body or cookies
-                        token = ""
-                        if isinstance(data, dict):
-                            ret = data.get("returnobject") or {}
-                            if isinstance(ret, dict):
-                                token = ret.get("token") or ret.get("auth_token") or ret.get("jwt") or ""
-                            elif isinstance(ret, str):
-                                token = ret
-                            if not token:
-                                token = data.get("token") or data.get("auth_token") or ""
+                    # Extract token from body or cookies
+                    token = ""
+                    if isinstance(data, dict):
+                        ret = data.get("returnobject") or {}
+                        if isinstance(ret, dict):
+                            token = ret.get("token") or ret.get("auth_token") or ret.get("jwt") or ""
+                        elif isinstance(ret, str):
+                            token = ret
+                        if not token:
+                            token = data.get("token") or data.get("auth_token") or ""
 
-                        # Extract from cookies
-                        cookies = dict(resp.cookies)
-                        if not token and "auth_token" in cookies:
-                            token = cookies["auth_token"]
+                    # Extract from cookies
+                    cookies = dict(resp.cookies)
+                    if not token and "auth_token" in cookies:
+                        token = cookies["auth_token"]
 
-                        if token or len(cookies) > 0:
-                            if proxy:
-                                self.proxy_manager.mark_proxy_success(proxy)
-                            saved = save_gvc_session(
-                                auth_token=token,
-                                cookies=cookies,
-                                bearer_token=token,
-                                source="AUTO_SOLVER",
-                                synced_by="auto_solver",
-                                notes=f"Autonomous login successful for {email}",
-                            )
-                            logger.info(f"[gvc_auth] ✓ Successfully authenticated GVC session (ID: {saved['id']}) for {email}!")
-                            return {
-                                "success": True,
-                                "session_id": saved["id"],
-                                "auth_token": token[:15] + "..." if token else "cookie-auth",
-                                "source": "AUTO_SOLVER",
-                                "message": f"Autonomous login successful for {email}.",
-                            }
-                        else:
-                            logger.warning(f"[gvc_auth] Login returned 200 but no token found in payload: {resp.text[:200]}")
-                    elif resp.status_code in [401, 403]:
+                    if token or len(cookies) > 0:
                         if proxy:
-                            self.proxy_manager.mark_proxy_failed(proxy)
-                        logger.warning(f"[gvc_auth] Login rejected (HTTP {resp.status_code}): {resp.text[:200]}")
-                        last_error = f"Invalid credentials or WAF challenge (HTTP {resp.status_code})"
+                            self.proxy_manager.mark_proxy_success(proxy)
+                        saved = save_gvc_session(
+                            auth_token=token,
+                            cookies=cookies,
+                            bearer_token=token,
+                            source="AUTO_SOLVER",
+                            synced_by="auto_solver",
+                            notes=f"Autonomous login successful for {email}",
+                        )
+                        logger.info(f"[gvc_auth] ✓ Successfully authenticated GVC session (ID: {saved['id']}) for {email}!")
+                        return {
+                            "success": True,
+                            "session_id": saved["id"],
+                            "auth_token": token[:15] + "..." if token else "cookie-auth",
+                            "source": "AUTO_SOLVER",
+                            "message": f"Autonomous login successful for {email}.",
+                        }
                     else:
-                        if proxy:
-                            self.proxy_manager.mark_proxy_failed(proxy)
-                        logger.warning(f"[gvc_auth] Unexpected response (HTTP {resp.status_code}): {resp.text[:200]}")
-                        last_error = f"HTTP {resp.status_code}: {resp.text[:100]}"
+                        logger.warning(f"[gvc_auth] Login returned 200 but no token found in payload: {resp.text[:200]}")
+                elif resp.status_code in [401, 403]:
+                    if proxy:
+                        self.proxy_manager.mark_proxy_failed(proxy)
+                    logger.warning(f"[gvc_auth] Login rejected (HTTP {resp.status_code}): {resp.text[:200]}")
+                    last_error = f"Invalid credentials or WAF challenge (HTTP {resp.status_code})"
+                else:
+                    if proxy:
+                        self.proxy_manager.mark_proxy_failed(proxy)
+                    logger.warning(f"[gvc_auth] Unexpected response (HTTP {resp.status_code}): {resp.text[:200]}")
+                    last_error = f"HTTP {resp.status_code}: {resp.text[:100]}"
             except Exception as e:
                 logger.warning(f"[gvc_auth] Error on login attempt {attempt}: {e}")
                 if proxy:
