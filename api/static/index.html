@@ -3,105 +3,169 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kamal Express — AI Travel & Visa Appointment Platform</title>
+  <title>Kamal Express — AI Platform</title>
   <link rel="icon" type="image/jpeg" href="/static/logo.jpeg" />
+  
+  <!-- Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons (Official shadcn/ui Icon Library) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Markdown Parser -->
   <script src="/static/marked.min.js"></script>
+
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --primary:     #006eb5;   /* Kamal Brand Blue */
-      --primary-d:   #084b7a;   /* Deep Navy */
-      --primary-l:   #1b8fe0;   /* Light Blue */
-      --accent:      #f37021;   /* Kamal Luggage Orange */
-      --accent-r:    #e53935;   /* Accent Red */
-      --accent-teal: #00a8b5;   /* Accent Teal */
-      --bg:          #f3f7fa;   /* Clean Travel Canvas */
-      --surface:     #ffffff;
-      --border:      #d3e2ee;
-      --text:        #0d2235;
-      --muted:       #5c7a93;
-      --user-bg:     #006eb5;
-      --bot-bg:      #ffffff;
-      --shadow:      0 2px 14px rgba(0, 110, 181, 0.07);
-      --badge-queued:#f37021;
-      --badge-booked:#27ae60;
-      --badge-prog:  #0077c8;
-      --badge-fail:  #e74c3c;
+      --background: #f8fafc;        /* slate-50 */
+      --foreground: #0f172a;        /* slate-900 */
+      
+      --card: #ffffff;
+      --card-foreground: #0f172a;
+      
+      --popover: #ffffff;
+      --popover-foreground: #0f172a;
+      
+      --primary: #006eb5;           /* Kamal Brand Blue */
+      --primary-foreground: #ffffff;
+      --primary-hover: #084b7a;     /* Deep Navy */
+      --primary-light: #e0f2fe;     /* sky-100 */
+      
+      --secondary: #f1f5f9;         /* slate-100 */
+      --secondary-foreground: #1e293b;
+      --secondary-hover: #e2e8f0;
+      
+      --muted: #f1f5f9;
+      --muted-foreground: #64748b;  /* slate-500 */
+      
+      --accent: #f97316;            /* Kamal Orange */
+      --accent-foreground: #ffffff;
+      --accent-light: #fff7ed;
+      
+      --destructive: #ef4444;       /* red-500 */
+      --destructive-foreground: #ffffff;
+      --destructive-light: #fef2f2;
+      
+      --success: #10b981;           /* emerald-500 */
+      --success-foreground: #ffffff;
+      --success-light: #ecfdf5;
+      
+      --border: #e2e8f0;            /* slate-200 */
+      --input: #e2e8f0;
+      --ring: #006eb5;
+      --radius: 0.5rem;             /* 8px */
+      
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--background);
+      color: var(--foreground);
       height: 100dvh;
       display: flex;
       flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    /* ── Header ── */
+    /* ── Top Header (shadcn navbar) ── */
     header {
-      background: #ffffff;
-      border-bottom: 2px solid var(--border);
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
       padding: 10px 20px;
       display: flex;
       align-items: center;
       gap: 16px;
-      box-shadow: var(--shadow);
       flex-shrink: 0;
+      box-shadow: var(--shadow-sm);
     }
     .brand-logo-img {
-      height: 44px;
+      height: 40px;
       object-fit: contain;
-      border-radius: 4px;
+      border-radius: var(--radius);
     }
-    header .titles { flex: 1; margin-left: 4px; }
-    header h1 { font-size: 17px; font-weight: 800; color: var(--primary-d); letter-spacing: .2px; }
-    header p  { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+    header .titles { flex: 1; margin-left: 2px; }
+    header h1 { font-size: 16px; font-weight: 700; color: var(--foreground); letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
+    header p { font-size: 12px; color: var(--muted-foreground); margin-top: 1px; }
 
     .header-stats {
-      display: flex; gap: 10px; font-size: 12px; font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     .header-stat-pill {
-      background: #edf5fb;
+      background: var(--secondary);
       border: 1px solid var(--border);
-      color: var(--primary-d);
-      padding: 5px 12px;
-      border-radius: 20px;
-      display: flex; align-items: center; gap: 7px;
+      color: var(--foreground);
+      padding: 6px 12px;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.15s ease;
     }
-    .status-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #2ecc71;
-      box-shadow: 0 0 0 3px rgba(46,204,114,.25);
-    }
-    .status-dot.idle { background: #95a5a6; box-shadow: 0 0 0 3px rgba(149,165,166,.25); }
-    .status-dot.active { background: #2ecc71; box-shadow: 0 0 0 3px rgba(46,204,114,.25); }
-    .status-dot.warn { background: #f39c12; box-shadow: 0 0 0 3px rgba(243,156,18,.25); }
-    .status-dot.danger { background: #e74c3c; box-shadow: 0 0 0 3px rgba(231,76,60,.25); }
+    .header-stat-pill:hover { background: var(--secondary-hover); }
+    .header-stat-pill .icon { width: 14px; height: 14px; color: var(--muted-foreground); }
 
-    /* ── Main Nav Tabs ── */
-    .nav-bar {
-      background: var(--primary-d);
-      display: flex;
-      gap: 4px;
-      padding: 6px 18px 0;
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted-foreground);
+    }
+    .status-dot.active { background: var(--success); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+    .status-dot.warn   { background: var(--accent);  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2); }
+    .status-dot.idle   { background: #94a3b8; }
+    .status-dot.danger { background: var(--destructive); box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2); }
+
+    /* ── Main Navigation Bar (shadcn Segmented Tabs) ── */
+    .nav-bar-wrap {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 6px 16px;
       flex-shrink: 0;
     }
+    .nav-bar {
+      display: inline-flex;
+      align-items: center;
+      background: var(--secondary);
+      padding: 3px;
+      border-radius: var(--radius);
+      gap: 2px;
+      overflow-x: auto;
+      max-width: 100%;
+    }
     .nav-tab {
-      padding: 9px 20px;
-      border-radius: 8px 8px 0 0;
+      padding: 6px 14px;
+      border-radius: calc(var(--radius) - 2px);
       cursor: pointer;
-      font-size: 13.5px;
-      font-weight: 700;
-      color: rgba(255,255,255,.8);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted-foreground);
       border: none;
       background: transparent;
-      transition: all .2s;
-      display: flex; align-items: center; gap: 6px;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      user-select: none;
     }
-    .nav-tab:hover  { color: #fff; background: rgba(255,255,255,.12); }
-    .nav-tab.active { background: var(--bg); color: var(--primary); }
+    .nav-tab .icon { width: 15px; height: 15px; }
+    .nav-tab:hover { color: var(--foreground); }
+    .nav-tab.active {
+      background: var(--card);
+      color: var(--foreground);
+      font-weight: 600;
+      box-shadow: var(--shadow-sm);
+    }
 
     /* ── View Containers ── */
     .view-container {
@@ -112,162 +176,215 @@
     }
     .view-container.active { display: flex; }
 
-    /* ── CHAT VIEW ── */
+    /* ── VIEW 1: CHAT VIEW ── */
     .agent-sub-bar {
-      background: #e6f0f7;
+      background: var(--card);
       display: flex;
-      gap: 8px;
-      padding: 7px 16px;
+      gap: 6px;
+      padding: 8px 16px;
       border-bottom: 1px solid var(--border);
+      overflow-x: auto;
     }
     .agent-pill {
-      padding: 5px 14px;
-      border-radius: 16px;
+      padding: 5px 12px;
+      border-radius: 9999px;
       font-size: 12px;
-      font-weight: 700;
-      border: 1px solid #c8dceb;
-      background: #fff;
-      color: var(--primary-d);
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--muted-foreground);
       cursor: pointer;
-      transition: all .15s;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
     }
-    .agent-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .agent-pill .icon { width: 13px; height: 13px; }
+    .agent-pill:hover { background: var(--secondary); color: var(--foreground); }
+    .agent-pill.active {
+      background: var(--primary-light);
+      color: var(--primary);
+      border-color: #bae6fd;
+      font-weight: 600;
+    }
 
     #chat {
       flex: 1;
       overflow-y: auto;
-      padding: 16px;
+      padding: 18px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 16px;
       scroll-behavior: smooth;
     }
 
-    .msg { display: flex; gap: 10px; max-width: 860px; width: 100%; }
+    .msg { display: flex; gap: 12px; max-width: 860px; width: 100%; }
     .msg.user { align-self: flex-end; flex-direction: row-reverse; }
     .msg.bot  { align-self: flex-start; }
 
     .avatar {
-      width: 34px; height: 34px; border-radius: 50%;
+      width: 32px; height: 32px; border-radius: var(--radius);
       display: flex; align-items: center; justify-content: center;
-      font-size: 15px; flex-shrink: 0; margin-top: 2px;
+      flex-shrink: 0; margin-top: 2px;
     }
-    .msg.user .avatar { background: var(--primary); color: #fff; }
-    .msg.bot  .avatar { background: #e3eff7; color: var(--primary-d); border: 1px solid var(--border); }
+    .msg.user .avatar { background: var(--primary); color: var(--primary-foreground); }
+    .msg.bot  .avatar { background: var(--secondary); color: var(--primary); border: 1px solid var(--border); }
+    .avatar .icon { width: 16px; height: 16px; }
 
     .bubble {
       padding: 12px 16px;
-      border-radius: 14px;
+      border-radius: var(--radius);
       font-size: 13.5px;
       line-height: 1.6;
-      max-width: calc(100% - 48px);
+      max-width: calc(100% - 44px);
       word-break: break-word;
     }
     .msg.user .bubble {
       background: var(--primary);
-      color: #fff;
-      border-bottom-right-radius: 3px;
-      box-shadow: var(--shadow);
+      color: var(--primary-foreground);
+      border-top-right-radius: 2px;
+      box-shadow: var(--shadow-sm);
       white-space: pre-wrap;
     }
     .msg.bot .bubble {
-      background: var(--bot-bg);
-      color: var(--text);
-      border-bottom-left-radius: 3px;
+      background: var(--card);
+      color: var(--foreground);
+      border-top-left-radius: 2px;
       border: 1px solid var(--border);
-      box-shadow: var(--shadow);
+      box-shadow: var(--shadow-sm);
     }
     .agent-badge {
-      font-size: 10px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-      color: var(--muted);
-      margin-bottom: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted-foreground);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
 
     /* Markdown inside bubble */
     .bubble p { margin-bottom: 8px; }
     .bubble p:last-child { margin-bottom: 0; }
-    .bubble strong { color: var(--primary-d); font-weight: 700; }
+    .bubble strong { font-weight: 600; }
+    .msg.bot .bubble strong { color: #0284c7; }
     .msg.user .bubble strong { color: #fff; }
     .bubble table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12.5px; }
-    .bubble th { background: #edf5fb; border: 1px solid var(--border); padding: 7px 10px; color: var(--primary-d); font-weight: 700; }
-    .bubble td { border: 1px solid var(--border); padding: 7px 10px; }
-    .bubble ul, .bubble ol { margin: 6px 0 8px 22px; }
-    .bubble li { margin-bottom: 4px; }
-    .bubble code { background: #edf4f9; padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 12.5px; color: #c0392b; }
-    .bubble pre code { display: block; padding: 8px; overflow-x: auto; background: #0d2235; color: #a9d6e5; border-radius: 6px; }
+    .bubble th { background: var(--secondary); border: 1px solid var(--border); padding: 6px 10px; font-weight: 600; text-align: left; }
+    .bubble td { border: 1px solid var(--border); padding: 6px 10px; }
+    .bubble ul, .bubble ol { margin: 6px 0 8px 20px; }
+    .bubble li { margin-bottom: 3px; }
+    .bubble code { background: var(--secondary); padding: 2px 5px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 12px; color: #e11d48; }
+    .bubble pre code { display: block; padding: 10px; overflow-x: auto; background: #0f172a; color: #94a3b8; border-radius: var(--radius); }
     .bubble hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
-    .bubble blockquote { border-left: 3px solid var(--primary); padding-left: 10px; margin: 8px 0; color: var(--muted); }
+    .bubble blockquote { border-left: 3px solid var(--primary); padding-left: 10px; margin: 8px 0; color: var(--muted-foreground); }
 
     .typing span {
-      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-      background: var(--muted); margin-right: 3px; animation: bounce .9s infinite;
+      display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+      background: var(--muted-foreground); margin-right: 3px; animation: bounce .9s infinite;
     }
     .typing span:nth-child(2) { animation-delay: .15s; }
     .typing span:nth-child(3) { animation-delay: .30s; }
     @keyframes bounce {
-      0%,80%,100% { transform: translateY(0); opacity:.5; }
-      40% { transform: translateY(-5px); opacity:1; }
+      0%,80%,100% { transform: translateY(0); opacity:.4; }
+      40% { transform: translateY(-4px); opacity:1; }
     }
 
     .suggestions {
       display: flex; flex-wrap: wrap; gap: 6px;
       padding: 8px 16px;
-      background: #fafcfe;
+      background: var(--card);
       border-top: 1px solid var(--border);
     }
     .chip {
-      padding: 6px 13px;
-      border-radius: 18px;
-      border: 1px solid #bdd5e7;
-      color: var(--primary);
-      background: #fff;
+      padding: 5px 11px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      color: var(--muted-foreground);
+      background: var(--secondary);
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
-      transition: all .15s;
+      transition: all .15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
-    .chip:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .chip .icon { width: 12px; height: 12px; }
+    .chip:hover { background: var(--secondary-hover); color: var(--foreground); }
 
     .input-bar {
-      background: var(--surface);
+      background: var(--card);
       border-top: 1px solid var(--border);
-      padding: 11px 16px;
+      padding: 10px 16px;
       display: flex;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
     }
     #input {
       flex: 1;
-      border: 1.5px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 13px;
-      font-size: 14px;
+      border: 1px solid var(--input);
+      border-radius: var(--radius);
+      padding: 9px 12px;
+      font-size: 13.5px;
       font-family: inherit;
       resize: none;
       outline: none;
-      transition: border-color .2s;
+      background: var(--card);
+      color: var(--foreground);
+      transition: border-color .15s ease, box-shadow .15s ease;
     }
-    #input:focus { border-color: var(--primary); }
-    #send-btn {
-      width: 40px; height: 40px;
-      border-radius: 50%;
-      background: var(--primary);
-      border: none;
-      color: #fff;
-      font-size: 16px;
+    #input:focus { border-color: var(--ring); box-shadow: 0 0 0 2px rgba(0, 110, 181, 0.15); }
+    
+    /* ── shadcn Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1;
+      padding: 8px 14px;
       cursor: pointer;
-      transition: all .15s;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      user-select: none;
     }
-    #send-btn:hover { background: var(--primary-d); transform: scale(1.04); }
+    .btn .icon { width: 14px; height: 14px; }
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary {
+      background: var(--secondary);
+      color: var(--secondary-foreground);
+      border-color: var(--border);
+    }
+    .btn-secondary:hover { background: var(--secondary-hover); }
+    .btn-outline {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--foreground);
+    }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-destructive {
+      background: var(--destructive);
+      color: var(--destructive-foreground);
+    }
+    .btn-destructive:hover { background: #dc2626; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    /* ── QUEUE & MONITOR DASHBOARD VIEW ── */
+    /* ── shadcn Cards ── */
     .dashboard-layout {
       flex: 1;
       overflow-y: auto;
-      padding: 16px;
+      padding: 18px;
       display: grid;
       grid-template-columns: 2fr 1fr;
       gap: 16px;
@@ -277,150 +394,250 @@
     }
 
     .card {
-      background: var(--surface);
-      border-radius: 10px;
+      background: var(--card);
+      border-radius: var(--radius);
       border: 1px solid var(--border);
-      box-shadow: var(--shadow);
+      box-shadow: var(--shadow-sm);
       padding: 16px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
     }
     .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 10px;
+      padding-bottom: 12px;
     }
-    .card-title { font-size: 15px; font-weight: 800; color: var(--primary-d); display: flex; align-items: center; gap: 8px; }
+    .card-title {
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--foreground);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title .icon { width: 16px; height: 16px; color: var(--primary); }
+    .card-desc { font-size: 12px; color: var(--muted-foreground); margin-top: 2px; }
 
-    /* Client Queue Table */
+    /* ── shadcn Tables ── */
     .queue-table-wrap { overflow-x: auto; max-height: 480px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
-    th { background: #edf4f9; color: var(--primary-d); padding: 9px 12px; font-weight: 700; border-bottom: 2px solid var(--border); }
-    td { padding: 9px 12px; border-bottom: 1px solid #edf4f9; vertical-align: middle; }
-    tr:hover { background: #f8fbfe; }
+    th {
+      background: var(--secondary);
+      color: var(--muted-foreground);
+      padding: 8px 12px;
+      font-weight: 600;
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:hover td { background: rgba(241, 245, 249, 0.5); }
 
+    /* ── shadcn Badges ── */
     .badge {
-      display: inline-block; padding: 3px 9px; border-radius: 12px;
-      font-size: 11px; font-weight: 700; color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
     }
-    .badge-queued { background: var(--badge-queued); }
-    .badge-booked { background: var(--badge-booked); }
-    .badge-in_progress { background: var(--badge-prog); }
-    .badge-failed { background: var(--badge-fail); }
-    .badge-active { background: #27ae60; }
-    .badge-quarantined { background: #e74c3c; }
-    .badge-disabled { background: #95a5a6; }
+    .badge .icon { width: 11px; height: 11px; }
+    .badge-queued { background: var(--accent-light); color: #c2410c; border: 1px solid #fed7aa; }
+    .badge-booked { background: var(--success-light); color: #047857; border: 1px solid #a7f3d0; }
+    .badge-active { background: var(--success-light); color: #047857; border: 1px solid #a7f3d0; }
+    .badge-in_progress { background: var(--primary-light); color: #0369a1; border: 1px solid #bae6fd; }
+    .badge-failed { background: var(--destructive-light); color: #b91c1c; border: 1px solid #fecaca; }
+    .badge-quarantined { background: var(--destructive-light); color: #b91c1c; border: 1px solid #fecaca; }
+    .badge-warn { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+    .badge-disabled { background: var(--secondary); color: var(--muted-foreground); border: 1px solid var(--border); }
 
-    .btn {
-      padding: 7px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 700;
-      cursor: pointer; border: none; transition: all .15s;
-    }
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-d); }
-    .btn-danger { background: #e74c3c; color: #fff; padding: 4px 9px; font-size: 11px; }
-    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-    .btn-outline:hover { background: #f0f5f9; }
-
-    /* Telemetry & Logs */
-    .stat-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-    }
+    /* ── Metric Stat Cards ── */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .stat-box {
-      background: #f4f8fb; padding: 12px; border-radius: 8px; border: 1px solid var(--border); text-align: center;
+      background: var(--card);
+      padding: 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
-    .stat-val { font-size: 22px; font-weight: 800; color: var(--primary); }
-    .stat-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-top: 2px; }
+    .stat-header { display: flex; align-items: center; justify-content: space-between; }
+    .stat-lbl { font-size: 11.5px; color: var(--muted-foreground); font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; }
+    .stat-val { font-size: 22px; font-weight: 700; color: var(--foreground); }
 
+    /* ── Telemetry Log Feed ── */
     .log-feed {
-      background: #0d2235; color: #cde4f7; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px;
-      padding: 10px; border-radius: 6px; height: 260px; overflow-y: auto; line-height: 1.5;
+      background: #090d16;
+      color: #94a3b8;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 11.5px;
+      padding: 12px;
+      border-radius: var(--radius);
+      height: 260px;
+      overflow-y: auto;
+      line-height: 1.6;
+      border: 1px solid #1e293b;
     }
-    .log-item { margin-bottom: 6px; border-bottom: 1px dashed rgba(255,255,255,0.09); padding-bottom: 4px; }
-    .log-time { color: #5dade2; margin-right: 6px; }
+    .log-item { margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px; }
+    .log-time { color: #38bdf8; margin-right: 6px; }
 
-    /* Modal */
+    /* ── shadcn Form Controls ── */
+    .form-group { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-size: 12.5px; font-weight: 500; color: var(--foreground); }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      padding: 8px 11px;
+      border: 1px solid var(--input);
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--card);
+      color: var(--foreground);
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      border-color: var(--ring);
+      box-shadow: 0 0 0 2px rgba(0, 110, 181, 0.15);
+    }
+
+    /* ── shadcn Dialog / Modal ── */
     .modal {
-      display: none; position: fixed; inset: 0; background: rgba(8, 75, 122, 0.4);
-      backdrop-filter: blur(2px);
-      align-items: center; justify-content: center; z-index: 100;
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
     }
     .modal.active { display: flex; }
     .modal-content {
-      background: #fff; border-radius: 12px; padding: 22px; width: 460px; max-width: 90%;
-      box-shadow: 0 14px 36px rgba(0, 75, 122, 0.2);
+      background: var(--card);
+      border-radius: calc(var(--radius) + 4px);
+      border: 1px solid var(--border);
+      padding: 24px;
+      width: 480px;
+      max-width: 92%;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .form-group { margin-bottom: 10px; }
-    .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--primary-d); margin-bottom: 3px; }
-    .form-group input, .form-group select {
-      width: 100%; padding: 8px 11px; border: 1.5px solid var(--border); border-radius: 6px; font-size: 13px;
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to { opacity: 1; transform: scale(1); }
     }
-    .form-group input:focus, .form-group select:focus {
-      border-color: var(--primary); outline: none;
-    }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
   </style>
 </head>
 <body>
 
-<!-- Header -->
+<!-- ── Top Header ── -->
 <header>
   <img src="/static/logo.jpeg" alt="Kamal Express Logo" class="brand-logo-img" />
   <div class="titles">
-    <h1>Kamal Express AI Platform</h1>
+    <h1>
+      Kamal Express AI Platform
+      <span class="badge badge-in_progress" style="font-size:10px; font-weight:700;">PROD v0.2.0</span>
+    </h1>
     <p>Autonomous Visa Appointments & Multi-Agent Travel Operations</p>
   </div>
   <div class="header-stats">
     <div class="header-stat-pill" id="pill-gvc-auth" onclick="switchNavTab('auth-view')" style="cursor:pointer;" title="GVC Authentication & Dual-Mode Status">
       <div class="status-dot idle" id="dot-gvc-auth"></div>
+      <i data-lucide="key-round" class="icon"></i>
       <span id="hdr-gvc-auth-text">GVC Auth: Checking...</span>
     </div>
     <div class="header-stat-pill">
       <div class="status-dot idle" id="dot-monitor"></div>
+      <i data-lucide="radar" class="icon"></i>
       <span id="hdr-monitor-text">Monitor: Idle</span>
     </div>
     <div class="header-stat-pill">
+      <i data-lucide="clock" class="icon"></i>
       <span>Queued: <b id="hdr-queued-count" style="color:var(--accent)">0</b></span>
     </div>
     <div class="header-stat-pill">
-      <span>Booked: <b id="hdr-booked-count" style="color:var(--badge-booked)">0</b></span>
+      <i data-lucide="check-circle-2" class="icon"></i>
+      <span>Booked: <b id="hdr-booked-count" style="color:var(--success)">0</b></span>
     </div>
-    <div class="header-stat-pill" id="user-profile-pill" style="display:none; background:#ffffff; border:1.5px solid var(--primary-l); padding:4px 10px;">
-      <span style="font-size:13px;">👤</span>
-      <span id="hdr-user-name" style="font-weight:700; color:var(--primary-d);">User</span>
-      <span class="badge" id="hdr-user-role" style="background:var(--primary); font-size:10px; padding:2px 7px;">STAFF</span>
-      <button class="btn btn-outline" onclick="logout()" style="padding:2px 8px; font-size:11px; margin-left:4px; border-color:#d3e2ee;">Logout</button>
+    <div class="header-stat-pill" id="user-profile-pill" style="display:none;">
+      <i data-lucide="user" class="icon"></i>
+      <span id="hdr-user-name" style="font-weight:600;">User</span>
+      <span class="badge badge-in_progress" id="hdr-user-role">STAFF</span>
+      <button class="btn btn-outline btn-sm" onclick="logout()" style="padding:2px 6px; font-size:11px; margin-left:2px;">
+        <i data-lucide="log-out" class="icon" style="width:11px; height:11px;"></i>
+      </button>
     </div>
   </div>
 </header>
 
-<!-- Main Navigation -->
-<div class="nav-bar">
-  <button class="nav-tab active" data-view="chat-view">💬 Conversational AI</button>
-  <button class="nav-tab" data-view="queue-view">📋 Multi-Client Queue & Auto-Booker</button>
-  <button class="nav-tab" data-view="slot-search-view">🔍 GVC Greece Slot Inspector</button>
-  <button class="nav-tab" data-view="auth-view" id="tab-auth-view">🔐 GVC Auth & Sessions</button>
-  <button class="nav-tab" data-view="proxy-view" id="tab-proxy-view">🌐 Residential Proxies</button>
-  <button class="nav-tab" data-view="users-view" id="tab-users-view" style="display:none;">👥 Staff & Roles</button>
+<!-- ── Main Navigation ── -->
+<div class="nav-bar-wrap">
+  <div class="nav-bar">
+    <button class="nav-tab active" data-view="chat-view">
+      <i data-lucide="message-square" class="icon"></i> Conversational AI
+    </button>
+    <button class="nav-tab" data-view="queue-view">
+      <i data-lucide="list-ordered" class="icon"></i> Client Queue & Auto-Booker
+    </button>
+    <button class="nav-tab" data-view="slot-search-view">
+      <i data-lucide="search" class="icon"></i> GVC Greece Slot Inspector
+    </button>
+    <button class="nav-tab" data-view="auth-view" id="tab-auth-view">
+      <i data-lucide="shield-check" class="icon"></i> GVC Auth & Sessions
+    </button>
+    <button class="nav-tab" data-view="proxy-view" id="tab-proxy-view">
+      <i data-lucide="globe-2" class="icon"></i> Residential Proxies
+    </button>
+    <button class="nav-tab" data-view="users-view" id="tab-users-view" style="display:none;">
+      <i data-lucide="users" class="icon"></i> Staff & Roles
+    </button>
+  </div>
 </div>
 
 <!-- ── VIEW 1: CHAT VIEW ── -->
 <div class="view-container active" id="chat-view">
   <div class="agent-sub-bar">
-    <button class="agent-pill active" data-agent="orchestrator">🤖 Orchestrator (Auto)</button>
-    <button class="agent-pill" data-agent="appointments">📅 Appointments Specialist</button>
-    <button class="agent-pill" data-agent="visa">🛂 Visa Specialist</button>
-    <button class="agent-pill" data-agent="umrah">🕋 Hajj & Umrah Specialist</button>
-    <button class="agent-pill" data-agent="hotels">🏨 Hotel Booking Specialist</button>
+    <button class="agent-pill active" data-agent="orchestrator">
+      <i data-lucide="bot" class="icon"></i> Orchestrator (Auto)
+    </button>
+    <button class="agent-pill" data-agent="appointments">
+      <i data-lucide="calendar" class="icon"></i> Appointments Specialist
+    </button>
+    <button class="agent-pill" data-agent="visa">
+      <i data-lucide="file-text" class="icon"></i> Visa Specialist
+    </button>
+    <button class="agent-pill" data-agent="umrah">
+      <i data-lucide="sparkles" class="icon"></i> Hajj & Umrah Specialist
+    </button>
+    <button class="agent-pill" data-agent="hotels">
+      <i data-lucide="building-2" class="icon"></i> Hotel Booking Specialist
+    </button>
   </div>
 
   <div id="chat">
     <div class="msg bot">
-      <div class="avatar">✈️</div>
+      <div class="avatar">
+        <i data-lucide="plane" class="icon"></i>
+      </div>
       <div style="display:flex; flex-direction:column;">
-        <div class="agent-badge">Kamal Express Concierge</div>
+        <div class="agent-badge">
+          <i data-lucide="sparkles" class="icon" style="width:11px; height:11px; color:#0284c7;"></i> Kamal Express Concierge
+        </div>
         <div class="bubble">Welcome to **Kamal Express AI Platform**!
 
 I can assist you across all travel & pilgrimage operations:
@@ -429,33 +646,58 @@ I can assist you across all travel & pilgrimage operations:
 - **🕋 Hajj & Umrah Packages:** Custom packages, Nusuk Rawdah permit guidelines, Tasheer biometric rules, and Makkah/Madinah Ziyarat.
 - **🏨 Hotel Reservations:** Instant hotel discovery and confirmed voucher holds in Makkah (Clock Tower), Madinah (Markaziyah), Athens, and Dubai.
 
-How can I assist you right now?</div>
+How can I help you today?</div>
       </div>
     </div>
   </div>
 
   <div class="suggestions">
-    <button class="chip" onclick="quickSend('What are the exact requirements for Greece Type 26 Seasonal Visa for Pakistani passport?')">🇬🇷 Greece Type 26 Requirements</button>
-    <button class="chip" onclick="quickSend('Calculate a 10-day 4-star Umrah package for 4 pilgrims with Haramain train')">🕋 10-Day Umrah Package (4 Pax)</button>
-    <button class="chip" onclick="quickSend('Find 5-star hotels in Makkah near Haram with Kaaba view')">🏨 Makkah Clock Tower Hotels</button>
-    <button class="chip" onclick="quickSend('How do I book Rawdah permit on Nusuk app?')">🕌 Nusuk Rawdah Permit Guide</button>
-    <button class="chip" onclick="quickSend('Search GVC slots in Islamabad for Type 26')">📅 Search Islamabad GVC Slots</button>
+    <div class="chip" onclick="quickSend('What are the Greece Seasonal Work Visa (Type 26) requirements and embassy fees?')">
+      <i data-lucide="file-check" class="icon"></i> Greece Type 26 Rules
+    </div>
+    <div class="chip" onclick="quickSend('Search available appointment slots for Islamabad VAC')">
+      <i data-lucide="search" class="icon"></i> Search ISB Slots
+    </div>
+    <div class="chip" onclick="quickSend('Calculate 15-day VIP 5-Star Umrah package for 2 adults')">
+      <i data-lucide="sparkles" class="icon"></i> Umrah 5-Star Quote
+    </div>
+    <div class="chip" onclick="quickSend('Search luxury 5-star hotels in Makkah near Haram')">
+      <i data-lucide="building-2" class="icon"></i> Makkah Hotels
+    </div>
+    <div class="chip" onclick="quickSend('Show current queue summary and booked applicants')">
+      <i data-lucide="list-ordered" class="icon"></i> Queue Status
+    </div>
   </div>
 
   <div class="input-bar">
-    <textarea id="input" rows="1" placeholder="Type instructions or client details (e.g. Intake Ali Ahmed, Passport PK12345, Greece Type 26 Islamabad)..."></textarea>
-    <button id="send-btn" onclick="sendChat()">➤</button>
+    <textarea id="input" rows="1" placeholder="Type a message or instruction..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+    <button id="send-btn" class="btn btn-primary" onclick="sendChat()" style="width:38px; height:38px; border-radius:var(--radius); padding:0;">
+      <i data-lucide="send" class="icon"></i>
+    </button>
   </div>
 </div>
 
-<!-- ── VIEW 2: CLIENT QUEUE & MONITOR DASHBOARD ── -->
+<!-- ── VIEW 2: MULTI-CLIENT QUEUE & AUTO-BOOKER ── -->
 <div class="view-container" id="queue-view">
   <div class="dashboard-layout">
+    
     <!-- Left: Queue Table -->
     <div class="card">
       <div class="card-header">
-        <div class="card-title">🗄️ Multi-Client Persistent Queue</div>
-        <button class="btn btn-primary" onclick="openAddModal()">+ Add Client to Queue</button>
+        <div>
+          <div class="card-title">
+            <i data-lucide="users" class="icon"></i> Multi-Client Applicant Queue
+          </div>
+          <div class="card-desc">Persistent SQLite client queue with parallel worker locking.</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="refreshQueue()">
+            <i data-lucide="rotate-cw" class="icon"></i> Refresh
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="openAddModal()">
+            <i data-lucide="user-plus" class="icon"></i> + Add Client
+          </button>
+        </div>
       </div>
 
       <div class="queue-table-wrap">
@@ -463,198 +705,409 @@ How can I assist you right now?</div>
           <thead>
             <tr>
               <th>ID</th>
-              <th>Applicant Name</th>
+              <th>Applicant</th>
               <th>Passport</th>
-              <th>Destination / Type</th>
-              <th>VAC</th>
+              <th>Destination</th>
+              <th>Center</th>
               <th>Status</th>
-              <th>Booking Ref / ARN</th>
+              <th>Booking Ref</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="queue-table-body">
-            <tr><td colspan="8" style="text-align:center; color:var(--muted);">Loading queue...</td></tr>
+            <tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading queue...</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    <!-- Right: Telemetry & Live Activity Feed -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">⏰ Autonomous Slot Monitor</div>
-        <button id="btn-toggle-monitor" class="btn btn-primary" onclick="toggleMonitor()">Start Monitor</button>
-      </div>
-
-      <div class="stat-grid">
-        <div class="stat-box">
-          <div class="stat-val" id="tele-scans">0</div>
-          <div class="stat-lbl">Total Scans</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-val" id="tele-booked" style="color:var(--badge-booked);">0</div>
-          <div class="stat-lbl">Auto-Booked</div>
-        </div>
-      </div>
-
-      <div style="font-size:12px; color:var(--muted);">
-        <b>Last Polled:</b> <span id="tele-last">Never</span>
-      </div>
-
-      <div class="card-title" style="font-size:13px; margin-top:6px;">📡 Live Event Activity Feed</div>
-      <div class="log-feed" id="log-feed">
-        <div class="log-item">Monitor ready. Click 'Start Monitor' to begin background watching.</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ── VIEW 3: GVC SLOT INSPECTOR ── -->
-<div class="view-container" id="slot-search-view" style="padding:16px;">
-  <div class="card" style="max-width:920px; margin:0 auto; width:100%;">
-    <div class="card-header">
-      <div class="card-title">🇬🇷 Greece GVC World — Live Slot Discovery</div>
-      <button class="btn btn-primary" onclick="executeSlotSearch()">Search Live Slots</button>
-    </div>
-
-    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;">
-      <div class="form-group">
-        <label>VAC Location:</label>
-        <select id="slot-vac">
-          <option value="138">Islamabad VAC (138)</option>
-          <option value="137">Karachi VAC (137)</option>
-          <option value="139">Lahore VAC (139)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Visa Appointment Type:</label>
-        <select id="slot-type">
-          <option value="26">Type 26 (Seasonal / Dependent Long-Term D) - Default</option>
-          <option value="0">Type 0 (Schengen Short-Term C)</option>
-          <option value="2">Type 2 (National Long-Term D)</option>
-          <option value="5">Type 5 (Premium Lounge)</option>
-          <option value="6">Type 6 (Prime Time)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Start Date (DD/MM/YYYY):</label>
-        <input type="text" id="slot-date" placeholder="e.g. 01/10/2026 (Optional)">
-      </div>
-    </div>
-
-    <div class="queue-table-wrap" style="margin-top:10px;">
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Time</th>
-            <th>Period Slot ID</th>
-            <th>VAC Center</th>
-            <th>Visa Type</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="slot-results-body">
-          <tr><td colspan="6" style="text-align:center; color:var(--muted);">Click 'Search Live Slots' to query Greece GVC World.</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- ── VIEW 4: RESIDENTIAL PROXIES ── -->
-<div class="view-container" id="proxy-view" style="padding:16px; overflow-y:auto;">
-  <div style="display:flex; flex-direction:column; gap:16px; max-width:1200px; margin:0 auto; width:100%;">
-    
-    <!-- Top Row: Ingest Form & Pool Health Metrics -->
-    <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:16px;">
+    <!-- Right: Telemetry & Controls -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
       
-      <!-- Bulk Add Proxies Card -->
+      <!-- Metrics Card -->
       <div class="card">
         <div class="card-header">
-          <div class="card-title">📥 Bulk Add Residential Proxies (SQLite Pool)</div>
+          <div class="card-title">
+            <i data-lucide="activity" class="icon"></i> Live Telemetry
+          </div>
+          <button class="btn btn-primary btn-sm" id="btn-toggle-monitor" onclick="toggleMonitor()">
+            <i data-lucide="play" class="icon"></i> Start Monitor
+          </button>
         </div>
-        <p style="font-size:12px; color:var(--muted); margin-bottom:4px;">
-          Paste proxy strings in either format (one per line):<br>
-          <code>host:port:username:password</code> or <code>http://username:password@host:port</code>
-        </p>
-        <div class="form-group">
-          <textarea id="bulk-proxy-input" rows="6" placeholder="pr.oxylabs.io:7777:customer_123:pass_xyz
-185.199.229.15:8000:myuser:mypass" style="width:100%; padding:10px; font-family:ui-monospace, monospace; font-size:12px; border:1.5px solid var(--border); border-radius:6px; resize:vertical;"></textarea>
-        </div>
-        <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button class="btn btn-outline" onclick="document.getElementById('bulk-proxy-input').value=''">Clear Box</button>
-          <button class="btn btn-primary" id="btn-save-proxies" onclick="submitBulkProxies()">💾 Save Proxies to Database</button>
+
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div class="stat-header">
+              <span class="stat-lbl">Queued</span>
+              <i data-lucide="clock" class="icon" style="width:14px; height:14px; color:var(--accent)"></i>
+            </div>
+            <div class="stat-val" id="stat-queued" style="color:var(--accent)">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-header">
+              <span class="stat-lbl">Booked</span>
+              <i data-lucide="check-circle-2" class="icon" style="width:14px; height:14px; color:var(--success)"></i>
+            </div>
+            <div class="stat-val" id="stat-booked" style="color:var(--success)">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-header">
+              <span class="stat-lbl">Total Scans</span>
+              <i data-lucide="radar" class="icon" style="width:14px; height:14px; color:var(--primary)"></i>
+            </div>
+            <div class="stat-val" id="stat-scans">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-header">
+              <span class="stat-lbl">Slots Found</span>
+              <i data-lucide="sparkles" class="icon" style="width:14px; height:14px; color:#0284c7"></i>
+            </div>
+            <div class="stat-val" id="stat-slots-found" style="color:#0284c7">0</div>
+          </div>
         </div>
       </div>
 
-      <!-- Pool Status & Quick Actions -->
+      <!-- Live Activity Feed -->
       <div class="card">
         <div class="card-header">
-          <div class="card-title">📊 Proxy Pool Health & Telemetry</div>
-          <button class="btn btn-outline" onclick="loadProxies()" style="font-size:11px; padding:4px 8px;">🔄 Refresh</button>
+          <div class="card-title">
+            <i data-lucide="terminal" class="icon"></i> Activity Stream
+          </div>
+          <span class="badge badge-in_progress" id="log-speed-badge">Auto (45s)</span>
         </div>
-
-        <div class="stat-grid" style="grid-template-columns: 1fr 1fr 1fr;">
-          <div class="stat-box">
-            <div class="stat-val" id="proxy-stat-total">0</div>
-            <div class="stat-lbl">Total Pool</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-val" id="proxy-stat-active" style="color:var(--badge-booked);">0</div>
-            <div class="stat-lbl">Active & Ready</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-val" id="proxy-stat-quarantined" style="color:var(--badge-fail);">0</div>
-            <div class="stat-lbl">Quarantined</div>
-          </div>
-        </div>
-
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px; margin-top:4px;">
-          <div style="background:#f4f8fb; padding:8px 12px; border-radius:6px; border:1px solid var(--border);">
-            <b>Total Successes:</b> <span id="proxy-stat-successes" style="color:var(--badge-booked); font-weight:700;">0</span>
-          </div>
-          <div style="background:#f4f8fb; padding:8px 12px; border-radius:6px; border:1px solid var(--border);">
-            <b>Total Fails:</b> <span id="proxy-stat-fails" style="color:var(--badge-fail); font-weight:700;">0</span>
-          </div>
-        </div>
-
-        <div style="display:flex; gap:8px; margin-top:auto; padding-top:10px; border-top:1px solid var(--border);">
-          <button class="btn btn-outline" onclick="resetProxyCooldowns()" style="flex:1; font-size:12px; color:var(--primary); font-weight:700;">
-            ♻️ Reset All Cooldowns
-          </button>
-          <button class="btn btn-danger" onclick="clearAllProxies()" style="font-size:12px; padding:6px 12px;">
-            🗑️ Clear All
-          </button>
+        <div class="log-feed" id="log-feed">
+          <div class="log-item"><span class="log-time">[Init]</span> System loaded and ready.</div>
         </div>
       </div>
 
     </div>
 
-    <!-- Bottom Row: Proxy Pool Table -->
+  </div>
+</div>
+
+<!-- ── VIEW 3: GVC GREECE SLOT INSPECTOR ── -->
+<div class="view-container" id="slot-search-view" style="padding:18px; overflow-y:auto;">
+  <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
+    
     <div class="card">
       <div class="card-header">
-        <div class="card-title">🌐 Active Residential Proxy Inventory</div>
-        <span style="font-size:12px; color:var(--muted);" id="proxy-table-count">0 proxies loaded</span>
+        <div>
+          <div class="card-title">
+            <i data-lucide="search" class="icon"></i> Live GVC Greece Slot Inspector
+          </div>
+          <div class="card-desc">Execute authenticated live slot queries on GVC World via Pakistan residential proxies.</div>
+        </div>
       </div>
 
-      <div class="queue-table-wrap" style="max-height:420px;">
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; align-items:flex-end;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Target VAC Center</label>
+          <select id="slot-vac">
+            <option value="138">Islamabad VAC (138)</option>
+            <option value="137">Karachi VAC (137)</option>
+            <option value="139">Lahore VAC (139)</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Visa Category</label>
+          <select id="slot-type">
+            <option value="26">Type 26: Long-Term Type D (Seasonal Work)</option>
+            <option value="0">Type 0: Submission Schengen Visa (Type C)</option>
+            <option value="2">Type 2: National Visa (Long term - Type D)</option>
+            <option value="5">Type 5: Premium Lounge</option>
+            <option value="6">Type 6: Prime Time</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Start Date (DD/MM/YYYY)</label>
+          <input type="text" id="slot-date" placeholder="DD/MM/YYYY (Defaults to tomorrow)">
+        </div>
+
+        <div>
+          <button class="btn btn-primary" onclick="executeSlotSearch()" style="width:100%;">
+            <i data-lucide="search" class="icon"></i> Query Live Slots
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Table -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <i data-lucide="calendar-check" class="icon"></i> Available Open Slots
+        </div>
+        <span class="badge badge-in_progress" id="slot-auth-badge">Direct REST Engine</span>
+      </div>
+
+      <div class="queue-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Slot ID</th>
+              <th>VAC Center</th>
+              <th>Category</th>
+              <th>Available Capacity</th>
+            </tr>
+          </thead>
+          <tbody id="slot-results-body">
+            <tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:24px;">Select VAC and click 'Query Live Slots' to inspect open appointments.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── VIEW 4: GVC AUTH & SESSION CONTROL ── -->
+<div class="view-container" id="auth-view" style="padding:18px; overflow-y:auto;">
+  <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
+    
+    <!-- Mode Switch Banner Card -->
+    <div class="card" style="border: 1px solid #bae6fd; background: linear-gradient(135deg, #f0f9ff, #ffffff);">
+      <div class="card-header" style="border-bottom: 1px solid #e0f2fe; padding-bottom: 12px;">
+        <div>
+          <div class="card-title" style="color: var(--primary);">
+            <i data-lucide="shield-check" class="icon"></i> GVC Authentication Mode Selector
+          </div>
+          <div class="card-desc">Switch between Manual Browser Sync (Free / Low Load) and Autonomous CapSolver Auto-Login (High Load / Slot Drops).</div>
+        </div>
+        <div id="auth-mode-badge" class="badge badge-in_progress" style="font-size:12px; padding:5px 12px;">
+          MODE: MANUAL (FREE)
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 6px;">
+        <!-- Option 1 Selector Card -->
+        <div id="mode-opt-manual" onclick="setGVCAuthMode('manual')" style="border: 2px solid var(--primary); border-radius: var(--radius); padding: 14px; background: #ffffff; cursor: pointer; transition: all 0.15s ease;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <div style="font-weight: 600; font-size: 13.5px; color: var(--foreground); display:flex; align-items:center; gap:6px;">
+              <input type="radio" name="auth_mode_choice" id="radio-mode-manual" value="manual" checked>
+              Option 1: Manual Token Sync (Free)
+            </div>
+            <span class="badge badge-in_progress">Zero Cost</span>
+          </div>
+          <p style="font-size: 12px; color: var(--muted-foreground); line-height: 1.5;">
+            Used during normal hours. Staff logs in on their workstation and syncs session with 1-click bookmarklet. Auto-Solver is <b>PAUSED</b> to save CapSolver costs.
+          </p>
+        </div>
+
+        <!-- Option 3 Selector Card -->
+        <div id="mode-opt-auto" onclick="setGVCAuthMode('auto_solver')" style="border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; background: #ffffff; cursor: pointer; transition: all 0.15s ease;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <div style="font-weight: 600; font-size: 13.5px; color: var(--foreground); display:flex; align-items:center; gap:6px;">
+              <input type="radio" name="auth_mode_choice" id="radio-mode-auto" value="auto_solver">
+              Option 3: Autonomous Auto-Solver
+            </div>
+            <span class="badge badge-booked">Slot Drop Mode</span>
+          </div>
+          <p style="font-size: 12px; color: var(--muted-foreground); line-height: 1.5;">
+            Used during slot drop periods when staff are frequently logged out. VPS solves reCAPTCHA autonomously with CapSolver/2Captcha and keeps session active 24/7.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dual Action Grid -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      
+      <!-- Option 1 Panel: 1-Click Bookmarklet & Manual Token Sync -->
+      <div class="card" id="panel-option-1">
+        <div class="card-header">
+          <div class="card-title">
+            <i data-lucide="bookmark" class="icon"></i> Option 1: Manual Session Sync
+          </div>
+          <span class="badge badge-active" id="opt1-status-pill">Active Mode</span>
+        </div>
+
+        <!-- 1-Click Bookmarklet Section -->
+        <div style="background: var(--secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display:flex; flex-direction:column; gap:8px;">
+          <div style="font-weight: 600; font-size: 13px; color: var(--foreground); display:flex; align-items:center; gap:6px;">
+            <i data-lucide="zap" class="icon" style="width:14px; height:14px; color:var(--accent);"></i> 1-Click Browser Bookmarklet
+          </div>
+          <p style="font-size: 12px; color: var(--muted-foreground); line-height: 1.4;">
+            Drag this button to your browser bookmarks bar. When logged into GVC World on your PC, click the bookmark to instantly sync your session to Kamal Express!
+          </p>
+          <div style="text-align: center; margin-top: 4px;">
+            <a id="btn-bookmarklet-link" class="btn btn-primary btn-sm" style="cursor: grab;" href="#" onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar!');">
+              <i data-lucide="bookmark-plus" class="icon"></i> Sync GVC Session to Kamal Express
+            </a>
+          </div>
+        </div>
+
+        <!-- Manual Paste Section -->
+        <form onsubmit="event.preventDefault(); submitManualGVCAuth();" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Paste GVC Auth Token or Raw Cookie Header</label>
+            <textarea id="gvc-manual-token" rows="3" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... or auth_token=eyJ...; ASP.NET_SessionId=..." style="font-family:monospace; font-size:11px;"></textarea>
+          </div>
+          <button type="submit" id="btn-save-manual-token" class="btn btn-primary">
+            <i data-lucide="save" class="icon"></i> Save & Sync Session Token
+          </button>
+        </form>
+
+        <!-- Current Session Details Box -->
+        <div id="gvc-active-session-box" style="padding: 12px; border-radius: var(--radius); background: var(--secondary); border: 1px solid var(--border); font-size: 12px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <b style="font-weight:600;">Current Session State:</b>
+            <span id="gvc-sess-validity" class="badge badge-queued">Checking...</span>
+          </div>
+          <div style="color:var(--muted-foreground);">Source: <span id="gvc-sess-source" style="font-weight:600; color:var(--foreground);">—</span></div>
+          <div style="color:var(--muted-foreground);">Last Synced: <span id="gvc-sess-synced" style="font-weight:600; color:var(--foreground);">—</span></div>
+          <div style="color:var(--muted-foreground);">Expires At: <span id="gvc-sess-expires" style="font-weight:600; color:var(--foreground);">—</span></div>
+        </div>
+      </div>
+
+      <!-- Option 3 Panel: Autonomous CapSolver Auto-Login -->
+      <div class="card" id="panel-option-3">
+        <div class="card-header">
+          <div class="card-title">
+            <i data-lucide="bot" class="icon"></i> Option 3: Auto-Solver Engine
+          </div>
+          <span class="badge badge-disabled" id="opt3-status-pill">Paused</span>
+        </div>
+
+        <div style="background: var(--secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-weight: 600; font-size: 13px; color: var(--foreground);">Background Worker:</span>
+            <span id="solver-worker-state" class="badge badge-warn">PAUSED</span>
+          </div>
+          <div style="font-size:12px; color:var(--muted-foreground);">
+            Total Solves: <b id="solver-total-solves" style="color:var(--foreground)">0</b> | Last Error: <span id="solver-last-error" style="color:var(--destructive)">None</span>
+          </div>
+        </div>
+
+        <!-- Account Credentials Form -->
+        <form onsubmit="event.preventDefault(); submitGVCCredentials();" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>GVC Account Email *</label>
+            <input type="email" id="gvc-acc-email" required placeholder="account@kamalexpress.com" autocomplete="off">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>GVC Account Password *</label>
+            <input type="password" id="gvc-acc-password" required placeholder="••••••••••••" autocomplete="new-password">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Auto-Renew Interval (Seconds)</label>
+            <input type="number" id="gvc-acc-interval" min="60" value="300" placeholder="300">
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;">
+            <button type="submit" class="btn btn-outline">
+              <i data-lucide="save" class="icon"></i> Save Credentials
+            </button>
+            <button type="button" class="btn btn-primary" onclick="testSolveNow()" id="btn-test-solve">
+              <i data-lucide="zap" class="icon"></i> Test Auto-Login
+            </button>
+          </div>
+        </form>
+
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- ── VIEW 5: RESIDENTIAL PROXY MANAGER ── -->
+<div class="view-container" id="proxy-view" style="padding:18px; overflow-y:auto;">
+  <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
+    
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            <i data-lucide="globe-2" class="icon"></i> Pakistan Residential Proxy Pool
+          </div>
+          <div class="card-desc">Persistent SQLite proxy catalog with automatic health tracking, quarantining, and failover.</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="resetProxyCooldowns()">
+            <i data-lucide="rotate-ccw" class="icon"></i> Reset Cooldowns
+          </button>
+          <button class="btn btn-destructive btn-sm" onclick="clearAllProxies()">
+            <i data-lucide="trash-2" class="icon"></i> Clear All
+          </button>
+        </div>
+      </div>
+
+      <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="stat-box">
+          <div class="stat-header">
+            <span class="stat-lbl">Total Proxies</span>
+            <i data-lucide="network" class="icon" style="width:14px; height:14px; color:var(--primary)"></i>
+          </div>
+          <div class="stat-val" id="proxy-stat-total">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-header">
+            <span class="stat-lbl">Active</span>
+            <i data-lucide="check-circle" class="icon" style="width:14px; height:14px; color:var(--success)"></i>
+          </div>
+          <div class="stat-val" id="proxy-stat-active" style="color:var(--success)">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-header">
+            <span class="stat-lbl">Quarantined</span>
+            <i data-lucide="alert-triangle" class="icon" style="width:14px; height:14px; color:var(--destructive)"></i>
+          </div>
+          <div class="stat-val" id="proxy-stat-quarantined" style="color:var(--destructive)">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-header">
+            <span class="stat-lbl">Success Rate</span>
+            <i data-lucide="percent" class="icon" style="width:14px; height:14px; color:var(--primary)"></i>
+          </div>
+          <div class="stat-val" id="proxy-stat-success-rate">100%</div>
+        </div>
+      </div>
+
+      <!-- Bulk Paste Input -->
+      <form onsubmit="event.preventDefault(); submitBulkProxies();" style="display:flex; flex-direction:column; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Paste IP List (10, 30, 50+ lines) — Formats: <code>ip:port</code> or <code>http://user:pass@ip:port</code></label>
+          <textarea id="proxy-bulk-input" rows="4" placeholder="182.180.12.34:8080&#10;http://user:pass@111.119.123.45:3128&#10;socks5://user:pass@202.47.33.10:1080" style="font-family:monospace; font-size:12px;"></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end;">
+          <button type="submit" id="btn-import-proxies" class="btn btn-primary">
+            <i data-lucide="plus-circle" class="icon"></i> Import Proxies to SQLite
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Proxy List Table -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <i data-lucide="list" class="icon"></i> Managed Proxy Catalog
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="loadProxies()">
+          <i data-lucide="rotate-cw" class="icon"></i> Refresh
+        </button>
+      </div>
+
+      <div class="queue-table-wrap">
         <table>
           <thead>
             <tr>
               <th>ID</th>
-              <th>Host : Port</th>
-              <th>Username</th>
+              <th>Host:Port</th>
               <th>Country</th>
               <th>Status</th>
-              <th>Success / Fails</th>
+              <th>Successes</th>
+              <th>Fails</th>
               <th>Quarantined Until / Error</th>
               <th>Last Used</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="proxy-table-body">
-            <tr><td colspan="9" style="text-align:center; color:var(--muted); padding:20px;">Loading proxies from SQLite...</td></tr>
+            <tr><td colspan="9" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading proxies...</td></tr>
           </tbody>
         </table>
       </div>
@@ -663,8 +1116,8 @@ How can I assist you right now?</div>
   </div>
 </div>
 
-<!-- ── VIEW 5: USER & ROLE MANAGEMENT (ADMIN ONLY) ── -->
-<div class="view-container" id="users-view" style="padding:16px; overflow-y:auto;">
+<!-- ── VIEW 6: USER & ROLE MANAGEMENT (ADMIN ONLY) ── -->
+<div class="view-container" id="users-view" style="padding:18px; overflow-y:auto;">
   <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
     
     <div style="display:grid; grid-template-columns: 1fr 1.6fr; gap:16px;">
@@ -672,37 +1125,45 @@ How can I assist you right now?</div>
       <!-- Create User Card -->
       <div class="card">
         <div class="card-header">
-          <div class="card-title">➕ Create Staff / Admin Account</div>
+          <div class="card-title">
+            <i data-lucide="user-plus" class="icon"></i> Create Staff / Admin Account
+          </div>
         </div>
-        <form onsubmit="event.preventDefault(); submitCreateUser();">
-          <div class="form-group">
+        <form onsubmit="event.preventDefault(); submitCreateUser();" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="form-group" style="margin-bottom:0;">
             <label>Username *</label>
             <input type="text" id="u-username" required placeholder="e.g. zeeshan" autocomplete="off">
           </div>
-          <div class="form-group">
+          <div class="form-group" style="margin-bottom:0;">
             <label>Full Name</label>
             <input type="text" id="u-fullname" placeholder="e.g. Zeeshan Ali">
           </div>
-          <div class="form-group">
+          <div class="form-group" style="margin-bottom:0;">
             <label>Role</label>
             <select id="u-role">
               <option value="staff">Staff (Queue & Search Access)</option>
               <option value="admin">Administrator (Full System Access)</option>
             </select>
           </div>
-          <div class="form-group">
+          <div class="form-group" style="margin-bottom:0;">
             <label>Password *</label>
             <input type="password" id="u-password" required placeholder="••••••••••••" autocomplete="new-password">
           </div>
-          <button type="submit" id="btn-create-user" class="btn btn-primary" style="width:100%; margin-top:8px;">Create Account</button>
+          <button type="submit" id="btn-create-user" class="btn btn-primary" style="margin-top:6px;">
+            <i data-lucide="check" class="icon"></i> Create Account
+          </button>
         </form>
       </div>
 
       <!-- Registered Users Table -->
       <div class="card">
         <div class="card-header">
-          <div class="card-title">👥 Registered Staff & Administrators</div>
-          <button class="btn btn-outline" onclick="loadUsers()" style="font-size:11px; padding:4px 8px;">🔄 Refresh</button>
+          <div class="card-title">
+            <i data-lucide="users" class="icon"></i> Registered Staff & Administrators
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="loadUsers()">
+            <i data-lucide="rotate-cw" class="icon"></i> Refresh
+          </button>
         </div>
 
         <div class="queue-table-wrap" style="max-height:420px;">
@@ -718,7 +1179,7 @@ How can I assist you right now?</div>
               </tr>
             </thead>
             <tbody id="users-table-body">
-              <tr><td colspan="6" style="text-align:center; color:var(--muted); padding:20px;">Loading users...</td></tr>
+              <tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading users...</td></tr>
             </tbody>
           </table>
         </div>
@@ -729,165 +1190,28 @@ How can I assist you right now?</div>
   </div>
 </div>
 
-<!-- ── VIEW 6: GVC AUTH & SESSION CONTROL ── -->
-<div class="view-container" id="auth-view" style="padding:16px; overflow-y:auto;">
-  <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
-    
-    <!-- Mode Switch Banner Card -->
-    <div class="card" style="border: 2px solid var(--primary-l); background: linear-gradient(135deg, #f0f7ff, #ffffff);">
-      <div class="card-header" style="border-bottom: 1px solid #d3e2ee; padding-bottom: 10px;">
-        <div>
-          <div class="card-title" style="font-size: 16px; color: var(--primary-d);">⚡ GVC Authentication Mode Selector</div>
-          <div style="font-size: 12px; color: var(--muted); margin-top: 2px;">
-            Switch between Manual Browser Sync (Free / Low Load) and Autonomous CapSolver Auto-Login (High Load / Slot Drops).
-          </div>
-        </div>
-        <div id="auth-mode-badge" class="badge" style="font-size: 12px; padding: 4px 12px; background: var(--primary);">
-          MODE: MANUAL (FREE)
-        </div>
-      </div>
-
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
-        <!-- Option 1 Selector Card -->
-        <div id="mode-opt-manual" onclick="setGVCAuthMode('manual')" style="border: 2px solid var(--primary); border-radius: 8px; padding: 14px; background: #ffffff; cursor: pointer; transition: all 0.2s ease;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <div style="font-weight: 800; font-size: 14px; color: var(--primary-d);">
-              <input type="radio" name="auth_mode_choice" id="radio-mode-manual" value="manual" checked style="margin-right: 6px;">
-              Option 1: Manual Token Sync (Free)
-            </div>
-            <span class="badge" style="background:#e1effe; color:#1e429f;">Zero Cost</span>
-          </div>
-          <p style="font-size: 12px; color: #4b5563; line-height: 1.4; margin: 0;">
-            Used during normal / non-drop hours. Staff logs in on their own workstation and syncs session with 1-click bookmarklet. Auto-Solver is <b>PAUSED</b> to save on captcha solving costs.
-          </p>
-        </div>
-
-        <!-- Option 3 Selector Card -->
-        <div id="mode-opt-auto" onclick="setGVCAuthMode('auto_solver')" style="border: 1px solid #d1d5db; border-radius: 8px; padding: 14px; background: #ffffff; cursor: pointer; transition: all 0.2s ease;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <div style="font-weight: 800; font-size: 14px; color: var(--primary-d);">
-              <input type="radio" name="auth_mode_choice" id="radio-mode-auto" value="auto_solver" style="margin-right: 6px;">
-              Option 3: Autonomous Auto-Solver
-            </div>
-            <span class="badge badge-booked">Slot Drop Mode</span>
-          </div>
-          <p style="font-size: 12px; color: #4b5563; line-height: 1.4; margin: 0;">
-            Used during heavy slot drop & high-load periods when staff are frequently logged out. VPS solves reCAPTCHA autonomously with CapSolver/2Captcha and keeps session alive 24/7.
-          </p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Dual Action Grid -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-      
-      <!-- Option 1 Panel: 1-Click Bookmarklet & Manual Token Sync -->
-      <div class="card" id="panel-option-1">
-        <div class="card-header">
-          <div class="card-title">📌 Option 1: Manual Session Sync</div>
-          <span class="badge badge-active" id="opt1-status-pill">Active Mode</span>
-        </div>
-
-        <!-- 1-Click Bookmarklet Section -->
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 14px;">
-          <div style="font-weight: 700; font-size: 13px; color: var(--primary-d); margin-bottom: 4px;">
-            ⭐ 1-Click Browser Bookmarklet
-          </div>
-          <p style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
-            Drag this button to your browser's Bookmarks bar. Whenever you are logged into GVC World on your PC, click the bookmark to instantly sync your session to Kamal Express!
-          </p>
-          <div style="text-align: center;">
-            <a id="btn-bookmarklet-link" class="btn btn-primary" style="display: inline-block; padding: 8px 16px; font-weight: 700; font-size: 13px; text-decoration: none; cursor: grab;" href="#" onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar!');">
-              ⚡ Sync GVC Session to Kamal Express
-            </a>
-          </div>
-        </div>
-
-        <!-- Manual Paste Section -->
-        <form onsubmit="event.preventDefault(); submitManualGVCAuth();">
-          <div class="form-group">
-            <label>Paste GVC Auth Token or Raw Cookie Header</label>
-            <textarea id="gvc-manual-token" rows="3" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... or auth_token=eyJ...; ASP.NET_SessionId=..." style="font-family:monospace; font-size:11px;"></textarea>
-          </div>
-          <button type="submit" id="btn-save-manual-token" class="btn btn-primary" style="width:100%;">
-            💾 Save & Sync Session Token
-          </button>
-        </form>
-
-        <!-- Current Session Details Box -->
-        <div id="gvc-active-session-box" style="margin-top: 14px; padding: 10px; border-radius: 6px; background: #ffffff; border: 1px solid #e2e8f0; font-size: 11px;">
-          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-            <b>Current Session State:</b>
-            <span id="gvc-sess-validity" class="badge badge-queued">Checking...</span>
-          </div>
-          <div style="color:#64748b;">Source: <span id="gvc-sess-source" style="font-weight:600; color:#1e293b;">—</span></div>
-          <div style="color:#64748b;">Last Synced: <span id="gvc-sess-synced" style="font-weight:600; color:#1e293b;">—</span></div>
-          <div style="color:#64748b;">Expires At: <span id="gvc-sess-expires" style="font-weight:600; color:#1e293b;">—</span></div>
-        </div>
-      </div>
-
-      <!-- Option 3 Panel: Autonomous CapSolver Auto-Login -->
-      <div class="card" id="panel-option-3">
-        <div class="card-header">
-          <div class="card-title">🤖 Option 3: Auto-Solver Engine</div>
-          <span class="badge" id="opt3-status-pill" style="background:#f3f4f6; color:#6b7280;">Paused</span>
-        </div>
-
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 14px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <span style="font-weight: 700; font-size: 13px; color: var(--primary-d);">Background Solver Status:</span>
-            <span id="solver-worker-state" class="badge badge-warn">PAUSED</span>
-          </div>
-          <div style="font-size:11px; color:var(--muted);">Total Solves: <b id="solver-total-solves" style="color:var(--primary-d)">0</b> | Last Error: <span id="solver-last-error" style="color:#ef4444">None</span></div>
-        </div>
-
-        <!-- Account Credentials Form -->
-        <form onsubmit="event.preventDefault(); submitGVCCredentials();">
-          <div class="form-group">
-            <label>GVC Account Email *</label>
-            <input type="email" id="gvc-acc-email" required placeholder="account@kamalexpress.com" autocomplete="off">
-          </div>
-          <div class="form-group">
-            <label>GVC Account Password *</label>
-            <input type="password" id="gvc-acc-password" required placeholder="••••••••••••" autocomplete="new-password">
-          </div>
-          <div class="form-group">
-            <label>Auto-Renew Interval (Seconds)</label>
-            <input type="number" id="gvc-acc-interval" min="60" value="300" placeholder="300">
-          </div>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
-            <button type="submit" class="btn btn-outline" style="font-weight:600;">💾 Save Credentials</button>
-            <button type="button" class="btn btn-primary" onclick="testSolveNow()" id="btn-test-solve">⚡ Test Solve & Login</button>
-          </div>
-        </form>
-
-      </div>
-
-    </div>
-
-  </div>
-</div>
-
 <!-- ── LOGIN OVERLAY MODAL ── -->
-<div class="modal active" id="login-modal" style="z-index: 9999; background: rgba(8, 75, 122, 0.7); backdrop-filter: blur(8px);">
-  <div class="modal-content" style="width: 380px; text-align: center; border: 2px solid var(--primary-l); box-shadow: 0 16px 40px rgba(0,0,0,0.3);">
-    <img src="/static/logo.jpeg" alt="Logo" style="height: 54px; object-fit: contain; margin-bottom: 8px; border-radius: 6px;" />
-    <h2 style="font-size: 18px; font-weight: 800; color: var(--primary-d); margin-bottom: 2px;">Kamal Express Platform</h2>
-    <p style="font-size: 12px; color: var(--muted); margin-bottom: 16px;">Staff & Administrator Sign In</p>
+<div class="modal active" id="login-modal" style="z-index: 9999;">
+  <div class="modal-content" style="width: 380px; text-align: center;">
+    <div style="display:flex; justify-content:center; margin-bottom:4px;">
+      <img src="/static/logo.jpeg" alt="Logo" style="height: 48px; object-fit: contain; border-radius: var(--radius);" />
+    </div>
+    <h2 style="font-size: 17px; font-weight: 700; color: var(--foreground); margin-bottom: 2px;">Kamal Express Platform</h2>
+    <p style="font-size: 12.5px; color: var(--muted-foreground); margin-bottom: 8px;">Staff & Administrator Sign In</p>
 
-    <div id="login-error" style="display:none; background:#fde8e8; border:1px solid #f8b4b4; color:#9b1c1c; padding:8px 12px; border-radius:6px; font-size:12px; margin-bottom:12px; text-align:left;"></div>
+    <div id="login-error" style="display:none; background:var(--destructive-light); border:1px solid #fecaca; color:#b91c1c; padding:8px 12px; border-radius:var(--radius); font-size:12px; text-align:left;"></div>
 
-    <form onsubmit="event.preventDefault(); submitLogin();" style="text-align: left;">
-      <div class="form-group">
+    <form onsubmit="event.preventDefault(); submitLogin();" style="text-align: left; display:flex; flex-direction:column; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
         <label>Username</label>
         <input type="text" id="login-username" required placeholder="admin or staff" autocomplete="username">
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0;">
         <label>Password</label>
         <input type="password" id="login-password" required placeholder="••••••••••••" autocomplete="current-password">
       </div>
-      <button type="submit" id="btn-login-submit" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 14px; margin-top: 8px;">
-        Sign In Securely
+      <button type="submit" id="btn-login-submit" class="btn btn-primary" style="padding: 9px; font-size: 13.5px; margin-top: 6px;">
+        <i data-lucide="lock" class="icon"></i> Sign In Securely
       </button>
     </form>
   </div>
@@ -895,49 +1219,53 @@ How can I assist you right now?</div>
 
 <!-- ── ADD CLIENT MODAL ── -->
 <div class="modal" id="add-modal">
-  <div class="modal-content">
-    <h3 style="margin-bottom:12px; color:var(--primary-d);">Add Client to Auto-Booking Queue</h3>
+  <div class="modal-content" style="width: 520px;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="user-plus" class="icon"></i> Add Client to Auto-Booking Queue
+      </div>
+    </div>
     
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-      <div class="form-group">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
         <label>First Name *</label>
         <input type="text" id="m-first-name" required placeholder="e.g. Ali">
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0;">
         <label>Last Name *</label>
         <input type="text" id="m-last-name" required placeholder="e.g. Ahmed">
       </div>
     </div>
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-      <div class="form-group">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
         <label>Passport Number *</label>
         <input type="text" id="m-passport" required placeholder="e.g. PK1234567">
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0;">
         <label>Date of Birth (DD/MM/YYYY) *</label>
         <input type="text" id="m-dob" required placeholder="15/08/1992">
       </div>
     </div>
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-      <div class="form-group">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
         <label>Passport Expiry (DD/MM/YYYY) *</label>
         <input type="text" id="m-expiry" required placeholder="10/05/2032">
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0;">
         <label>Phone Number (without 0) *</label>
         <input type="text" id="m-phone" required placeholder="3001234567">
       </div>
     </div>
 
-    <div class="form-group">
+    <div class="form-group" style="margin-bottom:0;">
       <label>Email Address *</label>
       <input type="email" id="m-email" required placeholder="applicant@example.com">
     </div>
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-      <div class="form-group">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
         <label>Destination & Visa Type</label>
         <select id="m-type">
           <option value="26">Greece — Type 26 (Seasonal Work)</option>
@@ -945,7 +1273,7 @@ How can I assist you right now?</div>
           <option value="2">Greece — Type 2 (National D)</option>
         </select>
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0;">
         <label>Target VAC</label>
         <select id="m-vac">
           <option value="138">Islamabad (138)</option>
@@ -957,7 +1285,9 @@ How can I assist you right now?</div>
 
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeAddModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitAddClient()">Save to Queue</button>
+      <button class="btn btn-primary" onclick="submitAddClient()">
+        <i data-lucide="check" class="icon"></i> Save to Queue
+      </button>
     </div>
   </div>
 </div>
@@ -968,6 +1298,12 @@ How can I assist you right now?</div>
   let streaming = false;
   let currentUser = null;
 
+  function renderIcons() {
+    if (window.lucide && window.lucide.createIcons) {
+      lucide.createIcons();
+    }
+  }
+
   // Format initial message
   window.addEventListener('DOMContentLoaded', () => {
     const initBubble = document.querySelector('.msg.bot .bubble');
@@ -977,6 +1313,7 @@ How can I assist you right now?</div>
     initGVCBookmarklet();
     checkAuth();
     setInterval(loadGVCAuthStatus, 8000);
+    renderIcons();
   });
 
   // ── Authentication & RBAC Handlers ───────────────────────────
@@ -1000,16 +1337,16 @@ How can I assist you right now?</div>
   function renderUserInterface() {
     if (!currentUser) return;
     document.getElementById('login-modal').classList.remove('active');
-    document.getElementById('user-profile-pill').style.display = 'flex';
+    document.getElementById('user-profile-pill').style.display = 'inline-flex';
     document.getElementById('hdr-user-name').textContent = currentUser.full_name || currentUser.username;
 
     const rolePill = document.getElementById('hdr-user-role');
     rolePill.textContent = currentUser.role.toUpperCase();
     if (currentUser.role === 'admin') {
-      rolePill.style.background = 'var(--primary)';
+      rolePill.className = 'badge badge-in_progress';
       document.getElementById('tab-users-view').style.display = 'inline-flex';
     } else {
-      rolePill.style.background = 'var(--accent-teal)';
+      rolePill.className = 'badge badge-booked';
       document.getElementById('tab-users-view').style.display = 'none';
     }
 
@@ -1017,12 +1354,14 @@ How can I assist you right now?</div>
     refreshTelemetry();
     loadProxies();
     loadGVCAuthStatus();
+    renderIcons();
   }
 
   function showLogin() {
     document.getElementById('login-modal').classList.add('active');
     document.getElementById('user-profile-pill').style.display = 'none';
     document.getElementById('tab-users-view').style.display = 'none';
+    renderIcons();
   }
 
   async function submitLogin() {
@@ -1033,7 +1372,8 @@ How can I assist you right now?</div>
 
     errBox.style.display = 'none';
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Signing In...';
+    submitBtn.innerHTML = `<i data-lucide="loader" class="icon"></i> Signing In...`;
+    renderIcons();
 
     try {
       const resp = await fetch('/api/auth/login', {
@@ -1055,7 +1395,8 @@ How can I assist you right now?</div>
       errBox.style.display = 'block';
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Sign In Securely';
+      submitBtn.innerHTML = `<i data-lucide="lock" class="icon"></i> Sign In Securely`;
+      renderIcons();
     }
   }
 
@@ -1117,19 +1458,19 @@ How can I assist you right now?</div>
       const opt3Pill = document.getElementById('opt3-status-pill');
 
       if (mode === 'auto_solver') {
-        if (badge) { badge.textContent = 'MODE: AUTO-SOLVER (HIGH LOAD)'; badge.style.background = 'var(--accent)'; }
+        if (badge) { badge.textContent = 'MODE: AUTO-SOLVER (HIGH LOAD)'; badge.className = 'badge badge-booked'; }
         if (radioAuto) radioAuto.checked = true;
-        if (cardAuto) { cardAuto.style.borderColor = 'var(--accent)'; cardAuto.style.borderWidth = '2px'; }
-        if (cardManual) { cardManual.style.borderColor = '#d1d5db'; cardManual.style.borderWidth = '1px'; }
-        if (opt1Pill) { opt1Pill.textContent = 'Standby'; opt1Pill.className = 'badge'; opt1Pill.style.background = '#f3f4f6'; opt1Pill.style.color = '#6b7280'; }
+        if (cardAuto) { cardAuto.style.borderColor = 'var(--primary)'; cardAuto.style.borderWidth = '2px'; }
+        if (cardManual) { cardManual.style.borderColor = 'var(--border)'; cardManual.style.borderWidth = '1px'; }
+        if (opt1Pill) { opt1Pill.textContent = 'Standby'; opt1Pill.className = 'badge badge-disabled'; }
         if (opt3Pill) { opt3Pill.textContent = 'ACTIVE'; opt3Pill.className = 'badge badge-booked'; }
       } else {
-        if (badge) { badge.textContent = 'MODE: MANUAL (FREE)'; badge.style.background = 'var(--primary)'; }
+        if (badge) { badge.textContent = 'MODE: MANUAL (FREE)'; badge.className = 'badge badge-in_progress'; }
         if (radioManual) radioManual.checked = true;
         if (cardManual) { cardManual.style.borderColor = 'var(--primary)'; cardManual.style.borderWidth = '2px'; }
-        if (cardAuto) { cardAuto.style.borderColor = '#d1d5db'; cardAuto.style.borderWidth = '1px'; }
+        if (cardAuto) { cardAuto.style.borderColor = 'var(--border)'; cardAuto.style.borderWidth = '1px'; }
         if (opt1Pill) { opt1Pill.textContent = 'Active Mode'; opt1Pill.className = 'badge badge-active'; }
-        if (opt3Pill) { opt3Pill.textContent = 'PAUSED (Zero Cost)'; opt3Pill.className = 'badge'; opt3Pill.style.background = '#f3f4f6'; opt3Pill.style.color = '#6b7280'; }
+        if (opt3Pill) { opt3Pill.textContent = 'PAUSED (Zero Cost)'; opt3Pill.className = 'badge badge-disabled'; }
       }
 
       // Update Active Session Details
@@ -1144,7 +1485,7 @@ How can I assist you right now?</div>
           sessVal.className = 'badge badge-booked';
         } else {
           sessVal.textContent = sess.is_expired ? 'EXPIRED' : 'NO ACTIVE SESSION';
-          sessVal.className = 'badge badge-cancelled';
+          sessVal.className = 'badge badge-failed';
         }
       }
       if (sessSrc) sessSrc.textContent = sess.source || '—';
@@ -1166,6 +1507,7 @@ How can I assist you right now?</div>
       if (accEmail && data.credentials_email && !accEmail.value) {
         accEmail.value = data.credentials_email;
       }
+      renderIcons();
     } catch (e) {
       console.error('Failed to load GVC auth status:', e);
     }
@@ -1215,7 +1557,8 @@ How can I assist you right now?</div>
       alert('Connection error: ' + e.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = '💾 Save & Sync Session Token';
+      btn.innerHTML = `<i data-lucide="save" class="icon"></i> Save & Sync Session Token`;
+      renderIcons();
     }
   }
 
@@ -1265,7 +1608,8 @@ How can I assist you right now?</div>
       alert('Error: ' + e.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = '⚡ Test Solve & Login';
+      btn.innerHTML = `<i data-lucide="zap" class="icon"></i> Test Auto-Login`;
+      renderIcons();
     }
   }
 
@@ -1287,6 +1631,7 @@ How can I assist you right now?</div>
       } else if (tab.dataset.view === 'auth-view') {
         loadGVCAuthStatus();
       }
+      renderIcons();
     });
   });
 
@@ -1297,6 +1642,7 @@ How can I assist you right now?</div>
       pill.classList.add('active');
       activeAgent = pill.dataset.agent;
       history = [];
+      renderIcons();
     });
   });
 
@@ -1320,7 +1666,7 @@ How can I assist you right now?</div>
     // Add user bubble
     const userMsg = document.createElement('div');
     userMsg.className = 'msg user';
-    userMsg.innerHTML = `<div class="avatar">👤</div><div class="bubble">${escapeHtml(text)}</div>`;
+    userMsg.innerHTML = `<div class="avatar"><i data-lucide="user" class="icon"></i></div><div class="bubble">${escapeHtml(text)}</div>`;
     chatEl.appendChild(userMsg);
     chatEl.scrollTop = chatEl.scrollHeight;
 
@@ -1329,12 +1675,12 @@ How can I assist you right now?</div>
     // Bot message placeholder
     const botMsg = document.createElement('div');
     botMsg.className = 'msg bot';
-    botMsg.innerHTML = `<div class="avatar">✈️</div><div style="display:flex; flex-direction:column;"><div class="agent-badge">${activeAgent}</div><div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div></div>`;
+    botMsg.innerHTML = `<div class="avatar"><i data-lucide="bot" class="icon"></i></div><div style="display:flex; flex-direction:column;"><div class="agent-badge">${activeAgent}</div><div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div></div>`;
     chatEl.appendChild(botMsg);
     chatEl.scrollTop = chatEl.scrollHeight;
+    renderIcons();
 
     const bubbleEl = botMsg.querySelector('.bubble');
-
     const endpoint = activeAgent === 'orchestrator' ? '/chat' : `/${activeAgent}`;
 
     try {
@@ -1390,11 +1736,13 @@ How can I assist you right now?</div>
 
       history.push({ role: 'assistant', content: fullText });
       refreshQueue();
+      renderIcons();
     } catch (err) {
       bubbleEl.textContent = `⚠️ Error: ${err.message}`;
     } finally {
       streaming = false;
       sendBtn.disabled = false;
+      renderIcons();
     }
   }
 
@@ -1407,12 +1755,14 @@ How can I assist you right now?</div>
       
       document.getElementById('hdr-queued-count').textContent = (data.stats && data.stats.QUEUED) || 0;
       document.getElementById('hdr-booked-count').textContent = (data.stats && data.stats.BOOKED) || 0;
+      document.getElementById('stat-queued').textContent = (data.stats && data.stats.QUEUED) || 0;
+      document.getElementById('stat-booked').textContent = (data.stats && data.stats.BOOKED) || 0;
 
       const tbody = document.getElementById('queue-table-body');
       tbody.innerHTML = '';
 
       if (!data.clients || data.clients.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--muted); padding:20px;">No clients in queue. Click '+ Add Client' or tell the agent to add applicants.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:20px;">No clients in queue. Click '+ Add Client' or tell the agent to add applicants.</td></tr>`;
         return;
       }
 
@@ -1423,16 +1773,17 @@ How can I assist you right now?</div>
         const badgeClass = `badge-${c.status.toLowerCase()}`;
         tr.innerHTML = `
           <td><b>#${c.id}</b></td>
-          <td><b>${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</b><br><small style="color:var(--muted)">DOB: ${c.dob}</small></td>
+          <td><b>${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</b><br><small style="color:var(--muted-foreground)">DOB: ${c.dob}</small></td>
           <td><code>${c.passport_number}</code></td>
           <td>${c.destination} — Type ${c.visa_type}</td>
           <td>${c.vac_city}</td>
           <td><span class="badge ${badgeClass}">${c.status}</span></td>
-          <td>${c.booking_reference ? `<b>${c.booking_reference}</b><br><small>${c.booked_date || ''} ${c.booked_time || ''}</small>` : '<span style="color:var(--muted)">—</span>'}</td>
-          <td>${isAdmin ? `<button class="btn btn-danger" onclick="deleteClient(${c.id})">Delete</button>` : '<span style="color:var(--muted); font-size:11px;">Staff View</span>'}</td>
+          <td>${c.booking_reference ? `<b>${c.booking_reference}</b><br><small>${c.booked_date || ''} ${c.booked_time || ''}</small>` : '<span style="color:var(--muted-foreground)">—</span>'}</td>
+          <td>${isAdmin ? `<button class="btn btn-destructive btn-sm" onclick="deleteClient(${c.id})"><i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i> Delete</button>` : '<span style="color:var(--muted-foreground); font-size:11px;">Staff View</span>'}</td>
         `;
         tbody.appendChild(tr);
       });
+      renderIcons();
     } catch (err) {
       console.error("Queue load error:", err);
     }
@@ -1445,8 +1796,11 @@ How can I assist you right now?</div>
     refreshQueue();
   }
 
-  // ── Modal Operations ─────────────────────────────────────────
-  function openAddModal() { document.getElementById('add-modal').classList.add('active'); }
+  function openAddModal() {
+    document.getElementById('add-modal').classList.add('active');
+    renderIcons();
+  }
+
   function closeAddModal() { document.getElementById('add-modal').classList.remove('active'); }
 
   async function submitAddClient() {
@@ -1486,7 +1840,7 @@ How can I assist you right now?</div>
     const date_from = document.getElementById('slot-date').value.trim();
     const tbody = document.getElementById('slot-results-body');
 
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--primary); padding:16px;">Querying Greece GVC World via Pakistan Residential Proxy...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--primary); padding:18px;">Querying Greece GVC World via Pakistan Residential Proxy...</td></tr>`;
 
     try {
       let url = `/api/slots/search?vac_id=${vac_id}&visa_type=${visa_type}`;
@@ -1498,25 +1852,32 @@ How can I assist you right now?</div>
       tbody.innerHTML = '';
       if (data.status === "UNAUTHENTICATED") {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px;">
-          <div style="max-width:550px; margin:0 auto; background:#fff8eb; border:1px solid #f9d8a6; border-radius:8px; padding:16px;">
-            <div style="font-weight:700; color:#b45309; font-size:14px; margin-bottom:6px;">⚠️ GVC Portal Session Unauthenticated</div>
-            <p style="font-size:12px; color:#78350f; margin-bottom:12px;">${escapeHtml(data.error || 'No active authenticated GVC session found.')}</p>
-            <div style="display:flex; justify-content:center; gap:10px;">
-              <button class="btn btn-primary" onclick="switchNavTab('auth-view')" style="font-size:12px; padding:6px 14px;">🔐 Open GVC Auth Center</button>
-              <button class="btn btn-outline" onclick="setGVCAuthMode('auto_solver')" style="font-size:12px; padding:6px 14px;">⚡ Switch to Auto-Solver</button>
+          <div style="max-width:550px; margin:0 auto; background:var(--accent-light); border:1px solid #fed7aa; border-radius:var(--radius); padding:16px;">
+            <div style="font-weight:600; color:#c2410c; font-size:13.5px; margin-bottom:6px; display:flex; align-items:center; justify-content:center; gap:6px;">
+              <i data-lucide="alert-triangle" class="icon" style="width:16px; height:16px;"></i> GVC Portal Session Unauthenticated
+            </div>
+            <p style="font-size:12px; color:#9a3412; margin-bottom:12px;">${escapeHtml(data.error || 'No active authenticated GVC session found.')}</p>
+            <div style="display:flex; justify-content:center; gap:8px;">
+              <button class="btn btn-primary btn-sm" onclick="switchNavTab('auth-view')">
+                <i data-lucide="key-round" class="icon"></i> Open GVC Auth Center
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="setGVCAuthMode('auto_solver')">
+                <i data-lucide="zap" class="icon"></i> Switch to Auto-Solver
+              </button>
             </div>
           </div>
         </td></tr>`;
+        renderIcons();
         return;
       }
 
       if (data.status === "ERROR") {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#e74c3c; padding:20px;">Search error: ${escapeHtml(data.error || 'Network error')}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--destructive); padding:20px;">Search error: ${escapeHtml(data.error || 'Network error')}</td></tr>`;
         return;
       }
 
       if (!data.slots || data.slots.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--muted); padding:20px;">No open appointment slots currently available on GVC for VAC ${vac_id} (Type ${visa_type}).</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:20px;">No open appointment slots currently available on GVC for VAC ${vac_id} (Type ${visa_type}).</td></tr>`;
         return;
       }
 
@@ -1528,12 +1889,13 @@ How can I assist you right now?</div>
           <td><code>${s.slot_id}</code></td>
           <td>${s.vac_name}</td>
           <td>Type ${s.visa_type}</td>
-          <td><span class="badge badge-booked">Available (${s.available_capacity})</span></td>
+          <td><span class="badge badge-booked"><i data-lucide="check" class="icon"></i> Available (${s.available_capacity})</span></td>
         `;
         tbody.appendChild(tr);
       });
+      renderIcons();
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:red;">Search error: ${err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--destructive);">Search error: ${err.message}</td></tr>`;
     }
   }
 
@@ -1553,7 +1915,6 @@ How can I assist you right now?</div>
       body: JSON.stringify({ action, interval_seconds: 45 }),
     });
     if (resp.status === 401) { showLogin(); return; }
-    const res = await resp.json();
     refreshTelemetry();
   }
 
@@ -1561,72 +1922,56 @@ How can I assist you right now?</div>
     if (!currentUser) return;
     try {
       const resp = await fetch('/api/monitor/status');
-      if (resp.status === 401) { return; }
+      if (resp.status === 401) return;
       const data = await resp.json();
 
       const btn = document.getElementById('btn-toggle-monitor');
       const dot = document.getElementById('dot-monitor');
       const hdrText = document.getElementById('hdr-monitor-text');
-      const dotCdp = document.getElementById('dot-cdp');
-      const hdrCdpText = document.getElementById('hdr-cdp-text');
-
-      if (data.cdp_connected) {
-        dotCdp.className = 'status-dot active';
-        hdrCdpText.textContent = 'CDP: Connected';
-      } else {
-        dotCdp.className = 'status-dot warn';
-        hdrCdpText.textContent = 'CDP: Standby (Port 9222)';
-      }
 
       if (data.running) {
-        btn.textContent = 'Stop Monitor';
-        btn.className = 'btn btn-danger';
+        btn.innerHTML = `<i data-lucide="square" class="icon"></i> Stop Monitor`;
+        btn.className = 'btn btn-destructive btn-sm';
         dot.className = 'status-dot active';
         hdrText.textContent = `Monitor: Active (${data.interval_seconds}s)`;
       } else {
-        btn.textContent = 'Start Monitor';
-        btn.className = 'btn btn-primary';
+        btn.innerHTML = `<i data-lucide="play" class="icon"></i> Start Monitor`;
+        btn.className = 'btn btn-primary btn-sm';
         dot.className = 'status-dot idle';
         hdrText.textContent = 'Monitor: Idle';
       }
 
-      document.getElementById('tele-scans').textContent = data.total_scans;
-      document.getElementById('tele-booked').textContent = data.total_auto_booked;
-      document.getElementById('tele-last').textContent = data.last_checked || 'Never';
+      document.getElementById('stat-scans').textContent = data.total_scans || 0;
+      document.getElementById('stat-slots-found').textContent = data.slots_found || 0;
 
       const logFeed = document.getElementById('log-feed');
-      if (data.recent_logs && data.recent_logs.length > 0) {
-        logFeed.innerHTML = data.recent_logs.map(l => `
-          <div class="log-item">
-            <span class="log-time">[${l.timestamp.split(' ')[1]}]</span>
-            <span style="color:${l.level === 'SUCCESS' ? '#2ecc71' : l.level === 'WARNING' ? '#f39c12' : l.level === 'ERROR' ? '#e74c3c' : '#cde4f7'}">${escapeHtml(l.message)}</span>
-          </div>
-        `).join('');
+      if (data.logs && data.logs.length > 0) {
+        logFeed.innerHTML = data.logs.map(l => `<div class="log-item"><span class="log-time">[${l.time}]</span> ${escapeHtml(l.msg)}</div>`).join('');
       }
-    } catch (e) {}
+      renderIcons();
+    } catch (err) {
+      console.error("Telemetry error:", err);
+    }
   }
 
-  // ── Proxy Operations ────────────────────────────────────────
+  // ── Proxy Operations ─────────────────────────────────────────
   async function loadProxies() {
-    if (!currentUser) return;
     try {
       const resp = await fetch('/api/proxies');
-      if (resp.status === 401) { showLogin(); return; }
+      if (resp.status === 401) return;
       const data = await resp.json();
 
       const stats = data.stats || {};
       document.getElementById('proxy-stat-total').textContent = stats.total || 0;
       document.getElementById('proxy-stat-active').textContent = stats.active || 0;
       document.getElementById('proxy-stat-quarantined').textContent = stats.quarantined || 0;
-      document.getElementById('proxy-stat-successes').textContent = stats.total_successes || 0;
-      document.getElementById('proxy-stat-fails').textContent = stats.total_fails || 0;
-      document.getElementById('proxy-table-count').textContent = `${data.total || 0} proxies registered in pool`;
+      document.getElementById('proxy-stat-success-rate').textContent = (stats.success_rate || 100) + '%';
 
       const tbody = document.getElementById('proxy-table-body');
       tbody.innerHTML = '';
 
       if (!data.proxies || data.proxies.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted); padding:20px;">No proxies currently in SQLite pool. Paste proxy strings above to add them.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted-foreground); padding:20px;">No proxies found in SQLite. Paste IPs above and click 'Import Proxies'.</td></tr>`;
         return;
       }
 
@@ -1634,239 +1979,163 @@ How can I assist you right now?</div>
 
       data.proxies.forEach(p => {
         const tr = document.createElement('tr');
-        const badgeClass = `badge-${(p.status || 'ACTIVE').toLowerCase()}`;
-        const isQuarantined = p.status === 'QUARANTINED';
-        const quarantInfo = isQuarantined && p.quarantined_until 
-          ? `⏳ Until: ${p.quarantined_until.split('T')[1]?.slice(0, 8) || p.quarantined_until}`
-          : (p.last_error ? `<span style="color:#e74c3c" title="${escapeHtml(p.last_error)}">${escapeHtml(p.last_error.slice(0, 30))}...</span>` : '—');
-
-        const lastUsedInfo = p.last_used_at 
-          ? (p.last_used_at.includes('T') ? p.last_used_at.split('T')[1]?.slice(0, 8) : p.last_used_at) 
-          : 'Never';
-
+        const badgeClass = p.status === 'ACTIVE' ? 'badge-active' : (p.status === 'QUARANTINED' ? 'badge-quarantined' : 'badge-disabled');
         tr.innerHTML = `
           <td><b>#${p.id}</b></td>
           <td><code>${escapeHtml(p.host)}:${p.port}</code></td>
-          <td><span style="color:var(--muted)">${p.username ? escapeHtml(p.username) : '<i>None</i>'}</span></td>
-          <td>${escapeHtml(p.country || 'PK')}</td>
+          <td><span class="badge badge-in_progress">${p.country || 'PK'}</span></td>
           <td><span class="badge ${badgeClass}">${p.status}</span></td>
-          <td><b style="color:var(--badge-booked)">${p.success_count}</b> / <b style="color:var(--badge-fail)">${p.fail_count}</b></td>
-          <td><small>${quarantInfo}</small></td>
-          <td><small>${lastUsedInfo}</small></td>
-          <td>${isAdmin ? `<button class="btn btn-danger" onclick="deleteProxy(${p.id})">Delete</button>` : '<span style="color:var(--muted); font-size:11px;">Read-Only</span>'}</td>
+          <td style="color:var(--success); font-weight:600;">${p.success_count}</td>
+          <td style="color:var(--destructive); font-weight:600;">${p.fail_count}</td>
+          <td><small style="color:var(--muted-foreground)">${p.quarantined_until ? `Until ${p.quarantined_until.slice(11,19)}` : (p.last_error ? escapeHtml(p.last_error) : '—')}</small></td>
+          <td><small style="color:var(--muted-foreground)">${p.last_used_at ? p.last_used_at.slice(11,19) : 'Never'}</small></td>
+          <td>${isAdmin ? `<button class="btn btn-destructive btn-sm" onclick="deleteProxy(${p.id})"><i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i></button>` : '<span style="color:var(--muted-foreground); font-size:11px;">Staff View</span>'}</td>
         `;
         tbody.appendChild(tr);
       });
+      renderIcons();
     } catch (err) {
-      console.error("Failed to load proxies:", err);
+      console.error("Proxy load error:", err);
     }
   }
 
   async function submitBulkProxies() {
-    if (!currentUser || currentUser.role !== 'admin') {
-      alert("⚠️ Administrator access is required to add proxies.");
-      return;
-    }
-    const inputEl = document.getElementById('bulk-proxy-input');
-    const text = inputEl.value.trim();
-    if (!text) {
-      alert("Please paste one or more proxy strings first.");
-      return;
-    }
+    const raw = document.getElementById('proxy-bulk-input').value.trim();
+    if (!raw) { alert("Please paste proxy strings."); return; }
+    const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-    const btn = document.getElementById('btn-save-proxies');
+    const btn = document.getElementById('btn-import-proxies');
     btn.disabled = true;
-    btn.textContent = 'Saving...';
+    btn.textContent = 'Importing...';
 
     try {
       const resp = await fetch('/api/proxies/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proxies_text: text }),
+        body: JSON.stringify({ proxies: lines }),
       });
       const data = await resp.json();
-      if (data.success) {
-        alert(`✅ ${data.message}`);
-        inputEl.value = '';
-        loadProxies();
-      } else {
-        alert(`⚠️ Failed to save proxies: ${data.detail || 'Unknown error'}`);
-      }
+      alert(`✅ ${data.message || 'Proxies imported!'}`);
+      document.getElementById('proxy-bulk-input').value = '';
+      loadProxies();
     } catch (err) {
-      alert(`⚠️ Error saving proxies: ${err.message}`);
+      alert(`Error importing proxies: ${err.message}`);
     } finally {
       btn.disabled = false;
-      btn.textContent = '💾 Save Proxies to Database';
+      btn.innerHTML = `<i data-lucide="plus-circle" class="icon"></i> Import Proxies to SQLite`;
+      renderIcons();
     }
   }
 
   async function resetProxyCooldowns() {
-    if (!currentUser || currentUser.role !== 'admin') {
-      alert("⚠️ Administrator access is required.");
-      return;
-    }
-    try {
-      const resp = await fetch('/api/proxies/reset-cooldowns', { method: 'POST' });
-      const data = await resp.json();
-      alert(`♻️ ${data.message}`);
-      loadProxies();
-    } catch (err) {
-      alert(`⚠️ Error resetting cooldowns: ${err.message}`);
-    }
-  }
-
-  async function deleteProxy(id) {
-    if (!currentUser || currentUser.role !== 'admin') return;
-    if (!confirm(`Are you sure you want to remove proxy #${id}?`)) return;
-    try {
-      const resp = await fetch(`/api/proxies/${id}`, { method: 'DELETE' });
-      const data = await resp.json();
-      loadProxies();
-    } catch (err) {
-      alert(`⚠️ Error deleting proxy: ${err.message}`);
-    }
+    if (!confirm("Reset all proxy cooldowns and restore quarantined proxies to ACTIVE?")) return;
+    await fetch('/api/proxies/reset-cooldowns', { method: 'POST' });
+    loadProxies();
   }
 
   async function clearAllProxies() {
-    if (!currentUser || currentUser.role !== 'admin') return;
-    if (!confirm("⚠️ Are you sure you want to CLEAR ALL PROXIES from the database?")) return;
-    try {
-      const resp = await fetch('/api/proxies', { method: 'DELETE' });
-      const data = await resp.json();
-      alert(`🗑️ ${data.message}`);
-      loadProxies();
-    } catch (err) {
-      alert(`⚠️ Error clearing proxies: ${err.message}`);
-    }
+    if (!confirm("Are you sure you want to delete ALL proxies from SQLite?")) return;
+    await fetch('/api/proxies/clear-all', { method: 'POST' });
+    loadProxies();
   }
 
-  // ── User Management Operations (Admin Only) ──────────────────
+  async function deleteProxy(id) {
+    if (!confirm(`Delete proxy #${id}?`)) return;
+    await fetch(`/api/proxies/${id}`, { method: 'DELETE' });
+    loadProxies();
+  }
+
+  // ── User Management (Admin Only) ─────────────────────────────
   async function loadUsers() {
-    if (!currentUser || currentUser.role !== 'admin') return;
     try {
       const resp = await fetch('/api/users');
-      if (resp.status === 401) { showLogin(); return; }
+      if (resp.status === 401) return;
       const data = await resp.json();
+
       const tbody = document.getElementById('users-table-body');
       tbody.innerHTML = '';
 
       if (!data.users || data.users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted); padding:20px;">No users found.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:20px;">No registered users found.</td></tr>`;
         return;
       }
 
       data.users.forEach(u => {
         const tr = document.createElement('tr');
         const isSelf = currentUser && currentUser.id === u.id;
-        const roleBadge = u.role === 'admin' 
-          ? '<span class="badge" style="background:var(--primary);">ADMIN</span>'
-          : '<span class="badge" style="background:var(--accent-teal);">STAFF</span>';
-
-        const statusBadge = u.is_active 
-          ? '<span class="badge badge-booked">ACTIVE</span>'
-          : '<span class="badge badge-failed">DISABLED</span>';
-
         tr.innerHTML = `
           <td><b>#${u.id}</b></td>
-          <td><code>${escapeHtml(u.username)}</code> ${isSelf ? '<small style="color:var(--primary); font-weight:bold;">(You)</small>' : ''}</td>
+          <td><b>${escapeHtml(u.username)}</b></td>
           <td>${escapeHtml(u.full_name || '—')}</td>
-          <td>${roleBadge}</td>
-          <td>${statusBadge}</td>
+          <td><span class="badge ${u.role === 'admin' ? 'badge-in_progress' : 'badge-booked'}">${u.role.toUpperCase()}</span></td>
+          <td><span class="badge ${u.is_active ? 'badge-active' : 'badge-failed'}">${u.is_active ? 'ACTIVE' : 'DISABLED'}</span></td>
           <td>
-            ${!isSelf ? `
-              <button class="btn btn-outline" style="padding:3px 7px; font-size:11px;" onclick="toggleUserStatus(${u.id}, ${!u.is_active})">
-                ${u.is_active ? 'Disable' : 'Enable'}
-              </button>
-              <button class="btn btn-danger" style="padding:3px 7px; font-size:11px; margin-left:4px;" onclick="deleteUserAccount(${u.id}, '${escapeHtml(u.username)}')">
-                Delete
-              </button>
-            ` : '<span style="color:var(--muted); font-size:11px;">Active Account</span>'}
+            ${isSelf ? '<span style="color:var(--muted-foreground); font-size:11px;">Current Account</span>' : `
+              <button class="btn btn-outline btn-sm" onclick="toggleUserStatus(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? 'Disable' : 'Enable'}</button>
+              <button class="btn btn-destructive btn-sm" onclick="deleteUserAccount(${u.id})"><i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i></button>
+            `}
           </td>
         `;
         tbody.appendChild(tr);
       });
+      renderIcons();
     } catch (err) {
-      console.error('Failed to load users:', err);
+      console.error("Users load error:", err);
     }
   }
 
   async function submitCreateUser() {
     const username = document.getElementById('u-username').value.trim();
-    const fullName = document.getElementById('u-fullname').value.trim();
+    const full_name = document.getElementById('u-fullname').value.trim();
     const role = document.getElementById('u-role').value;
     const password = document.getElementById('u-password').value;
 
-    if (!username || !password) {
-      alert('Username and password are required.');
-      return;
-    }
-
     const btn = document.getElementById('btn-create-user');
     btn.disabled = true;
-    btn.textContent = 'Creating...';
 
     try {
       const resp = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, role, full_name: fullName }),
+        body: JSON.stringify({ username, full_name, role, password }),
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`✅ ${data.message}`);
+        alert(`✅ Account '${username}' created successfully.`);
         document.getElementById('u-username').value = '';
         document.getElementById('u-fullname').value = '';
         document.getElementById('u-password').value = '';
         loadUsers();
       } else {
-        alert(`⚠️ Failed to create user: ${data.detail || 'Unknown error'}`);
+        alert(`❌ Error: ${data.detail || 'Could not create user.'}`);
       }
-    } catch (err) {
-      alert(`⚠️ Error: ${err.message}`);
+    } catch (e) {
+      alert(`Connection error: ${e.message}`);
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Create Account';
+      renderIcons();
     }
   }
 
-  async function toggleUserStatus(userId, newStatus) {
-    try {
-      const resp = await fetch(`/api/users/${userId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: newStatus }),
-      });
-      const data = await resp.json();
-      if (resp.ok) {
-        loadUsers();
-      } else {
-        alert(`⚠️ ${data.detail}`);
-      }
-    } catch (err) {
-      alert(`⚠️ Error: ${err.message}`);
-    }
+  async function toggleUserStatus(id, isActive) {
+    await fetch(`/api/users/${id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: isActive }),
+    });
+    loadUsers();
   }
 
-  async function deleteUserAccount(userId, username) {
-    if (!confirm(`Are you sure you want to permanently delete user '${username}'?`)) return;
-    try {
-      const resp = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
-      const data = await resp.json();
-      if (resp.ok) {
-        loadUsers();
-      } else {
-        alert(`⚠️ ${data.detail}`);
-      }
-    } catch (err) {
-      alert(`⚠️ Error: ${err.message}`);
-    }
+  async function deleteUserAccount(id) {
+    if (!confirm(`Delete user account #${id}?`)) return;
+    await fetch(`/api/users/${id}`, { method: 'DELETE' });
+    loadUsers();
   }
 
   function escapeHtml(str) {
-    return (str || '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-
-  setInterval(refreshTelemetry, 4000);
 </script>
 </body>
 </html>
