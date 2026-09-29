@@ -1613,16 +1613,24 @@ How can I help you today?</div>
       if (accEmail && data.credentials_email && !accEmail.value) {
         accEmail.value = data.credentials_email;
       }
+      const accPass = document.getElementById('gvc-acc-password');
+      if (accPass && data.credentials_password && !accPass.value) {
+        accPass.value = data.credentials_password;
+      }
+      const accInterval = document.getElementById('gvc-acc-interval');
+      if (accInterval && data.credentials_interval) {
+        accInterval.value = data.credentials_interval;
+      }
 
-      // Update CapSolver Status
+      // Update CapSolver Status & Auto-populate
       const capsolverStatus = document.getElementById('capsolver-key-status');
       const capsolverInput = document.getElementById('gvc-capsolver-key');
+      if (capsolverInput && data.captcha_api_key && !capsolverInput.value) {
+        capsolverInput.value = data.captcha_api_key;
+      }
       if (capsolverStatus) {
         if (data.captcha_configured) {
-          capsolverStatus.innerHTML = `<span style="color:#16a34a; font-weight:600;">✓ Configured (${data.captcha_api_key_masked || 'Active'})</span>`;
-          if (capsolverInput && !capsolverInput.value && !capsolverInput.placeholder.includes('Configured')) {
-            capsolverInput.placeholder = `Configured: ${data.captcha_api_key_masked || '••••••••'}`;
-          }
+          capsolverStatus.innerHTML = `<span style="color:#16a34a; font-weight:600;">✓ Saved & Active (${data.captcha_api_key_masked || 'Active'})</span>`;
         } else {
           capsolverStatus.innerHTML = `<span style="color:#dc2626; font-weight:600;">⚠️ Key Required</span>`;
         }
@@ -1738,7 +1746,6 @@ How can I help you today?</div>
       const data = await resp.json();
       if (data.success) {
         alert('✅ GVC account credentials & CapSolver settings saved successfully.');
-        document.getElementById('gvc-capsolver-key').value = '';
         loadGVCAuthStatus();
       } else {
         alert('❌ Failed: ' + (data.detail || 'Error'));
@@ -1776,9 +1783,6 @@ How can I help you today?</div>
       const data = await resp.json();
       if (data.success) {
         alert('🎉 SUCCESS: ' + (data.message || 'Authenticated successfully!'));
-        if (capsolverKey) {
-          document.getElementById('gvc-capsolver-key').value = '';
-        }
         loadGVCAuthStatus();
       } else {
         alert('❌ Auto-login test failed: ' + (data.error || JSON.stringify(data)));

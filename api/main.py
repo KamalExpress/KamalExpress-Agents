@@ -593,8 +593,11 @@ async def gvc_session_status(user: dict = Depends(get_current_user)):
         "session": sess,
         "credentials_configured": bool(creds.get("email")),
         "credentials_email": creds.get("email"),
+        "credentials_password": creds.get("password") or "",
+        "credentials_interval": creds.get("interval_seconds", 300),
         "captcha_provider": captcha_settings.get("provider", "capsolver"),
         "captcha_configured": bool(raw_key),
+        "captcha_api_key": raw_key,
         "captcha_api_key_masked": masked_key,
         "solver_worker": telemetry,
     }
