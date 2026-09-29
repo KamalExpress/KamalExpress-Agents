@@ -673,6 +673,7 @@ async def toggle_monitor(req: MonitorToggleRequest, admin: dict = Depends(requir
 # ── OTP Ingestion & Event Bus Endpoints ───────────────────────────────────────────
 
 from agents.appointments.otp import (
+    extract_otp_code,
     record_incoming_otp,
     get_latest_cached_otp,
     get_all_cached_otps,
@@ -680,42 +681,146 @@ from agents.appointments.otp import (
 )
 
 
-class OTPWebhookPayload(BaseModel):
-    phone: Optional[str] = None
-    otp_code: Optional[str] = None
-    message: Optional[str] = None
-    sender: Optional[str] = None
-
-
 class ManualOTPSubmitRequest(BaseModel):
     phone: Optional[str] = None
     otp_code: str
 
 
-@app.post("/api/otp/webhook")
-async def receive_otp_webhook(payload: OTPWebhookPayload, x_webhook_secret: Optional[str] = Header(None)):
+@app.api_route("/api/otp/webhook", methods=["GET", "POST"])
+async def receive_otp_webhook(request: Request):
     """
-    Webhook endpoint to ingest SMS/WhatsApp OTPs forwarded from mobile devices.
-    Auto-extracts numerical verification codes from message texts and triggers in-flight listeners.
+    Universal webhook endpoint to ingest SMS/WhatsApp OTPs forwarded from mobile devices.
+    Supports all Android SMS apps (SMS Forwarder, SMS Gateway, MacroDroid, Tasker, etc.).
+    Auto-extracts numerical verification codes from JSON, Form Data, Query Params, or Raw Text.
     """
+    import json
+    import time
+    from urllib.parse import parse_qs
+
+    raw_body_bytes = await request.body()
+    raw_body_str = raw_body_bytes.decode("utf-8", errors="ignore").strip()
+
+    # 1. Parse payload across JSON, Form, or Query Params
+    data: dict = {}
+    if request.headers.get("content-type", "").startswith("application/json") or (raw_body_str.startswith("{") or raw_body_str.startswith("[")):
+        try:
+            parsed = json.loads(raw_body_str) if raw_body_str else {}
+            if isinstance(parsed, dict):
+                data = parsed
+            elif isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict):
+                data = parsed[0]
+        except Exception:
+            pass
+
+    if not data and raw_body_str and "=" in raw_body_str:
+        try:
+            qs = parse_qs(raw_body_str)
+            data = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in qs.items()}
+        except Exception:
+            pass
+
+    for qk, qv in request.query_params.items():
+        if qk not in data or not data[qk]:
+            data[qk] = qv
+
+    # 2. Check secret if configured
     auth_cfg = get_settings().auth
-    if auth_cfg.webhook_secret and x_webhook_secret != auth_cfg.webhook_secret:
-        raise HTTPException(status_code=403, detail="Invalid webhook secret header (X-Webhook-Secret)")
+    if auth_cfg.webhook_secret:
+        header_secret = (
+            request.headers.get("x-webhook-secret")
+            or request.headers.get("x-api-key")
+            or request.headers.get("authorization", "").replace("Bearer ", "").strip()
+        )
+        param_secret = data.get("secret") or data.get("webhook_secret") or data.get("api_key") or data.get("key")
+        if header_secret != auth_cfg.webhook_secret and param_secret != auth_cfg.webhook_secret:
+            raise HTTPException(status_code=403, detail="Invalid webhook secret header or query param")
+
+    # 3. Handle Ping / Connectivity Test
+    is_ping = data.get("action") in ["ping", "test", "handshake"] or raw_body_str.lower() in ["ping", "test", ""]
+    if is_ping and not data.get("message") and not data.get("text") and not data.get("otp"):
+        return {
+            "success": True,
+            "status": "PING_OK",
+            "message": "Webhook endpoint is online and reachable.",
+            "server_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    # 4. Universal field extraction for Phone
+    phone = (
+        data.get("phone")
+        or data.get("from")
+        or data.get("sender")
+        or data.get("number")
+        or data.get("phoneNumber")
+        or data.get("phone_number")
+        or data.get("mobile")
+        or data.get("address")
+        or data.get("originatingAddress")
+        or data.get("contact")
+        or data.get("from_number")
+    )
+    if isinstance(phone, dict):
+        phone = phone.get("number") or phone.get("phone") or phone.get("address")
+
+    # 5. Universal field extraction for OTP Code
+    code = (
+        data.get("otp_code")
+        or data.get("otp")
+        or data.get("code")
+        or data.get("token")
+        or data.get("pin")
+        or data.get("passcode")
+    )
+
+    # 6. Universal field extraction for Message text
+    message = (
+        data.get("message")
+        or data.get("text")
+        or data.get("body")
+        or data.get("content")
+        or data.get("sms")
+        or data.get("msg")
+        or data.get("sms_body")
+        or data.get("sms_content")
+        or data.get("payload")
+        or data.get("data")
+        or raw_body_str
+    )
+    if isinstance(message, dict):
+        message = message.get("text") or message.get("body") or message.get("content") or json.dumps(message)
+
+    if isinstance(data.get("sms"), dict):
+        message = data["sms"].get("body") or data["sms"].get("text") or message
+        phone = data["sms"].get("from") or data["sms"].get("sender") or phone
+
+    sender_name = data.get("sender") or data.get("from") or request.headers.get("user-agent", "ANDROID_SMS_FORWARDER")
+
+    # If code is still not present, scan the message or raw body for 6-digit regex
+    if not code:
+        code = extract_otp_code(str(message)) or extract_otp_code(raw_body_str)
+
+    if not code:
+        logger.warning(f"[otp-webhook] Received payload with no detectable OTP code: {raw_body_str[:300]}")
+        return {
+            "success": False,
+            "status": "NO_OTP_FOUND",
+            "message": "Payload received but no numeric verification code was found. (If this was a test message, endpoint is reachable)",
+            "received_payload_sample": raw_body_str[:150],
+        }
 
     try:
         record = record_incoming_otp(
-            phone=payload.phone,
-            code=payload.otp_code,
-            raw_message=payload.message,
-            sender=payload.sender or "ANDROID_SMS_FORWARDER",
+            phone=str(phone) if phone else None,
+            code=str(code),
+            raw_message=str(message),
+            sender=str(sender_name),
         )
         return {
             "success": True,
+            "status": "OTP_INTERCEPTED",
             "message": f"OTP {record['code']} received and dispatched to active booking tasks.",
             "record": record,
         }
-    except ValueError as val_err:
-        raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as err:
         logger.error(f"[otp] Error processing webhook: {err}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal error processing OTP webhook: {err}")
