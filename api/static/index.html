@@ -931,12 +931,15 @@ How can I help you today?</div>
             <i data-lucide="zap" class="icon" style="width:14px; height:14px; color:var(--accent);"></i> 1-Click Browser Bookmarklet
           </div>
           <p style="font-size: 12px; color: var(--muted-foreground); line-height: 1.4;">
-            Drag this button to your browser bookmarks bar. When logged into GVC World on your PC, click the bookmark to instantly sync your session to Kamal Express!
+            <b>Instructions:</b> Drag the button below to your Bookmarks bar. Then open your logged-in <b>GVC tab</b> (<code>pk-gr-services.gvcworld.eu</code>) and click the bookmark!
           </p>
-          <div style="text-align: center; margin-top: 4px;">
+          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top: 4px;">
             <a id="btn-bookmarklet-link" class="btn btn-primary btn-sm" style="cursor: grab;" href="#" onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar!');">
               <i data-lucide="bookmark-plus" class="icon"></i> Sync GVC Session to Kamal Express
             </a>
+            <button type="button" class="btn btn-outline btn-sm" onclick="copyConsoleSnippet()">
+              <i data-lucide="terminal" class="icon"></i> Copy Console Script (F12)
+            </button>
           </div>
         </div>
 
@@ -1412,11 +1415,89 @@ How can I help you today?</div>
   // ── GVC Dual-Mode Auth & Session Handlers ───────────────────────
   function initGVCBookmarklet() {
     const origin = window.location.origin;
-    const bmCode = `javascript:(function(){const t=localStorage.getItem('auth_token')||(document.cookie.match(/auth_token=([^;]+)/)||[])[1];if(!t){alert('❌ Not logged into GVC!');return;}fetch('${origin}/api/gvc/session/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t,cookies:document.cookie,source:'BOOKMARKLET'})}).then(r=>r.json()).then(d=>alert('✅ GVC Session Synced to Kamal Express! ID: '+d.session.id)).catch(e=>alert('❌ Sync failed: '+e));})();`;
+    const bmCode = `javascript:(function(){
+      if(!location.hostname.includes('gvcworld')&&!location.hostname.includes('gvc')){
+        alert('⚠️ Please switch to your active GVC World tab (pk-gr-services.gvcworld.eu) first, and THEN click this bookmarklet!');
+        return;
+      }
+      var token='';
+      var allCookies=document.cookie||'';
+      function checkVal(v){
+        if(!v||typeof v!=='string')return '';
+        v=v.trim();
+        if(v.indexOf('Bearer ')===0)v=v.substring(7).trim();
+        if(v.indexOf('eyJ')===0&&v.length>25)return v;
+        try{
+          var p=JSON.parse(v);
+          if(p&&typeof p==='object'){
+            var keys=['token','auth_token','access_token','id_token','jwt','authToken','accessToken'];
+            for(var i=0;i<keys.length;i++){if(p[keys[i]]&&typeof p[keys[i]]==='string'&&p[keys[i]].length>20)return p[keys[i]];}
+            if(p.user&&typeof p.user==='object'){
+              for(var j=0;j<keys.length;j++){if(p.user[keys[j]])return p.user[keys[j]];}
+            }
+          }
+        }catch(e){}
+        if(v.length>30&&/^[A-Za-z0-9\\-_=.]+$/.test(v))return v;
+        return '';
+      }
+      try{
+        for(var i=0;i<localStorage.length;i++){
+          var k=localStorage.key(i);
+          var t=checkVal(localStorage.getItem(k));
+          if(t){token=t;break;}
+        }
+      }catch(e){}
+      if(!token){
+        try{
+          for(var j=0;j<sessionStorage.length;j++){
+            var sk=sessionStorage.key(j);
+            var st=checkVal(sessionStorage.getItem(sk));
+            if(st){token=st;break;}
+          }
+        }catch(e){}
+      }
+      if(!token&&allCookies){
+        var m=allCookies.match(/(?:auth_token|token|jwt|access_token)=([^;]+)/i);
+        if(m)token=decodeURIComponent(m[1]);
+      }
+      if(!token&&(allCookies.includes('ASP.NET')||allCookies.includes('GVC')||allCookies.includes('auth'))){
+        token='COOKIE_SESSION';
+      }
+      if(!token){
+        alert('❌ No active login found on this GVC page. Please log in to GVC World and try again.');
+        return;
+      }
+      var target='${origin}/api/gvc/session/sync';
+      fetch(target,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token:(token==='COOKIE_SESSION'?'':token),cookies:allCookies,source:'BOOKMARKLET'})
+      }).then(function(r){return r.json();})
+      .then(function(d){
+        if(d.success){
+          alert('🎉 SUCCESS! GVC session synced to Kamal Express!\\nYou can now return to the Kamal Express tab and search/book slots.');
+        }else{
+          alert('❌ Sync error: '+(d.detail||d.message||'Unknown error'));
+        }
+      }).catch(function(err){
+        prompt('⚠️ Browser CSP blocked automatic network sync. Copy this token (Ctrl+C) and paste it into Kamal Express settings:', token==='COOKIE_SESSION'?allCookies:token);
+      });
+    })();`.replace(/\s+/g, ' ');
+
     const btn = document.getElementById('btn-bookmarklet-link');
     if (btn) {
       btn.setAttribute('href', bmCode);
     }
+  }
+
+  function copyConsoleSnippet() {
+    const origin = window.location.origin;
+    const snippet = `fetch('${origin}/api/gvc/session/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:localStorage.getItem('token')||localStorage.getItem('auth_token')||(document.cookie.match(/auth_token=([^;]+)/)||[])[1]||'',cookies:document.cookie,source:'CONSOLE_SYNC'})}).then(r=>r.json()).then(d=>alert('✅ Synced GVC Session ID: '+d.session.id)).catch(e=>alert('❌ '+e));`;
+    navigator.clipboard.writeText(snippet).then(() => {
+      alert('📋 1-Line Console Script copied to clipboard!\n\nTo use:\n1. Open your GVC World tab (pk-gr-services.gvcworld.eu)\n2. Press F12 -> click Console\n3. Press Ctrl+V -> hit Enter!');
+    }).catch(() => {
+      prompt('Copy this script and run it in F12 Console on GVC World:', snippet);
+    });
   }
 
   function switchNavTab(viewId) {

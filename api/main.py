@@ -141,6 +141,17 @@ async def get_current_user(
     return user
 
 
+async def get_optional_user(
+    session_token: Optional[str] = Cookie(None),
+    auth_header: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+) -> Optional[dict]:
+    """Optional session validation for bookmarklets and third-party ingestion."""
+    token = session_token or (auth_header.credentials if auth_header else None)
+    if not token:
+        return None
+    return get_user_by_session(token)
+
+
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     """Ensure user has admin role."""
     if user.get("role") != "admin":
@@ -529,14 +540,15 @@ async def search_slots(
 # ── GVC Session & Dual-Mode Auth Endpoints ─────────────────────────────────────
 
 @app.post("/api/gvc/session/sync")
-async def gvc_sync_session(req: GVCSyncRequest, user: dict = Depends(get_current_user)):
+async def gvc_sync_session(req: GVCSyncRequest, user: Optional[dict] = Depends(get_optional_user)):
     """Sync active GVC session token/cookies (Option 1: Manual / Bookmarklet)."""
+    username = user.get("username", "staff_sync") if user else "staff_sync"
     saved = save_gvc_session(
         auth_token=req.token or "",
         cookies=req.cookies,
         bearer_token=req.bearer_token or req.token or "",
         source=req.source or "MANUAL_SYNC",
-        synced_by=user.get("username", "staff"),
+        synced_by=username,
     )
     return {
         "success": True,
