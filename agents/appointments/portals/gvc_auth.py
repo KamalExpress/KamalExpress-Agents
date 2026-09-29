@@ -66,6 +66,60 @@ class GVCAuthSolver:
             "Sec-Fetch-Site": "same-origin",
         }
 
+    def _clear_waf_cookies_sync(self, proxy: Optional[str] = None) -> Dict[str, str]:
+        """Use Playwright stealth to solve initial Imperva JS challenge and retrieve clearance cookies."""
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                    ]
+                )
+                context_kwargs = {
+                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "viewport": {"width": 1280, "height": 720},
+                    "extra_http_headers": {
+                        "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                        "sec-ch-ua-mobile": "?0",
+                        "sec-ch-ua-platform": '"Windows"',
+                    }
+                }
+                if proxy:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(proxy)
+                    if parsed.hostname:
+                        proxy_conf = {"server": f"http://{parsed.hostname}:{parsed.port}"}
+                        if parsed.username:
+                            proxy_conf["username"] = parsed.username
+                            proxy_conf["password"] = parsed.password
+                        context_kwargs["proxy"] = proxy_conf
+
+                context = browser.new_context(**context_kwargs)
+                page = context.new_page()
+
+                try:
+                    from playwright_stealth import Stealth
+                    Stealth().apply_stealth_sync(page)
+                except Exception:
+                    pass
+
+                target_url = f"{self.base_url}/login"
+                page.goto(target_url, wait_until="commit", timeout=60000)
+                page.wait_for_selector('input[name="username"], input[type="email"], #email, form', timeout=90000)
+
+                cookies = context.cookies()
+                cookie_dict = {c["name"]: c["value"] for c in cookies}
+                browser.close()
+                return cookie_dict
+        except Exception as err:
+            logger.warning(f"[gvc_auth] WAF pre-clearance note: {err}")
+            return {}
+
     async def login_with_credentials(
         self,
         email: Optional[str] = None,
@@ -102,27 +156,9 @@ class GVCAuthSolver:
             logger.info(f"[gvc_auth] Attempt {attempt}/{max_retries} via proxy {proxy or 'direct'}...")
 
             try:
-                # 1. Pre-flight navigation to establish Incapsula TLS trust on proxy
+                # 1. Clear Imperva WAF challenge on proxy via Playwright Stealth
+                waf_cookies = await asyncio.to_thread(self._clear_waf_cookies_sync, proxy)
                 proxies = {"http": proxy, "https": proxy} if proxy else None
-                preflight_cookies: Dict[str, str] = {}
-                if HAS_CURL_CFFI and AsyncSession:
-                    try:
-                        async with AsyncSession(impersonate="chrome120") as pf_sess:
-                            await pf_sess.get(
-                                f"{self.base_url}/?lang=en_US",
-                                headers={
-                                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                                    "Sec-Fetch-Dest": "document",
-                                    "Sec-Fetch-Mode": "navigate",
-                                    "Sec-Fetch-Site": "none",
-                                },
-                                proxies=proxies,
-                                timeout=15,
-                            )
-                            if hasattr(pf_sess, "cookies"):
-                                preflight_cookies = pf_sess.cookies.get_dict()
-                    except Exception as pf_err:
-                        logger.debug(f"[gvc_auth] Preflight note: {pf_err}")
 
                 # 2. Solve reCAPTCHA
                 page_url = f"{self.base_url}/login"
@@ -137,8 +173,9 @@ class GVCAuthSolver:
                     "g-recaptcha-response": captcha_token,
                 }
 
-                # 3. Dispatch login request
-                session_cookies = dict(preflight_cookies)
+                # 3. Dispatch login request with pre-cleared WAF cookies
+                session_cookies = dict(waf_cookies)
+                auth_header_val = None
                 if HAS_CURL_CFFI and AsyncSession:
                     async with AsyncSession(impersonate="chrome120") as session:
                         resp = await session.post(
@@ -151,11 +188,20 @@ class GVCAuthSolver:
                         )
                         if hasattr(session, "cookies"):
                             session_cookies.update(session.cookies.get_dict())
+                        auth_header_val = resp.headers.get("authorization") or resp.headers.get("Authorization")
                 else:
                     async with httpx.AsyncClient(cookies=session_cookies, proxy=proxy, timeout=30.0, follow_redirects=True) as client:
                         resp = await client.post(login_url, json=payload, headers=self._get_headers())
                         session_cookies.update(dict(resp.cookies))
+                        auth_header_val = resp.headers.get("authorization") or resp.headers.get("Authorization")
                     
+                body_text = resp.text.strip()
+                is_waf_challenge = "_incapsula_resource" in body_text.lower() or (resp.status_code == 200 and body_text.lower().startswith("<html"))
+
+                if is_waf_challenge:
+                    logger.warning(f"[gvc_auth] Login hit WAF challenge HTML on proxy {proxy}. Retrying on next attempt...")
+                    continue
+
                 if resp.status_code in [200, 201]:
                     data = {}
                     try:
@@ -163,9 +209,12 @@ class GVCAuthSolver:
                     except Exception:
                         pass
 
-                    # Extract token from body or cookies
+                    # Extract JWT token from Authorization header, body, or cookies
                     token = ""
-                    if isinstance(data, dict):
+                    if auth_header_val:
+                        token = auth_header_val.replace("Bearer ", "").strip()
+
+                    if not token and isinstance(data, dict):
                         ret = data.get("returnobject") or {}
                         if isinstance(ret, dict):
                             token = ret.get("token") or ret.get("auth_token") or ret.get("jwt") or ""
@@ -178,11 +227,11 @@ class GVCAuthSolver:
                     if not token and "auth_token" in session_cookies:
                         token = session_cookies["auth_token"]
 
-                    if token or len(session_cookies) > 0:
+                    if token:
                         if proxy:
                             self.proxy_manager.mark_proxy_success(proxy)
                         saved = save_gvc_session(
-                            auth_token=token or session_cookies.get("auth_token", "cookie-session"),
+                            auth_token=token,
                             cookies=session_cookies,
                             bearer_token=token,
                             source="AUTO_SOLVER",
