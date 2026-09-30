@@ -3609,7 +3609,14 @@ How can I help you today?</div>
         headers: { 'Content-Type': 'application/json' },
       });
       if (resp.status === 401) { showLogin(); return; }
-      const data = await resp.json();
+
+      let data = {};
+      const rawText = await resp.text();
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        data = { success: false, error: rawText || `HTTP ${resp.status} Server Error` };
+      }
 
       if (resp.ok && data.success) {
         alert(`🎉 BOOKING SUCCESSFUL!\n\nApplicant: ${name} (#${id})\nReference: ${data.reference_number || 'CONFIRMED'}\nSlot: ${data.slot_date || ''} ${data.slot_time || ''}\nOperator: ${data.worker_name || 'Fleet Operator'}\n\nClient queue record has been updated with full booking proof.`);

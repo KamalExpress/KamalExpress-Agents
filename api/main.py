@@ -891,13 +891,26 @@ async def remove_client(client_id: int, user: dict = Depends(get_current_user)):
 @app.post("/api/clients/{client_id}/trigger-booking")
 async def trigger_client_booking_endpoint(client_id: int, user: dict = Depends(get_current_user)):
     """Manually trigger the autonomous booking workflow for a specific queued applicant."""
-    client = get_client_by_id(client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found in queue.")
+    try:
+        client = get_client_by_id(client_id)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found in queue.")
 
-    username = user.get("username", "staff")
-    res = await fleet_manager.trigger_client_booking(client_id=client_id, triggered_by=username)
-    return res
+        username = user.get("username", "staff")
+        res = await fleet_manager.trigger_client_booking(client_id=client_id, triggered_by=username)
+        return JSONResponse(status_code=200, content=res)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[api] Error executing trigger_client_booking for client #{client_id}: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "status": "INTERNAL_ERROR",
+                "error": f"Booking workflow exception: {str(e)}",
+            },
+        )
 
 
 # ── Live Slot Discovery & Monitor Telemetry Endpoints ─────────────────────────

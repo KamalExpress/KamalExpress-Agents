@@ -12,6 +12,7 @@ Each account operates with defined capabilities:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 import time
@@ -119,6 +120,15 @@ class AccountWorkerInstance:
     @property
     def is_running(self) -> bool:
         return self._running and self._task is not None and not self._task.done()
+
+    @property
+    def is_authenticated(self) -> bool:
+        acc = get_gvc_portal_account_by_id(self.account_id)
+        return bool(acc and acc.get("is_authenticated") and (acc.get("auth_token") or acc.get("bearer_token")))
+
+    @property
+    def _is_authenticated(self) -> bool:
+        return self.is_authenticated
 
     def get_telemetry(self) -> dict:
         acc = get_gvc_portal_account_by_id(self.account_id) or {}
