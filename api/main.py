@@ -756,6 +756,19 @@ async def create_gvc_portal_account(req: GVCAccountCreateRequest, user: dict = D
         raise HTTPException(status_code=400, detail=f"Failed to add account: {e}")
 
 
+@app.get("/api/gvc/accounts/{account_id}")
+async def get_single_gvc_account(account_id: int, user: dict = Depends(get_current_user)):
+    """Get single GVC portal account settings."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    acc = get_gvc_portal_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="GVC Account not found.")
+    if not is_admin and acc["owner_username"] != username:
+        raise HTTPException(status_code=403, detail="Unauthorized.")
+    return acc
+
+
 @app.put("/api/gvc/accounts/{account_id}")
 async def edit_gvc_portal_account(account_id: int, req: GVCAccountUpdateRequest, user: dict = Depends(get_current_user)):
     """Update GVC portal account settings."""

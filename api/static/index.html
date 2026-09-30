@@ -1584,6 +1584,78 @@ How can I help you today?</div>
   </div>
 </div>
 
+<!-- ── EDIT GVC PORTAL ACCOUNT MODAL ── -->
+<div class="modal" id="edit-gvc-account-modal">
+  <div class="modal-content" style="width: 520px;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="edit-3" class="icon"></i> Edit GVC Portal Account Settings
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeEditGvcAccountModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <form onsubmit="event.preventDefault(); submitEditGvcAccount();" style="display:flex; flex-direction:column; gap:10px;">
+      <input type="hidden" id="gvc-edit-id">
+
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Account Label / Friendly Name *</label>
+        <input type="text" id="gvc-edit-label" required placeholder="e.g. Zeeshan - Islamabad Account #1">
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>GVC Login Email *</label>
+          <input type="email" id="gvc-edit-email" required placeholder="account@gvcworld.eu" autocomplete="off">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Password (leave blank to keep)</label>
+          <input type="password" id="gvc-edit-password" placeholder="••••••••••••" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>OTP Phone SIM (without 0) *</label>
+          <input type="text" id="gvc-edit-phone" required placeholder="3342502270">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Auth Mode</label>
+          <select id="gvc-edit-authmode">
+            <option value="auto_solver">Autonomous CapSolver Auto-Login</option>
+            <option value="manual">Manual Browser Token Sync</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Target VAC Center *</label>
+          <select id="gvc-edit-vac">
+            <option value="138">Islamabad (138)</option>
+            <option value="137">Karachi (137)</option>
+            <option value="139">Lahore (139)</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Target Visa Category *</label>
+          <select id="gvc-edit-visatype">
+            <option value="26">Type 26 (Seasonal Work)</option>
+            <option value="0">Type 0 (Schengen C)</option>
+            <option value="2">Type 2 (National D)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeEditGvcAccountModal()">Cancel</button>
+        <button type="submit" id="btn-update-gvc-acc" class="btn btn-primary">
+          <i data-lucide="check" class="icon"></i> Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ── SYNC ACCOUNT TOKEN MODAL ── -->
 <div class="modal" id="sync-gvc-account-modal">
   <div class="modal-content" style="width: 500px;">
@@ -1844,11 +1916,14 @@ How can I help you today?</div>
   }
 
   // ── Multi-Account GVC Fleet Management ───────────────────────
+  let cachedGvcAccounts = [];
+
   async function loadGvcAccounts() {
     try {
       const resp = await fetch('/api/gvc/accounts');
       if (resp.status === 401) return;
       const data = await resp.json();
+      cachedGvcAccounts = data.accounts || [];
 
       const fleetResp = await fetch('/api/gvc/fleet/status');
       const fleetData = fleetResp.ok ? await fleetResp.json() : {};
@@ -1918,6 +1993,11 @@ How can I help you today?</div>
             <button class="btn btn-outline btn-sm" onclick="toggleGvcAccountWorker(${acc.id})" title="${isWorkerActive ? 'Pause Worker' : 'Start Worker'}" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
               <i data-lucide="${isWorkerActive ? 'pause' : 'play'}" class="icon" style="width:12px; height:12px;"></i>
             </button>
+            ${isOwner ? `
+              <button class="btn btn-outline btn-sm" onclick="openEditGvcAccountModal(${acc.id})" title="Edit Account Settings & VAC/Visa Target" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
+                <i data-lucide="edit-3" class="icon" style="width:12px; height:12px;"></i>
+              </button>
+            ` : ''}
             <button class="btn btn-outline btn-sm" onclick="openSyncAccountTokenModal(${acc.id}, '${escapeHtml(acc.account_label)}')" title="Manual Token Sync" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
               <i data-lucide="key" class="icon" style="width:12px; height:12px;"></i>
             </button>
@@ -1933,6 +2013,71 @@ How can I help you today?</div>
       renderIcons();
     } catch (err) {
       console.error("GVC accounts load error:", err);
+    }
+  }
+
+  function openEditGvcAccountModal(id) {
+    const acc = cachedGvcAccounts.find(a => a.id === id);
+    if (!acc) return;
+    document.getElementById('gvc-edit-id').value = acc.id;
+    document.getElementById('gvc-edit-label').value = acc.account_label || '';
+    document.getElementById('gvc-edit-email').value = acc.email || '';
+    document.getElementById('gvc-edit-password').value = '';
+    document.getElementById('gvc-edit-phone').value = acc.otp_phone_number || '';
+    document.getElementById('gvc-edit-authmode').value = acc.auth_mode || 'auto_solver';
+    document.getElementById('gvc-edit-vac').value = acc.target_vac_id || '138';
+    document.getElementById('gvc-edit-visatype').value = acc.target_visa_type || '26';
+
+    document.getElementById('edit-gvc-account-modal').classList.add('active');
+    renderIcons();
+  }
+
+  function closeEditGvcAccountModal() {
+    document.getElementById('edit-gvc-account-modal').classList.remove('active');
+  }
+
+  async function submitEditGvcAccount() {
+    const id = document.getElementById('gvc-edit-id').value;
+    const payload = {
+      account_label: document.getElementById('gvc-edit-label').value.trim(),
+      email: document.getElementById('gvc-edit-email').value.trim(),
+      otp_phone_number: document.getElementById('gvc-edit-phone').value.trim(),
+      auth_mode: document.getElementById('gvc-edit-authmode').value,
+      target_vac_id: document.getElementById('gvc-edit-vac').value,
+      target_visa_type: document.getElementById('gvc-edit-visatype').value,
+    };
+    const newPass = document.getElementById('gvc-edit-password').value;
+    if (newPass) {
+      payload.password = newPass;
+    }
+
+    if (!payload.account_label || !payload.email || !payload.otp_phone_number) {
+      alert("Please fill all required fields.");
+      return;
+    }
+
+    const btn = document.getElementById('btn-update-gvc-acc');
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch(`/api/gvc/accounts/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`✅ Account #${id} updated successfully.`);
+        closeEditGvcAccountModal();
+        loadGvcAccounts();
+      } else {
+        alert(`❌ Error: ${data.detail || 'Could not update account.'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      renderIcons();
     }
   }
 

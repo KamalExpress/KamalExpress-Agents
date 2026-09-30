@@ -1822,6 +1822,8 @@ def update_gvc_portal_account(account_id: int, update_data: dict, db_path: Path 
     values = []
     for k, v in update_data.items():
         if k in allowed:
+            if k == "password" and (v is None or not str(v).strip()):
+                continue
             fields.append(f"{k} = ?")
             values.append(v)
     if not fields:
