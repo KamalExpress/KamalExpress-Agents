@@ -84,6 +84,7 @@ from agents.appointments.db import (
     update_gvc_account_session,
     toggle_gvc_account_worker,
     export_all_system_data,
+    import_all_system_data,
     log_system_event,
     get_recent_system_logs,
     clear_system_logs,
@@ -425,6 +426,56 @@ async def export_admin_data_endpoint(
             },
         )
     return data
+
+
+@app.post("/api/admin/import-data")
+async def import_admin_data_endpoint(
+    request: Request,
+    admin: dict = Depends(require_admin),
+):
+    """
+    Import complete system database from unified backup JSON (Admin only).
+    Accepts JSON body or multipart file upload.
+    """
+    content_type = request.headers.get("content-type", "")
+    try:
+        if "multipart/form-data" in content_type:
+            form = await request.form()
+            file = form.get("file")
+            if not file:
+                raise HTTPException(status_code=400, detail="No backup file provided in form field 'file'")
+            contents = await file.read()
+            backup_data = json.loads(contents.decode("utf-8"))
+        else:
+            backup_data = await request.json()
+
+        if not isinstance(backup_data, dict):
+            raise HTTPException(status_code=400, detail="Invalid backup format: expected JSON object")
+
+        imported_counts = import_all_system_data(backup_data)
+
+        log_system_event(
+            level="INFO",
+            category="BACKUP",
+            message=f"Admin '{admin.get('username', 'admin')}' imported system backup data.",
+            details={
+                "imported_by": admin.get("username", "admin"),
+                "imported_counts": imported_counts,
+            },
+        )
+
+        return {
+            "success": True,
+            "message": "Database backup imported successfully",
+            "imported_counts": imported_counts,
+        }
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in backup file: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to import system backup")
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
 # ── Streaming helper ──────────────────────────────────────────────────────────

@@ -1477,8 +1477,12 @@ How can I help you today?</div>
           </div>
         </div>
         <div style="display:flex; gap:8px;">
+          <input type="file" id="import-backup-file-input" accept=".json,application/json" style="display:none;" onchange="handleBackupFileSelected(event)">
           <button class="btn btn-outline btn-sm" onclick="previewExportSummary()">
             <i data-lucide="eye" class="icon"></i> Inspect Data
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="triggerBackupFilePicker()" id="btn-import-backup" style="border-color:var(--primary); color:var(--primary);">
+            <i data-lucide="upload" class="icon"></i> Import Backup (.JSON)
           </button>
           <button class="btn btn-primary btn-sm" onclick="downloadSystemExport()" id="btn-download-export">
             <i data-lucide="download" class="icon"></i> Export All Data (.JSON)
@@ -4156,6 +4160,93 @@ How can I help you today?</div>
       alert(summaryText);
     } catch (e) {
       alert('Error loading export preview: ' + e.message);
+    }
+  }
+
+  function triggerBackupFilePicker() {
+    const input = document.getElementById('import-backup-file-input');
+    if (input) {
+      input.value = '';
+      input.click();
+    }
+  }
+
+  async function handleBackupFileSelected(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      let backupData;
+      try {
+        backupData = JSON.parse(text);
+      } catch (err) {
+        alert('Invalid JSON file. Please select a valid Kamal Express backup JSON.');
+        return;
+      }
+
+      const meta = backupData.metadata || {};
+      const counts = meta.summary_counts || {};
+      const confirmMsg = `⚠️ RESTORE SYSTEM BACKUP\n\n` +
+        `File: ${file.name}\n` +
+        `Exported At: ${meta.export_timestamp || 'Unknown'}\n` +
+        `Schema: ${meta.schema_version || '1.0'}\n\n` +
+        `Entities to Restore / Merge:\n` +
+        `• Staff Accounts: ${counts.staff_accounts ?? (backupData.staff_accounts || []).length}\n` +
+        `• GVC Portal Accounts: ${counts.gvc_portal_accounts ?? (backupData.gvc_portal_accounts || []).length}\n` +
+        `• Proxies: ${counts.proxies ?? (backupData.proxies || []).length}\n` +
+        `• Client Queue: ${counts.client_queue ?? (backupData.client_queue || []).length}\n` +
+        `• OTP Messages: ${counts.otp_messages ?? (backupData.otp_messages || []).length}\n\n` +
+        `Do you want to import this data into the database now?`;
+
+      if (!confirm(confirmMsg)) return;
+
+      const btn = document.getElementById('btn-import-backup');
+      const origHtml = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader-2" class="icon" style="animation:spin 1s linear infinite;"></i> Importing...`;
+        renderIcons();
+      }
+
+      const resp = await fetch('/api/admin/import-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backupData)
+      });
+
+      const raw = await resp.text();
+      let res;
+      try { res = JSON.parse(raw); } catch (_) { res = { detail: raw }; }
+
+      if (!resp.ok) {
+        alert('Import failed: ' + (res.detail || resp.statusText));
+        return;
+      }
+
+      const imported = res.imported_counts || {};
+      alert(`✅ Database Backup Imported Successfully!\n\n` +
+        `• Staff Accounts: ${imported.staff_accounts || 0}\n` +
+        `• GVC Accounts: ${imported.gvc_portal_accounts || 0}\n` +
+        `• Proxies: ${imported.proxies || 0}\n` +
+        `• Client Queue: ${imported.client_queue || 0}\n` +
+        `• OTP Messages: ${imported.otp_records || 0}\n` +
+        `• System Settings: ${imported.system_settings || 0}`);
+
+      loadExportStats();
+      if (typeof loadUsers === 'function') loadUsers();
+      if (typeof loadGvcAccounts === 'function') loadGvcAccounts();
+      if (typeof loadProxyStats === 'function') loadProxyStats();
+      if (typeof refreshQueue === 'function') refreshQueue();
+    } catch (e) {
+      alert('Error reading/importing backup file: ' + e.message);
+    } finally {
+      const btn = document.getElementById('btn-import-backup');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        renderIcons();
+      }
     }
   }
 

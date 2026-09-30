@@ -2642,7 +2642,7 @@ def export_all_system_data(db_path: Path = DB_PATH) -> dict:
 
             # 1. Staff Accounts
             user_rows = conn.execute(
-                "SELECT id, username, role, full_name, is_active, created_at, last_login_at FROM users ORDER BY id ASC"
+                "SELECT id, username, password_hash, salt, role, full_name, is_active, created_at, last_login_at FROM users ORDER BY id ASC"
             ).fetchall()
             staff_accounts = [dict(r) for r in user_rows]
 
@@ -2721,6 +2721,291 @@ def export_all_system_data(db_path: Path = DB_PATH) -> dict:
             }
     finally:
         conn.close()
+
+
+def import_all_system_data(backup_data: dict, db_path: Path = DB_PATH) -> dict:
+    """
+    Restore complete system database from unified backup JSON.
+    Upserts / replaces tables safely within a database transaction.
+    """
+    imported_counts = {
+        "staff_accounts": 0,
+        "gvc_portal_accounts": 0,
+        "proxies": 0,
+        "system_settings": 0,
+        "otp_records": 0,
+        "client_queue": 0,
+        "hotel_bookings": 0,
+        "visa_rules": 0,
+    }
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                # 1. Staff / Admin Users
+                users = backup_data.get("staff_accounts") or []
+                for u in users:
+                    if u.get("username"):
+                        salt = u.get("salt")
+                        pwd_hash = u.get("password_hash")
+                        if not salt or not pwd_hash:
+                            pwd_hash, salt = hash_password("Admin123!", salt)
+                        conn.execute("""
+                            INSERT INTO users (id, username, password_hash, salt, role, full_name, is_active, created_at, last_login_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(username) DO UPDATE SET
+                                password_hash=excluded.password_hash,
+                                salt=excluded.salt,
+                                role=excluded.role,
+                                full_name=excluded.full_name,
+                                is_active=excluded.is_active
+                        """, (
+                            u.get("id"),
+                            u.get("username"),
+                            pwd_hash,
+                            salt,
+                            u.get("role", "staff"),
+                            u.get("full_name", ""),
+                            1 if u.get("is_active", True) else 0,
+                            u.get("created_at") or datetime.utcnow().isoformat(),
+                            u.get("last_login_at"),
+                        ))
+                        imported_counts["staff_accounts"] += 1
+
+                # 2. GVC Portal Accounts
+                gvc_accounts = backup_data.get("gvc_portal_accounts") or []
+                for g in gvc_accounts:
+                    if g.get("email"):
+                        conn.execute("""
+                            INSERT INTO gvc_portal_accounts (
+                                id, account_label, owner_username, email, password, otp_phone_number,
+                                target_vac_id, target_visa_type, assigned_proxy_url, auth_mode,
+                                account_role, worker_persona_name, target_date_from, auth_token,
+                                bearer_token, cookies_json, is_authenticated, is_worker_active,
+                                last_login_at, last_checked_at, last_error, total_booked_count, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(id) DO UPDATE SET
+                                account_label=excluded.account_label,
+                                email=excluded.email,
+                                password=CASE WHEN excluded.password != '' THEN excluded.password ELSE gvc_portal_accounts.password END,
+                                otp_phone_number=excluded.otp_phone_number,
+                                target_vac_id=excluded.target_vac_id,
+                                target_visa_type=excluded.target_visa_type,
+                                assigned_proxy_url=excluded.assigned_proxy_url,
+                                auth_mode=excluded.auth_mode,
+                                account_role=excluded.account_role,
+                                worker_persona_name=excluded.worker_persona_name,
+                                target_date_from=excluded.target_date_from,
+                                auth_token=excluded.auth_token,
+                                bearer_token=excluded.bearer_token,
+                                cookies_json=excluded.cookies_json,
+                                is_authenticated=excluded.is_authenticated,
+                                is_worker_active=excluded.is_worker_active,
+                                total_booked_count=excluded.total_booked_count
+                        """, (
+                            g.get("id"),
+                            g.get("account_label"),
+                            g.get("owner_username", "staff"),
+                            g.get("email"),
+                            g.get("password", ""),
+                            g.get("otp_phone_number", ""),
+                            g.get("target_vac_id", "138"),
+                            g.get("target_visa_type", "26"),
+                            g.get("assigned_proxy_url"),
+                            g.get("auth_mode", "auto_solver"),
+                            g.get("account_role", "HYBRID"),
+                            g.get("worker_persona_name"),
+                            g.get("target_date_from", ""),
+                            g.get("auth_token", ""),
+                            g.get("bearer_token", ""),
+                            g.get("cookies_json", "{}") if isinstance(g.get("cookies_json"), str) else json.dumps(g.get("cookies_json") or {}),
+                            1 if g.get("is_authenticated") else 0,
+                            1 if g.get("is_worker_active", True) else 0,
+                            g.get("last_login_at"),
+                            g.get("last_checked_at"),
+                            g.get("last_error"),
+                            g.get("total_booked_count", 0),
+                            g.get("created_at") or datetime.utcnow().isoformat(),
+                        ))
+                        imported_counts["gvc_portal_accounts"] += 1
+
+                # 3. Proxies
+                proxies = backup_data.get("proxies") or []
+                for p in proxies:
+                    p_url = p.get("proxy_url") or p.get("url")
+                    if p_url:
+                        host = p.get("host") or ""
+                        port = str(p.get("port") or "")
+                        user = p.get("username")
+                        pwd = p.get("password")
+                        if (not host or not port) and "://" in p_url:
+                            from urllib.parse import urlparse
+                            parsed = urlparse(p_url)
+                            host = parsed.hostname or ""
+                            port = str(parsed.port or "")
+                            user = parsed.username
+                            pwd = parsed.password
+                        conn.execute("""
+                            INSERT INTO proxies (id, proxy_url, host, port, username, password, country, status, success_count, fail_count, last_error, last_used_at, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(proxy_url) DO UPDATE SET
+                                host=excluded.host,
+                                port=excluded.port,
+                                username=excluded.username,
+                                password=excluded.password,
+                                status=excluded.status,
+                                success_count=excluded.success_count,
+                                fail_count=excluded.fail_count
+                        """, (
+                            p.get("id"),
+                            p_url,
+                            host,
+                            port,
+                            user,
+                            pwd,
+                            p.get("country", "PK"),
+                            p.get("status", "ACTIVE"),
+                            p.get("success_count", 0),
+                            p.get("fail_count", 0),
+                            p.get("last_error"),
+                            p.get("last_used_at"),
+                            p.get("created_at") or datetime.utcnow().isoformat(),
+                        ))
+                        imported_counts["proxies"] += 1
+
+                # 4. System Settings
+                settings = backup_data.get("system_settings") or {}
+                if backup_data.get("capsolver_keys"):
+                    ck = backup_data["capsolver_keys"]
+                    if ck.get("api_key"):
+                        settings["captcha_api_key"] = ck["api_key"]
+                    if ck.get("provider"):
+                        settings["captcha_provider"] = ck["provider"]
+                if backup_data.get("gvc_credentials"):
+                    gc = backup_data["gvc_credentials"]
+                    if gc.get("email"):
+                        settings["gvc_account_email"] = gc["email"]
+                    if gc.get("password"):
+                        settings["gvc_account_password"] = gc["password"]
+                    if gc.get("interval_seconds"):
+                        settings["auto_solver_interval_seconds"] = str(gc["interval_seconds"])
+
+                for k, v in settings.items():
+                    conn.execute("""
+                        INSERT INTO system_settings (key, value, updated_at)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+                    """, (k, str(v), datetime.utcnow().isoformat()))
+                    imported_counts["system_settings"] += 1
+
+                # 5. Client Queue
+                clients = backup_data.get("client_queue") or []
+                for c in clients:
+                    p_num = (c.get("passport_number") or "").upper().strip()
+                    if p_num:
+                        conn.execute("""
+                            INSERT INTO client_queue (
+                                id, first_name, last_name, dob, passport_number, passport_expiry,
+                                passport_issue_date, passport_issue_place, gender, gender_id,
+                                nationality, nationality_id, phone_number, phone_prefix_id, email,
+                                destination, visa_type, vac_id, vac_city, preferred_date_start,
+                                preferred_date_end, status, booking_reference, booked_date, booked_time,
+                                locked_by_worker, locked_at, notes, raw_confirmation_path,
+                                booked_by_account_id, booked_by_worker_name, booking_cost_pkr, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(passport_number) DO UPDATE SET
+                                first_name=excluded.first_name,
+                                last_name=excluded.last_name,
+                                dob=excluded.dob,
+                                passport_expiry=excluded.passport_expiry,
+                                passport_issue_date=excluded.passport_issue_date,
+                                passport_issue_place=excluded.passport_issue_place,
+                                gender=excluded.gender,
+                                gender_id=excluded.gender_id,
+                                nationality=excluded.nationality,
+                                nationality_id=excluded.nationality_id,
+                                phone_number=excluded.phone_number,
+                                email=excluded.email,
+                                destination=excluded.destination,
+                                visa_type=excluded.visa_type,
+                                vac_id=excluded.vac_id,
+                                vac_city=excluded.vac_city,
+                                preferred_date_start=excluded.preferred_date_start,
+                                preferred_date_end=excluded.preferred_date_end,
+                                status=excluded.status,
+                                booking_reference=excluded.booking_reference,
+                                booked_date=excluded.booked_date,
+                                booked_time=excluded.booked_time,
+                                notes=excluded.notes,
+                                raw_confirmation_path=excluded.raw_confirmation_path,
+                                booked_by_account_id=excluded.booked_by_account_id,
+                                booked_by_worker_name=excluded.booked_by_worker_name,
+                                booking_cost_pkr=excluded.booking_cost_pkr
+                        """, (
+                            c.get("id"),
+                            c.get("first_name", ""),
+                            c.get("last_name", ""),
+                            c.get("dob", ""),
+                            p_num,
+                            c.get("passport_expiry", ""),
+                            c.get("passport_issue_date", ""),
+                            c.get("passport_issue_place", ""),
+                            c.get("gender", "Male"),
+                            c.get("gender_id", "2"),
+                            c.get("nationality", "Pakistani"),
+                            c.get("nationality_id", "197"),
+                            c.get("phone_number", ""),
+                            c.get("phone_prefix_id", "197"),
+                            c.get("email", ""),
+                            c.get("destination", "Greece"),
+                            c.get("visa_type", "26"),
+                            c.get("vac_id", "138"),
+                            c.get("vac_city", "Islamabad"),
+                            c.get("preferred_date_start"),
+                            c.get("preferred_date_end"),
+                            c.get("status", "QUEUED"),
+                            c.get("booking_reference"),
+                            c.get("booked_date"),
+                            c.get("booked_time"),
+                            c.get("locked_by_worker"),
+                            c.get("locked_at"),
+                            c.get("notes", ""),
+                            c.get("raw_confirmation_path"),
+                            c.get("booked_by_account_id"),
+                            c.get("booked_by_worker_name"),
+                            c.get("booking_cost_pkr", 0),
+                            c.get("created_at") or datetime.utcnow().isoformat(),
+                        ))
+                        imported_counts["client_queue"] += 1
+
+                # 6. OTP Messages
+                otps = backup_data.get("otp_messages_log") or []
+                for o in otps:
+                    if o.get("otp_code") and o.get("phone_number"):
+                        conn.execute("""
+                            INSERT INTO otp_records (id, phone_number, sender, otp_code, raw_message, timestamp, status, claimed_by)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(id) DO NOTHING
+                        """, (
+                            o.get("id"),
+                            o.get("phone_number"),
+                            o.get("sender", "GVC"),
+                            o.get("otp_code"),
+                            o.get("raw_message", ""),
+                            o.get("timestamp") or datetime.utcnow().isoformat(),
+                            o.get("status", "RECEIVED"),
+                            o.get("claimed_by"),
+                        ))
+                        imported_counts["otp_records"] += 1
+
+            return {
+                "success": True,
+                "message": "System backup data successfully imported.",
+                "imported_counts": imported_counts,
+            }
+        finally:
+            conn.close()
 
 
 # Ensure tables are created and default accounts seeded on module import

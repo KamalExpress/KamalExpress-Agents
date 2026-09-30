@@ -254,4 +254,50 @@ def test_quick_book_slot_endpoint():
         delete_client(cid)
 
 
+def test_export_and_import_admin_data():
+    headers = get_auth_headers("admin")
+
+    # 1. Export
+    export_resp = client.get("/api/admin/export-data?download=false", headers=headers)
+    assert export_resp.status_code == 200
+    export_data = export_resp.json()
+    assert "metadata" in export_data
+    assert "staff_accounts" in export_data
+
+    # 2. Modify backup data with a mock client
+    test_client = {
+        "id": 999988,
+        "first_name": "ImportedClient",
+        "last_name": "Test",
+        "dob": "05/05/1992",
+        "passport_number": "PKIMP999",
+        "passport_expiry": "05/05/2030",
+        "phone_number": "3001122334",
+        "email": "imported@test.com",
+        "destination": "Greece",
+        "visa_type": "26",
+        "vac_id": "138",
+        "vac_city": "Islamabad",
+        "status": "QUEUED"
+    }
+    if "client_queue" not in export_data:
+        export_data["client_queue"] = []
+    export_data["client_queue"].append(test_client)
+
+    # 3. Import
+    import_resp = client.post("/api/admin/import-data", json=export_data, headers=headers)
+    assert import_resp.status_code == 200
+    res = import_resp.json()
+    assert res["success"] is True
+    assert "imported_counts" in res
+
+    # Verify imported client exists
+    from agents.appointments.db import get_client_by_id, delete_client
+    c = get_client_by_id(999988)
+    assert c is not None
+    assert c.first_name == "ImportedClient"
+    delete_client(999988)
+
+
+
 
