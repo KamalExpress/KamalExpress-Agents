@@ -400,29 +400,52 @@ class AccountWorkerInstance:
                             continue
 
                         claimed_any = True
-                        masked_sim = mask_phone_pii(acc.get("otp_phone_number") or client.phone_number)
-                        fleet_manager.log_event(
-                            f"⚡ Operator '{persona}' claimed Client #{client.id} ({client.first_name} {client.last_name}). Triggering verification code to SIM {masked_sim} for {vac_meta.get('name', 'VAC')} on {slot.date} {slot.time}...",
-                            level="INFO",
-                            category="BOOKING",
-                            account_id=self.account_id,
-                            worker_name=persona,
-                        )
+                        target_phone = client.phone_number or acc.get("otp_phone_number")
+                        masked_sim = mask_phone_pii(target_phone)
+                        visa_label = GVC_VISA_TYPES.get(str(client.visa_type or visa_type), f"Type {client.visa_type or visa_type}")
+                        vac_name = vac_meta.get("name", f"VAC {vac_id}")
 
-                        # Trigger OTP on GVC portal
-                        await self._driver.trigger_booking_otp(phone_number=acc.get("otp_phone_number") or client.phone_number)
+                        max_otp_attempts = 3
+                        otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
+                        otp_code = None
 
-                        # Await OTP from phone forwarder
-                        otp_code = await wait_for_otp(phone=acc.get("otp_phone_number") or client.phone_number, timeout=75.0)
+                        for otp_attempt in range(1, max_otp_attempts + 1):
+                            attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
+                            fleet_manager.log_event(
+                                f"⚡ Operator '{persona}' claimed Client #{client.id} ({client.first_name} {client.last_name}). Triggering verification code{attempt_label} to SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} ({int(otp_timeout)}s window)...",
+                                level="INFO",
+                                category="BOOKING",
+                                account_id=self.account_id,
+                                worker_name=persona,
+                            )
+                            otp_res = await self._driver.trigger_booking_otp(phone_number=target_phone)
+                            if not otp_res.get("success"):
+                                fleet_manager.log_event(
+                                    f"⚠️ GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
+                                    level="WARNING",
+                                    category="OTP",
+                                    account_id=self.account_id,
+                                    worker_name=persona,
+                                )
+                            otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
+                            if otp_code:
+                                fleet_manager.log_event(
+                                    f"✓ Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {slot.date} {slot.time}.",
+                                    level="SUCCESS",
+                                    category="OTP",
+                                    account_id=self.account_id,
+                                    worker_name=persona,
+                                )
+                                break
 
                         if not otp_code:
                             update_client_status(
                                 client_id=client.id,
-                                status="FAILED",
-                                notes=f"OTP verification timed out after 75s on operator '{persona}'."
+                                status="QUEUED",
+                                notes=f"OTP verification timed out on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} after {max_otp_attempts} attempts. Reverted to QUEUED."
                             )
                             fleet_manager.log_event(
-                                f"❌ OTP verification timed out for {client.passport_number}.",
+                                f"❌ OTP verification timed out for Client #{client.id} ({client.first_name} {client.last_name}, {client.passport_number}) on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} after {max_otp_attempts} attempts. Reverted to QUEUED.",
                                 level="WARNING",
                                 category="OTP",
                                 account_id=self.account_id,
@@ -836,6 +859,8 @@ class GVCFleetManager:
             )
 
             masked_sim = mask_phone_pii(target_phone)
+            visa_label = GVC_VISA_TYPES.get(str(client.visa_type or visa_type), f"Type {client.visa_type or visa_type}")
+            vac_name = vac_meta.get("name", f"VAC {vac_id}")
 
             # 4 & 5. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 3 attempts, 60s each)
             max_otp_attempts = 3
@@ -845,7 +870,7 @@ class GVCFleetManager:
             for otp_attempt in range(1, max_otp_attempts + 1):
                 attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
                 self.log_event(
-                    f"⚡ Operator '{persona}' triggered OTP{attempt_label} to SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}). Awaiting SMS ({int(otp_timeout)}s window)...",
+                    f"⚡ Operator '{persona}' triggered OTP{attempt_label} to SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {target_date} {target_time} ({int(otp_timeout)}s window)...",
                     level="INFO",
                     category="BOOKING",
                     account_id=account_id,
@@ -863,7 +888,7 @@ class GVCFleetManager:
                 otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
                 if otp_code:
                     self.log_event(
-                        f"✓ Operator '{persona}' successfully received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id}.",
+                        f"✓ Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {target_date} {target_time}.",
                         level="SUCCESS",
                         category="OTP",
                         account_id=account_id,
@@ -876,10 +901,10 @@ class GVCFleetManager:
                 update_client_status(
                     client_id=client.id,
                     status="QUEUED",
-                    notes=f"OTP verification timed out on SIM {masked_sim} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
+                    notes=f"OTP verification timed out on SIM {masked_sim} for {vac_name} ({visa_label}) on {target_date} {target_time} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
                 )
                 self.log_event(
-                    f"❌ OTP verification timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim} after {max_otp_attempts} attempts. Applicant returned to QUEUED status.",
+                    f"❌ OTP verification timed out for Client #{client.id} ({client.first_name} {client.last_name}, {client.passport_number}) on SIM {masked_sim} for {vac_name} ({visa_label}) on {target_date} {target_time} after {max_otp_attempts} attempts. Applicant returned to QUEUED status.",
                     level="WARNING",
                     category="OTP",
                     account_id=account_id,
@@ -932,7 +957,7 @@ class GVCFleetManager:
                     booking_cost_pkr=rate_booking,
                 )
                 self.log_event(
-                    f"🎉 [MANUAL TRIGGER] BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {target_slot.date} {target_slot.time}!",
+                    f"🎉 [MANUAL TRIGGER] BOOKING SUCCESSFUL! Ref: {result.reference_number} for Client #{client.id} ({client.first_name} {client.last_name}) by Operator '{persona}' at {vac_name} ({visa_label}) on {target_slot.date} {target_slot.time}!",
                     level="SUCCESS",
                     category="BOOKING",
                     account_id=account_id,
@@ -1081,6 +1106,9 @@ class GVCFleetManager:
 
         # 3. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 3 attempts, 60s each)
         masked_sim = mask_phone_pii(target_phone)
+        visa_label = GVC_VISA_TYPES.get(str(client.visa_type or visa_type), f"Type {client.visa_type or visa_type}")
+        vac_name = vac_meta.get("name", f"VAC {vac_id}")
+
         max_otp_attempts = 3
         otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
         otp_code = None
@@ -1088,7 +1116,7 @@ class GVCFleetManager:
         for otp_attempt in range(1, max_otp_attempts + 1):
             attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
             self.log_event(
-                f"⚡ [QUICK BOOK] Operator '{persona}' triggered instant booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')} on {slot_date} {slot_time}. Triggering OTP{attempt_label} to SIM {masked_sim} ({int(otp_timeout)}s window)...",
+                f"⚡ [QUICK BOOK] Operator '{persona}' triggered instant booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_name} ({visa_label}) on {slot_date} {slot_time}. Triggering OTP{attempt_label} to SIM {masked_sim} ({int(otp_timeout)}s window)...",
                 level="INFO",
                 category="BOOKING",
                 account_id=account_id,
@@ -1106,7 +1134,7 @@ class GVCFleetManager:
             otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
             if otp_code:
                 self.log_event(
-                    f"✓ [QUICK BOOK] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id}.",
+                    f"✓ [QUICK BOOK] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {slot_date} {slot_time}.",
                     level="SUCCESS",
                     category="OTP",
                     account_id=account_id,
@@ -1119,10 +1147,10 @@ class GVCFleetManager:
             update_client_status(
                 client_id=client.id,
                 status="QUEUED",
-                notes=f"Quick-book: OTP verification timed out on SIM {masked_sim} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
+                notes=f"Quick-book: OTP verification timed out on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot_date} {slot_time} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
             )
             self.log_event(
-                f"❌ [QUICK BOOK] OTP timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim} after {max_otp_attempts} attempts. Reverted to QUEUED.",
+                f"❌ [QUICK BOOK] OTP timed out for Client #{client.id} ({client.first_name} {client.last_name}, {client.passport_number}) on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot_date} {slot_time} after {max_otp_attempts} attempts. Reverted to QUEUED.",
                 level="WARNING",
                 category="OTP",
                 account_id=account_id,
