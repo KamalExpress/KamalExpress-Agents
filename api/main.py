@@ -956,6 +956,10 @@ async def trigger_client_booking_endpoint(client_id: int, user: dict = Depends(g
         raise
     except Exception as e:
         logger.error(f"[api] Error executing trigger_client_booking for client #{client_id}: {e}", exc_info=True)
+        try:
+            update_client_status(client_id=client_id, status="QUEUED", notes=f"Trigger error: {str(e)[:100]}. Reverted to queue.")
+        except Exception:
+            pass
         return JSONResponse(
             status_code=500,
             content={
