@@ -117,7 +117,9 @@ class GVCPortalDriver:
     # ── Multi-Source Session Management ─────────────────────────
 
     def _load_active_session_from_db(self) -> bool:
-        """Load active session token, cookies, and sticky proxy from persistent SQLite database."""
+        """Load active session token, cookies, and sticky proxy from persistent SQLite database if not set."""
+        if self._bearer_token and self._session_cookies:
+            return True
         sess = get_active_gvc_session()
         if sess and sess.get("is_valid") and (sess.get("bearer_token") or sess.get("auth_token")):
             self._bearer_token = sess.get("bearer_token") or sess.get("auth_token")
@@ -750,12 +752,30 @@ class GVCPortalDriver:
             else:
                 logger.warning("[gvc] ⚠️ Captcha solver returned None for reCAPTCHA v2 token.")
 
+        # Determine the authenticating user email for the top-level payload
+        # GVC enforces that top-level 'email' matches the subject in the Bearer token (JWT sub)
+        def _get_token_subject(tok: Optional[str]) -> Optional[str]:
+            if not tok or "." not in tok:
+                return None
+            try:
+                parts = tok.split(".")
+                if len(parts) >= 2:
+                    padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+                    payload_json = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
+                    return payload_json.get("sub") or payload_json.get("username") or payload_json.get("email")
+            except Exception:
+                pass
+            return None
+
+        auth_email = _get_token_subject(self._bearer_token)
+        booking_email = auth_email or applicant.email or "applicant@email.com"
+
         sub_payload = {
             "vac": str(vac_meta["id"]),
             "type": str(app_type),
             "bookingfor": "0",
             "members": "1",
-            "email": applicant.email or (self.active_session.username if hasattr(self, 'active_session') and self.active_session and self.active_session.username else "applicant@email.com"),
+            "email": booking_email,
             "phonenumberprefix": {"id": str(applicant.phone_prefix_id or "197")},
             "phonenumber": phone_clean,
             "applicants": [
@@ -780,7 +800,7 @@ class GVCPortalDriver:
         }
 
         url = f"{self.base_url}/api/v1/appointments"
-        logger.info(f"[gvc] Submitting final booking to {url} for {applicant.first_name} {applicant.last_name} ({applicant.passport_number}) at {vac_meta['name']} on {target_date} {target_time} (OTP: {otp_code}, Captcha: {bool(recaptcha_token)})...")
+        logger.info(f"[gvc] Submitting final booking to {url} for {applicant.first_name} {applicant.last_name} ({applicant.passport_number}) as '{booking_email}' at {vac_meta['name']} on {target_date} {target_time} (OTP: {otp_code}, Captcha: {bool(recaptcha_token)})...")
 
         last_error = None
         for attempt in range(max_retries):
@@ -797,19 +817,14 @@ class GVCPortalDriver:
                         except Exception:
                             pass
 
-                        # If response is HTML or not JSON, it was rejected by WAF or session expired
+                        # If response is HTML or not JSON, it was rejected by WAF on this proxy - rotate to next proxy
                         if not isinstance(data, dict):
                             clean_err = clean_portal_error_text(resp.text)
-                            logger.warning(f"[gvc] GVC returned HTTP {resp.status_code} with non-JSON body: {clean_err}")
-                            return BookingResult(
-                                success=False,
-                                client_id=applicant.id,
-                                client_name=f"{applicant.first_name} {applicant.last_name}",
-                                vac_city=vac_meta.get("city", "Islamabad"),
-                                visa_type=str(app_type),
-                                message=f"GVC rejected booking with HTTP {resp.status_code}: {clean_err}",
-                                raw_payload=resp.text,
-                            )
+                            logger.warning(f"[gvc] GVC returned HTML/WAF challenge on proxy {proxy or 'direct'} (Attempt {attempt + 1}/{max_retries}). Rotating proxy...")
+                            if proxy:
+                                self.proxy_manager.mark_proxy_failed(proxy, error="WAF challenge during booking submission")
+                            last_error = clean_err
+                            continue
 
                         code = str(data.get("code") or "").upper()
                         msg = data.get("message") or ""
@@ -856,7 +871,9 @@ class GVCPortalDriver:
 
                     elif resp.status_code in [403, 429]:
                         if proxy:
-                            self.proxy_manager.mark_proxy_failed(proxy)
+                            self.proxy_manager.mark_proxy_failed(proxy, error=f"HTTP {resp.status_code}")
+                        last_error = f"HTTP {resp.status_code}"
+                        continue
                     else:
                         clean_err = clean_portal_error_text(resp.text)
                         return BookingResult(
