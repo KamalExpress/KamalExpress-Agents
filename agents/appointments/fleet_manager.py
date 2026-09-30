@@ -409,6 +409,16 @@ class AccountWorkerInstance:
                         otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
                         otp_code = None
 
+                        # Launch concurrent reCAPTCHA solving during OTP wait window for zero-latency strike
+                        captcha_task = None
+                        if self._driver.captcha_solver.enabled:
+                            captcha_task = asyncio.create_task(
+                                self._driver.captcha_solver.solve_recaptcha_v2(
+                                    getattr(self._driver, "sitekey", "6LcnlCoUAAAAAJLjWXXaByTFyuOLf4K0gGu5r3d2"),
+                                    f"{self._driver.base_url}/appointments/add"
+                                )
+                            )
+
                         for otp_attempt in range(1, max_otp_attempts + 1):
                             attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
                             fleet_manager.log_event(
@@ -439,6 +449,8 @@ class AccountWorkerInstance:
                                 break
 
                         if not otp_code:
+                            if captcha_task and not captcha_task.done():
+                                captcha_task.cancel()
                             update_client_status(
                                 client_id=client.id,
                                 status="QUEUED",
@@ -453,6 +465,14 @@ class AccountWorkerInstance:
                             )
                             continue
 
+                        # Await pre-solved reCAPTCHA token if solving was in flight
+                        recaptcha_token = None
+                        if captcha_task:
+                            try:
+                                recaptcha_token = await asyncio.wait_for(captcha_task, timeout=12.0)
+                            except Exception as e:
+                                logger.warning(f"[fleet_worker #{self.account_id}] reCAPTCHA solve in-flight warning: {e}")
+
                         # Record executed booking task
                         record_worker_task(self.account_id)
 
@@ -464,7 +484,8 @@ class AccountWorkerInstance:
                             target_time=slot.time,
                             otp_code=otp_code,
                             vac_id=client.vac_id,
-                            visa_type=client.visa_type
+                            visa_type=client.visa_type,
+                            recaptcha_token=recaptcha_token,
                         )
 
                         if result.success:
@@ -867,6 +888,16 @@ class GVCFleetManager:
             otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
             otp_code = None
 
+            # Launch concurrent reCAPTCHA solving during OTP wait window for zero-latency strike
+            captcha_task = None
+            if driver.captcha_solver.enabled:
+                captcha_task = asyncio.create_task(
+                    driver.captcha_solver.solve_recaptcha_v2(
+                        getattr(driver, "sitekey", "6LcnlCoUAAAAAJLjWXXaByTFyuOLf4K0gGu5r3d2"),
+                        f"{driver.base_url}/appointments/add"
+                    )
+                )
+
             for otp_attempt in range(1, max_otp_attempts + 1):
                 attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
                 self.log_event(
@@ -897,6 +928,8 @@ class GVCFleetManager:
                     break
 
             if not otp_code:
+                if captcha_task and not captcha_task.done():
+                    captcha_task.cancel()
                 # Return client to QUEUED state so they are not permanently blocked
                 update_client_status(
                     client_id=client.id,
@@ -916,6 +949,14 @@ class GVCFleetManager:
                     "error": f"OTP verification timed out after {max_otp_attempts} attempts for SIM {masked_sim}. Returned to queue.",
                 }
 
+            # Await pre-solved reCAPTCHA token if solving was in flight
+            recaptcha_token = None
+            if captcha_task:
+                try:
+                    recaptcha_token = await asyncio.wait_for(captcha_task, timeout=12.0)
+                except Exception as e:
+                    logger.warning(f"reCAPTCHA solve in-flight warning: {e}")
+
             # 6. Record worker task
             if account_id:
                 record_worker_task(account_id)
@@ -929,6 +970,7 @@ class GVCFleetManager:
                 otp_code=otp_code,
                 vac_id=client.vac_id,
                 visa_type=client.visa_type,
+                recaptcha_token=recaptcha_token,
             )
 
             if result.success:

@@ -709,6 +709,7 @@ class GVCPortalDriver:
         vac_id: Optional[str] = None,
         visa_type: Optional[str] = None,
         max_retries: int = 3,
+        recaptcha_token: Optional[str] = None,
     ) -> BookingResult:
         """
         Submit HAR-compliant final booking payload to GVC World with automatic proxy failover.
@@ -740,6 +741,15 @@ class GVCPortalDriver:
         dob_formatted = _format_gvc_date(applicant.dob)
         expiry_formatted = _format_gvc_date(applicant.passport_expiry)
 
+        # Ensure reCAPTCHA token is obtained if required
+        if not recaptcha_token and self.captcha_solver.enabled:
+            logger.info(f"[gvc] Solving reCAPTCHA v2 token for final booking submission (sitekey: {self.sitekey})...")
+            recaptcha_token = await self.captcha_solver.solve_recaptcha_v2(self.sitekey, f"{self.base_url}/appointments/add")
+            if recaptcha_token:
+                logger.info(f"[gvc] ✓ Successfully solved reCAPTCHA v2 token for booking submission.")
+            else:
+                logger.warning("[gvc] ⚠️ Captcha solver returned None for reCAPTCHA v2 token.")
+
         sub_payload = {
             "vac": str(vac_meta["id"]),
             "type": str(app_type),
@@ -766,10 +776,11 @@ class GVCPortalDriver:
             "submitinfo": "on",
             "submissionMsgCheck": "Make sure that you have checked the required checkbox",
             "onetimepassword": str(otp_code or "").strip(),
+            "g-recaptcha-response": str(recaptcha_token or "").strip(),
         }
 
         url = f"{self.base_url}/api/v1/appointments"
-        logger.info(f"[gvc] Submitting final booking to {url} for {applicant.first_name} {applicant.last_name} ({applicant.passport_number}) at {vac_meta['name']} on {target_date} {target_time} (OTP: {otp_code})...")
+        logger.info(f"[gvc] Submitting final booking to {url} for {applicant.first_name} {applicant.last_name} ({applicant.passport_number}) at {vac_meta['name']} on {target_date} {target_time} (OTP: {otp_code}, Captcha: {bool(recaptcha_token)})...")
 
         last_error = None
         for attempt in range(max_retries):
