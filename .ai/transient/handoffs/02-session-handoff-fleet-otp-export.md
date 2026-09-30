@@ -33,6 +33,19 @@
    - Dynamic UI button switching between **Login** (unauthenticated) and **Logout** (authenticated).
    - `POST /api/gvc/accounts/{account_id}/logout` clearing tokens, cookies, and authentication flags.
 
+6. **GVC Visa Categories & Modals Standardization:**
+   - Standardized all official codes (`26`: Long-Term Seasonal/Dependent Type D [Default], `0`: Schengen C, `2`: National D, `5`: Premium Lounge, `6`: Prime Time) across all dropdowns.
+   - Expanded modal widths (`620px`) and formatted human-readable category badges in tables.
+
+7. **Client Queue Intake Naming Alignment:**
+   - Intake form updated to "First Name (as on Passport)" and "Surname (as on Passport)".
+   - Seamless 1:1 mapping with DB columns (`first_name`, `last_name`) and GVC REST payload (`"firstname"`, `"lastname"`).
+   - Added bidirectional `surname` alias validator to `ClientProfile` schema.
+
+8. **WAF Client Hints & Anti-Bot Fingerprinting:**
+   - Standardized Chromium HTTP Client Hints (`sec-ch-ua`, `sec-ch-ua-mobile`, `sec-ch-ua-platform`) and `User-Agent` in `GVCPortalDriver._get_headers()`.
+   - Ensures consistent Chrome 120 browser identity across all curl/Playwright requests to bypass Imperva WAF.
+
 ---
 
 ## 2. Test Verification Summary

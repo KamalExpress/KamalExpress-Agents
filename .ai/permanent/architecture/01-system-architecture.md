@@ -104,9 +104,29 @@ flowchart TD
   - `otp_messages_log`: Complete incoming OTP SMS/WhatsApp logs.
   - `client_queue`: Applicant queue profiles and booked references.
   - `system_settings`: Key-value system configuration.
-- **Download Modes:**
-  - Attachment download: `kamal_express_backup_YYYYMMDD_HHMMSS.json`.
-  - JSON summary inspection preview in UI.
+### E. Anti-Bot TLS & Browser Header Fingerprinting Standard (`agents/appointments/portals/gvc.py`)
+- **Imperva WAF / Anti-Bot Fingerprint Matching:**
+  - Modern WAFs (such as Imperva Incapsula on `pk-gr-services.gvcworld.eu`) analyze HTTP/2 Client Hints and header consistency.
+  - When requests send `Sec-Fetch-*` headers (`Sec-Fetch-Dest: empty`, `Sec-Fetch-Mode: cors`, `Sec-Fetch-Site: same-origin`), modern Chromium heuristics require valid **Client Hints** (`sec-ch-ua`, `sec-ch-ua-mobile`, `sec-ch-ua-platform`) and an explicit desktop `User-Agent`.
+  - Missing Client Hints or mismatched headers trigger bot detection (403 Forbidden or endless CAPTCHA loops).
+- **Centralized Header Factory (`_get_headers()`):**
+  - Standardized across all portal requests (slot inspection, login, booking submission, OTP confirmation):
+    ```python
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Origin": self.base_url,
+    "Referer": f"{self.base_url}/?lang=en_US",
+    "X-Requested-With": "XMLHttpRequest",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    ```
+  - Paired with `curl_cffi` (impersonating `chrome120`), every API interaction produces a genuine Chrome on Windows TLS and HTTP fingerprint.
 
 ---
 

@@ -31,6 +31,16 @@ Standardized Explain, Diagnose & Recover (EDR) guide for Kamal Express AI Platfo
 - **Diagnose:** Check the **Staff & Roles** tab under "Complete System Data Backup & Export".
 - **Recover:** Click **"Inspect Data"** for an on-screen summary or **"Export All Data (.JSON)"** to download the archive.
 
+### WAF Client Hints & Browser Header Fingerprinting (`_get_headers`)
+- **Explain:** Standardized Chromium HTTP headers (`User-Agent`, `sec-ch-ua`, `sec-ch-ua-mobile`, `sec-ch-ua-platform`, `Sec-Fetch-*`) that match real Google Chrome 120 on Windows to bypass Imperva Incapsula anti-bot detection without triggering CAPTCHA loops.
+- **Diagnose:** If portal requests return `403 Forbidden` or challenge HTML responses, check whether custom API calls omit `_get_headers()` or TLS impersonation in `curl_cffi`.
+- **Recover:** Ensure all HTTP requests route through `GVCPortalDriver` or `curl_cffi.requests.AsyncSession(impersonate="chrome120")` using `driver._get_headers()`.
+
+### Client Queue Name Mapping (`first_name` & `last_name` / `surname`)
+- **Explain:** Client intake forms explicitly ask for "First Name" and "Surname" (matching passport and GVC portal UI). The database schema stores them in `first_name` and `last_name`, and the booking driver maps them to GVC REST payload keys `"firstname"` and `"lastname"`.
+- **Diagnose:** If a client record fails validation, ensure both `first_name` and `last_name` (or `surname` alias) are populated.
+- **Recover:** The `ClientProfile` Pydantic model automatically aliases `surname` $\leftrightarrow$ `last_name`, allowing backwards and forwards compatibility without database migrations.
+
 ---
 
 ## 2. Standard Greek VAC & Visa Category Codes
