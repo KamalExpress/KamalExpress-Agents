@@ -539,6 +539,8 @@ class GVCFleetManager:
         self._running = False
         self._lock = threading.Lock()
         self._activity_logs: List[dict] = []
+        self._in_flight_manual_workers: set[int] = set()
+        self._manual_worker_rr_index: int = 0
 
     def log_event(
         self,
@@ -687,7 +689,7 @@ class GVCFleetManager:
         visa_type = str(client.visa_type or "26")
         vac_meta = GVC_VACS.get(vac_id, GVC_VACS.get("138", {"name": f"VAC {vac_id}"}))
 
-        # 1. Select best authenticated worker / driver
+        # 1. Select best authenticated worker / driver (prioritizing idle workers not in-flight)
         self.refresh_workers()
         selected_worker: Optional[AccountWorkerInstance] = None
         selected_account: Optional[dict] = None
@@ -699,22 +701,32 @@ class GVCFleetManager:
                 selected_account = get_gvc_portal_account_by_id(assigned_account_id)
 
         if not selected_worker:
-            # Prioritize worker matching client's target VAC and visa type
-            for worker in self._workers.values():
-                if worker._is_authenticated:
-                    acc = get_gvc_portal_account_by_id(worker.account_id)
+            auth_workers = [w for w in self._workers.values() if w._is_authenticated]
+
+            # A. First choice: Authenticated worker matching VAC/VisaType that is IDLE (not in-flight)
+            for w in auth_workers:
+                if w.account_id not in self._in_flight_manual_workers:
+                    acc = get_gvc_portal_account_by_id(w.account_id)
                     if acc and str(acc.get("target_vac_id")) == vac_id and str(acc.get("target_visa_type")) == visa_type:
-                        selected_worker = worker
+                        selected_worker = w
                         selected_account = acc
                         break
 
-        # Fallback to any authenticated fleet worker
-        if not selected_worker:
-            for worker in self._workers.values():
-                if worker._is_authenticated:
-                    selected_worker = worker
-                    selected_account = get_gvc_portal_account_by_id(worker.account_id)
-                    break
+            # B. Second choice: Any authenticated worker that is IDLE (not in-flight) via round-robin
+            if not selected_worker:
+                idle_workers = [w for w in auth_workers if w.account_id not in self._in_flight_manual_workers]
+                if idle_workers:
+                    with self._lock:
+                        selected_worker = idle_workers[self._manual_worker_rr_index % len(idle_workers)]
+                        self._manual_worker_rr_index += 1
+                    selected_account = get_gvc_portal_account_by_id(selected_worker.account_id)
+
+            # C. Third choice: If all workers are currently in-flight, round-robin among all authenticated workers
+            if not selected_worker and auth_workers:
+                with self._lock:
+                    selected_worker = auth_workers[self._manual_worker_rr_index % len(auth_workers)]
+                    self._manual_worker_rr_index += 1
+                selected_account = get_gvc_portal_account_by_id(selected_worker.account_id)
 
         driver: Optional[GVCPortalDriver] = None
         persona = "Manual Staff Trigger"
@@ -776,199 +788,208 @@ class GVCFleetManager:
             self.log_event(msg, level="WARNING", category="AUTH")
             return {"success": False, "status": "UNAUTHENTICATED", "error": msg}
 
-        # 2. Check or search for open slots
-        cached_slots = slot_cache.get(vac_id=vac_id, visa_type=visa_type)
-        slots = cached_slots or []
+        if account_id:
+            with self._lock:
+                self._in_flight_manual_workers.add(account_id)
 
-        if not slots or not any(s.available_capacity > 0 for s in slots):
-            self.log_event(
-                f"Operator '{persona}' checking live slot availability for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')}...",
-                level="INFO",
-                category="SLOT_DISCOVERY",
-                worker_name=persona,
-            )
-            slots = await driver.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=client.preferred_date_start)
-            if slots and any(s.available_capacity > 0 for s in slots):
-                slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=90)
+        try:
+            # 2. Check or search for open slots
+            cached_slots = slot_cache.get(vac_id=vac_id, visa_type=visa_type)
+            slots = cached_slots or []
 
-        # Filter available slots
-        available_slots = [s for s in (slots or []) if s.available_capacity > 0]
-        target_slot: Optional[AvailableSlot] = None
-
-        if available_slots:
-            for s in available_slots:
-                if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
-                    target_slot = s
-                    break
-            if not target_slot:
-                target_slot = available_slots[0]
-            target_date = target_slot.date
-            target_time = target_slot.time
-            target_slot_id = target_slot.slot_id
-        else:
-            # DIRECT BLIND STRIKE: No search slots found, but we proceed with direct booking on or after preferred_date_start
-            target_date = client.preferred_date_start or (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
-            target_time = "09:00"
-            target_slot_id = "0"
-            self.log_event(
-                f"⚡ [DIRECT BLIND STRIKE] No prior slots in cache for {vac_meta.get('name', 'VAC')} (Type {visa_type}). Executing direct booking strike on target date {target_date} {target_time} for Client #{client.id} ({client.first_name} {client.last_name})...",
-                level="INFO",
-                category="BOOKING",
-                account_id=account_id,
-                worker_name=persona,
-            )
-
-        # 3. Mark client in progress
-        update_client_status(
-            client_id=client.id,
-            status="IN_PROGRESS",
-            notes=f"Booking triggered by {triggered_by} via Operator '{persona}' (Target: {target_date} {target_time})."
-        )
-
-        masked_sim = mask_phone_pii(target_phone)
-
-        # 4 & 5. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 3 attempts, 60s each)
-        max_otp_attempts = 3
-        otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
-        otp_code = None
-
-        for otp_attempt in range(1, max_otp_attempts + 1):
-            attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
-            self.log_event(
-                f"⚡ Operator '{persona}' triggered OTP{attempt_label} to SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}). Awaiting SMS ({int(otp_timeout)}s window)...",
-                level="INFO",
-                category="BOOKING",
-                account_id=account_id,
-                worker_name=persona,
-            )
-            otp_res = await driver.trigger_booking_otp(phone_number=target_phone)
-            if not otp_res.get("success"):
+            if not slots or not any(s.available_capacity > 0 for s in slots):
                 self.log_event(
-                    f"⚠️ GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
+                    f"Operator '{persona}' checking live slot availability for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')}...",
+                    level="INFO",
+                    category="SLOT_DISCOVERY",
+                    worker_name=persona,
+                )
+                slots = await driver.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=client.preferred_date_start)
+                if slots and any(s.available_capacity > 0 for s in slots):
+                    slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=90)
+
+            # Filter available slots
+            available_slots = [s for s in (slots or []) if s.available_capacity > 0]
+            target_slot: Optional[AvailableSlot] = None
+
+            if available_slots:
+                for s in available_slots:
+                    if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
+                        target_slot = s
+                        break
+                if not target_slot:
+                    target_slot = available_slots[0]
+                target_date = target_slot.date
+                target_time = target_slot.time
+                target_slot_id = target_slot.slot_id
+            else:
+                # DIRECT BLIND STRIKE: No search slots found, but we proceed with direct booking on or after preferred_date_start
+                target_date = client.preferred_date_start or (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
+                target_time = "09:00"
+                target_slot_id = "0"
+                self.log_event(
+                    f"⚡ [DIRECT BLIND STRIKE] No prior slots in cache for {vac_meta.get('name', 'VAC')} (Type {visa_type}). Executing direct booking strike on target date {target_date} {target_time} for Client #{client.id} ({client.first_name} {client.last_name})...",
+                    level="INFO",
+                    category="BOOKING",
+                    account_id=account_id,
+                    worker_name=persona,
+                )
+
+            # 3. Mark client in progress
+            update_client_status(
+                client_id=client.id,
+                status="IN_PROGRESS",
+                notes=f"Booking triggered by {triggered_by} via Operator '{persona}' (Target: {target_date} {target_time})."
+            )
+
+            masked_sim = mask_phone_pii(target_phone)
+
+            # 4 & 5. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 3 attempts, 60s each)
+            max_otp_attempts = 3
+            otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
+            otp_code = None
+
+            for otp_attempt in range(1, max_otp_attempts + 1):
+                attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
+                self.log_event(
+                    f"⚡ Operator '{persona}' triggered OTP{attempt_label} to SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}). Awaiting SMS ({int(otp_timeout)}s window)...",
+                    level="INFO",
+                    category="BOOKING",
+                    account_id=account_id,
+                    worker_name=persona,
+                )
+                otp_res = await driver.trigger_booking_otp(phone_number=target_phone)
+                if not otp_res.get("success"):
+                    self.log_event(
+                        f"⚠️ GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
+                        level="WARNING",
+                        category="OTP",
+                        account_id=account_id,
+                        worker_name=persona,
+                    )
+                otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
+                if otp_code:
+                    self.log_event(
+                        f"✓ Operator '{persona}' successfully received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id}.",
+                        level="SUCCESS",
+                        category="OTP",
+                        account_id=account_id,
+                        worker_name=persona,
+                    )
+                    break
+
+            if not otp_code:
+                # Return client to QUEUED state so they are not permanently blocked
+                update_client_status(
+                    client_id=client.id,
+                    status="QUEUED",
+                    notes=f"OTP verification timed out on SIM {masked_sim} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
+                )
+                self.log_event(
+                    f"❌ OTP verification timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim} after {max_otp_attempts} attempts. Applicant returned to QUEUED status.",
                     level="WARNING",
                     category="OTP",
                     account_id=account_id,
                     worker_name=persona,
                 )
-            otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
-            if otp_code:
+                return {
+                    "success": False,
+                    "status": "OTP_TIMEOUT",
+                    "error": f"OTP verification timed out after {max_otp_attempts} attempts for SIM {masked_sim}. Returned to queue.",
+                }
+
+            # 6. Record worker task
+            if account_id:
+                record_worker_task(account_id)
+
+            # 7. Submit booking directly
+            result = await driver.submit_booking(
+                applicant=client,
+                slot_id=target_slot_id,
+                target_date=target_date,
+                target_time=target_time,
+                otp_code=otp_code,
+                vac_id=client.vac_id,
+                visa_type=client.visa_type,
+            )
+
+            if result.success:
+                if target_slot_id and target_slot_id != "0":
+                    mark_hot_slot_consumed(target_slot_id)
+                conf_path = save_raw_confirmation(
+                    client_id=client.id,
+                    booking_reference=result.reference_number or "CONFIRMED",
+                    payload_data=result.raw_payload or {"booking_reference": result.reference_number, "status": "CONFIRMED"},
+                    worker_name=persona,
+                    account_id=account_id,
+                )
+                rate_booking = int(get_system_setting("worker_rate_per_booking_pkr", "5000") or "5000")
+                acc_email = selected_account.get("email", "") if selected_account else ""
+
+                update_client_status(
+                    client_id=client.id,
+                    status="BOOKED",
+                    booking_reference=result.reference_number,
+                    booked_date=target_slot.date,
+                    booked_time=target_slot.time,
+                    notes=f"Manually triggered by {triggered_by}. Booked by {persona} ({acc_email}).",
+                    raw_confirmation_path=conf_path,
+                    booked_by_account_id=account_id,
+                    booked_by_worker_name=persona,
+                    booking_cost_pkr=rate_booking,
+                )
                 self.log_event(
-                    f"✓ Operator '{persona}' successfully received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id}.",
+                    f"🎉 [MANUAL TRIGGER] BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {target_slot.date} {target_slot.time}!",
                     level="SUCCESS",
-                    category="OTP",
+                    category="BOOKING",
+                    account_id=account_id,
+                    worker_name=persona,
+                    details={"arn": result.reference_number, "client_id": client.id, "slot": target_slot.date, "cost_pkr": rate_booking},
+                )
+                target_slot.available_capacity -= 1
+                return {
+                    "success": True,
+                    "status": "BOOKED",
+                    "reference_number": result.reference_number,
+                    "slot_date": target_slot.date,
+                    "slot_time": target_slot.time,
+                    "worker_name": persona,
+                    "message": f"Appointment booked successfully (Ref: {result.reference_number}) on {target_slot.date} {target_slot.time}!",
+                }
+            else:
+                if account_id:
+                    record_worker_error(account_id)
+                conf_path = save_raw_confirmation(
+                    client_id=client.id,
+                    booking_reference="FAILED",
+                    payload_data=result.raw_payload or {"error": result.message, "status": "FAILED"},
+                    worker_name=persona,
+                    account_id=account_id,
+                )
+                update_client_status(
+                    client_id=client.id,
+                    status="FAILED",
+                    notes=f"Manual trigger submission error on {persona}: {result.message}",
+                    raw_confirmation_path=conf_path,
+                    booked_by_account_id=account_id,
+                    booked_by_worker_name=persona,
+                )
+                self.log_event(
+                    f"❌ [MANUAL TRIGGER] Booking submission failed for {client.passport_number}: {result.message}",
+                    level="WARNING",
+                    category="BOOKING",
                     account_id=account_id,
                     worker_name=persona,
                 )
-                break
-
-        if not otp_code:
-            # Return client to QUEUED state so they are not permanently blocked
-            update_client_status(
-                client_id=client.id,
-                status="QUEUED",
-                notes=f"OTP verification timed out on SIM {masked_sim} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
-            )
-            self.log_event(
-                f"❌ OTP verification timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim} after {max_otp_attempts} attempts. Applicant returned to QUEUED status.",
-                level="WARNING",
-                category="OTP",
-                account_id=account_id,
-                worker_name=persona,
-            )
-            return {
-                "success": False,
-                "status": "OTP_TIMEOUT",
-                "error": f"OTP verification timed out after {max_otp_attempts} attempts for SIM {masked_sim}. Returned to queue.",
-            }
-
-        # 6. Record worker task
-        if account_id:
-            record_worker_task(account_id)
-
-        # 7. Submit booking directly
-        result = await driver.submit_booking(
-            applicant=client,
-            slot_id=target_slot_id,
-            target_date=target_date,
-            target_time=target_time,
-            otp_code=otp_code,
-            vac_id=client.vac_id,
-            visa_type=client.visa_type,
-        )
-
-        if result.success:
-            if target_slot_id and target_slot_id != "0":
-                mark_hot_slot_consumed(target_slot_id)
-            conf_path = save_raw_confirmation(
-                client_id=client.id,
-                booking_reference=result.reference_number or "CONFIRMED",
-                payload_data=result.raw_payload or {"booking_reference": result.reference_number, "status": "CONFIRMED"},
-                worker_name=persona,
-                account_id=account_id,
-            )
-            rate_booking = int(get_system_setting("worker_rate_per_booking_pkr", "5000") or "5000")
-            acc_email = selected_account.get("email", "") if selected_account else ""
-
-            update_client_status(
-                client_id=client.id,
-                status="BOOKED",
-                booking_reference=result.reference_number,
-                booked_date=target_slot.date,
-                booked_time=target_slot.time,
-                notes=f"Manually triggered by {triggered_by}. Booked by {persona} ({acc_email}).",
-                raw_confirmation_path=conf_path,
-                booked_by_account_id=account_id,
-                booked_by_worker_name=persona,
-                booking_cost_pkr=rate_booking,
-            )
-            self.log_event(
-                f"🎉 [MANUAL TRIGGER] BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {target_slot.date} {target_slot.time}!",
-                level="SUCCESS",
-                category="BOOKING",
-                account_id=account_id,
-                worker_name=persona,
-                details={"arn": result.reference_number, "client_id": client.id, "slot": target_slot.date, "cost_pkr": rate_booking},
-            )
-            target_slot.available_capacity -= 1
-            return {
-                "success": True,
-                "status": "BOOKED",
-                "reference_number": result.reference_number,
-                "slot_date": target_slot.date,
-                "slot_time": target_slot.time,
-                "worker_name": persona,
-                "message": f"Appointment booked successfully (Ref: {result.reference_number}) on {target_slot.date} {target_slot.time}!",
-            }
-        else:
+                return {
+                    "success": False,
+                    "status": "FAILED",
+                    "error": f"GVC Portal Booking Error: {result.message}",
+                }
+        finally:
             if account_id:
-                record_worker_error(account_id)
-            conf_path = save_raw_confirmation(
-                client_id=client.id,
-                booking_reference="FAILED",
-                payload_data=result.raw_payload or {"error": result.message, "status": "FAILED"},
-                worker_name=persona,
-                account_id=account_id,
-            )
-            update_client_status(
-                client_id=client.id,
-                status="FAILED",
-                notes=f"Manual trigger submission error on {persona}: {result.message}",
-                raw_confirmation_path=conf_path,
-                booked_by_account_id=account_id,
-                booked_by_worker_name=persona,
-            )
-            self.log_event(
-                f"❌ [MANUAL TRIGGER] Booking submission failed for {client.passport_number}: {result.message}",
-                level="WARNING",
-                category="BOOKING",
-                account_id=account_id,
-                worker_name=persona,
-            )
-            return {
-                "success": False,
-                "status": "FAILED",
-                "error": f"GVC Portal Booking Error: {result.message}",
-            }
+                with self._lock:
+                    self._in_flight_manual_workers.discard(account_id)
 
     async def quick_book_slot(
         self,
