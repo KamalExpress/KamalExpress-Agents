@@ -908,16 +908,51 @@ async def update_client_endpoint(client_id: int, client: ClientProfile, user: di
     if not updated:
         raise HTTPException(status_code=400, detail="Failed to update client")
     
+    # Calculate field-level diff
+    diff_items = []
+    diff_dict = {}
+    fields_to_check = [
+        ("first_name", "First Name"),
+        ("last_name", "Last Name"),
+        ("dob", "DOB"),
+        ("passport_number", "Passport"),
+        ("passport_expiry", "Passport Expiry"),
+        ("phone_number", "Phone"),
+        ("email", "Email"),
+        ("destination", "Destination"),
+        ("visa_type", "Visa Type"),
+        ("vac_id", "VAC"),
+        ("vac_city", "VAC City"),
+        ("preferred_date_start", "Start Date"),
+        ("preferred_date_end", "End Date"),
+        ("status", "Status"),
+        ("notes", "Notes"),
+    ]
+
+    for field, label in fields_to_check:
+        old_val = str(getattr(existing, field, "") or "").strip()
+        new_val = str(getattr(client, field, "") or "").strip()
+        if old_val != new_val:
+            diff_items.append(f"{label}: '{old_val}' → '{new_val}'")
+            diff_dict[field] = {"old": old_val, "new": new_val}
+
     username = user.get("username", "staff")
+    if diff_items:
+        diff_summary = ", ".join(diff_items)
+        msg = f"Staff '{username}' updated applicant #{client_id} ({client.first_name} {client.last_name}): {diff_summary}."
+    else:
+        msg = f"Staff '{username}' saved applicant #{client_id} ({client.first_name} {client.last_name}) [No fields changed]."
+
     log_system_event(
         level="INFO",
         category="QUEUE",
-        message=f"Staff '{username}' updated applicant #{client_id} ({client.first_name} {client.last_name}).",
-        details={"client_id": client_id, "passport": client.passport_number},
+        message=msg,
+        details={"client_id": client_id, "passport": client.passport_number, "changes": diff_dict},
     )
     return {
         "success": True,
         "client_id": client_id,
+        "changes": diff_dict,
         "message": f"Client #{client_id} ({client.first_name} {client.last_name}) updated successfully.",
     }
 
