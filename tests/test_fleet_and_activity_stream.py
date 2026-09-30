@@ -335,6 +335,39 @@ def test_hot_slots_lifecycle_and_auto_purge():
     assert not any(s["slot_id"] in ("HOT_SLOT_01", "HOT_SLOT_02") for s in purged)
 
 
+def test_blitz_queue_booking_endpoint():
+    headers = get_auth_headers("admin")
+    from agents.appointments.schemas import ClientProfile
+    from agents.appointments.db import add_client, delete_client
+
+    c1 = ClientProfile(
+        first_name="BlitzTest1",
+        last_name="Applicant",
+        dob="01/01/1990",
+        passport_number="PKBLITZ01",
+        passport_expiry="01/01/2030",
+        phone_number="3001239999",
+        email="blitz1@test.com",
+        destination="Greece",
+        visa_type="26",
+        vac_id="138",
+        vac_city="Islamabad",
+        preferred_date_start="10/10/2026",
+        status="QUEUED",
+    )
+    cid = add_client(c1)
+
+    try:
+        resp = client.post("/api/queue/blitz-book", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["total_clients"] >= 1
+    finally:
+        delete_client(cid)
+
+
+
 
 
 

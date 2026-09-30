@@ -964,6 +964,25 @@ async def trigger_client_booking_endpoint(client_id: int, user: dict = Depends(g
         )
 
 
+@app.post("/api/queue/blitz-book")
+async def blitz_queue_booking_endpoint(user: dict = Depends(get_current_user)):
+    """
+    Launch direct parallel booking blitz for all QUEUED clients.
+    Strikes GVC directly using each applicant's preferred_date_start without waiting for a search.
+    """
+    try:
+        username = user.get("username", "staff")
+        res = await fleet_manager.blitz_queue_booking(triggered_by=username)
+        return JSONResponse(status_code=200, content=res)
+    except Exception as e:
+        logger.error(f"[api] Error executing blitz_queue_booking: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "status": "INTERNAL_ERROR", "error": str(e)},
+        )
+
+
+
 # ── Live Slot Discovery & Monitor Telemetry Endpoints ─────────────────────────
 
 @app.get("/api/slots/search")

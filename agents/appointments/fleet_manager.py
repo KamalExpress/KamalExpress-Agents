@@ -758,47 +758,52 @@ class GVCFleetManager:
 
         if not slots or not any(s.available_capacity > 0 for s in slots):
             self.log_event(
-                f"Operator '{persona}' performing live slot search for manual booking of Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')}...",
+                f"Operator '{persona}' checking live slot availability for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')}...",
                 level="INFO",
                 category="SLOT_DISCOVERY",
                 worker_name=persona,
             )
             slots = await driver.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=client.preferred_date_start)
             if slots and any(s.available_capacity > 0 for s in slots):
-                slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=300)
+                slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=90)
 
         # Filter available slots
         available_slots = [s for s in (slots or []) if s.available_capacity > 0]
-        if not available_slots:
-            msg = f"No open appointment slots found on GVC for {vac_meta.get('name', 'VAC')} (Visa Type {visa_type}). Applicant remains in queue."
+        target_slot: Optional[AvailableSlot] = None
+
+        if available_slots:
+            for s in available_slots:
+                if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
+                    target_slot = s
+                    break
+            if not target_slot:
+                target_slot = available_slots[0]
+            target_date = target_slot.date
+            target_time = target_slot.time
+            target_slot_id = target_slot.slot_id
+        else:
+            # DIRECT BLIND STRIKE: No search slots found, but we proceed with direct booking on or after preferred_date_start
+            target_date = client.preferred_date_start or (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
+            target_time = "09:00"
+            target_slot_id = "0"
             self.log_event(
-                f"Manual booking trigger for Client #{client.id} ({client.first_name} {client.last_name}): {msg}",
-                level="WARNING",
+                f"⚡ [DIRECT BLIND STRIKE] No prior slots in cache for {vac_meta.get('name', 'VAC')} (Type {visa_type}). Executing direct booking strike on target date {target_date} {target_time} for Client #{client.id} ({client.first_name} {client.last_name})...",
+                level="INFO",
                 category="BOOKING",
+                account_id=account_id,
                 worker_name=persona,
             )
-            return {"success": False, "status": "NO_SLOTS", "error": msg}
-
-        # Match date range if specified
-        target_slot: Optional[AvailableSlot] = None
-        for s in available_slots:
-            if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
-                target_slot = s
-                break
-
-        if not target_slot:
-            target_slot = available_slots[0]
 
         # 3. Mark client in progress
         update_client_status(
             client_id=client.id,
             status="IN_PROGRESS",
-            notes=f"Manual booking triggered by {triggered_by} via Operator '{persona}'."
+            notes=f"Booking triggered by {triggered_by} via Operator '{persona}' (Target: {target_date} {target_time})."
         )
 
         masked_sim = mask_phone_pii(target_phone)
         self.log_event(
-            f"⚡ [MANUAL TRIGGER] Operator '{persona}' initiated booking for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_meta.get('name', 'VAC')} on {target_slot.date} {target_slot.time}. Triggering OTP to SIM {masked_sim}...",
+            f"⚡ Operator '{persona}' initiated booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')} on {target_date} {target_time}. Triggering OTP to SIM {masked_sim}...",
             level="INFO",
             category="BOOKING",
             account_id=account_id,
@@ -815,10 +820,10 @@ class GVCFleetManager:
             update_client_status(
                 client_id=client.id,
                 status="FAILED",
-                notes=f"Manual trigger: OTP verification timed out after 75s on Operator '{persona}'."
+                notes=f"OTP verification timed out after 75s on Operator '{persona}'."
             )
             self.log_event(
-                f"❌ [MANUAL TRIGGER] OTP verification timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim}.",
+                f"❌ OTP verification timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim}.",
                 level="WARNING",
                 category="OTP",
                 account_id=account_id,
@@ -834,18 +839,20 @@ class GVCFleetManager:
         if account_id:
             record_worker_task(account_id)
 
-        # 7. Submit booking
+        # 7. Submit booking directly
         result = await driver.submit_booking(
             applicant=client,
-            slot_id=target_slot.slot_id,
-            target_date=target_slot.date,
-            target_time=target_slot.time,
+            slot_id=target_slot_id,
+            target_date=target_date,
+            target_time=target_time,
             otp_code=otp_code,
             vac_id=client.vac_id,
             visa_type=client.visa_type,
         )
 
         if result.success:
+            if target_slot_id and target_slot_id != "0":
+                mark_hot_slot_consumed(target_slot_id)
             conf_path = save_raw_confirmation(
                 client_id=client.id,
                 booking_reference=result.reference_number or "CONFIRMED",
@@ -1177,7 +1184,33 @@ class GVCFleetManager:
 
         return results
 
+    async def blitz_queue_booking(self, triggered_by: str = "staff") -> dict:
+        """
+        Launches parallel direct booking blitz for all QUEUED clients across all active operators.
+        Bypasses prior search and strikes GVC directly starting from client's preferred_date_start.
+        """
+        from .db import get_all_clients
+        queued_clients = get_all_clients(status="QUEUED")
+        if not queued_clients:
+            return {"success": False, "message": "No applicants currently in QUEUED status."}
+
+        self.log_event(
+            f"🚀 [BOOKING BLITZ] Launching parallel direct booking blitz for {len(queued_clients)} queued applicant(s)...",
+            level="SUCCESS",
+            category="BOOKING",
+        )
+
+        for c in queued_clients:
+            asyncio.create_task(self.trigger_client_booking(client_id=c.id, triggered_by=f"blitz-{triggered_by}"))
+
+        return {
+            "success": True,
+            "message": f"Dispatched booking blitz for {len(queued_clients)} queued applicant(s).",
+            "total_clients": len(queued_clients),
+        }
+
 
 # Global Fleet Manager Singleton
 fleet_manager = GVCFleetManager()
+
 

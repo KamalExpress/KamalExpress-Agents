@@ -710,6 +710,9 @@ How can I help you today?</div>
           <button class="btn btn-outline btn-sm" onclick="openBulkUploadModal()">
             <i data-lucide="upload-cloud" class="icon"></i> Bulk CSV / TXT
           </button>
+          <button class="btn btn-sm" onclick="triggerBookingBlitz()" id="btn-booking-blitz" style="background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; font-weight: 600;">
+            <i data-lucide="zap" class="icon"></i> 🚀 Launch Booking Blitz
+          </button>
           <button class="btn btn-primary btn-sm" onclick="openAddModal()">
             <i data-lucide="user-plus" class="icon"></i> + Add Client
           </button>
@@ -3641,6 +3644,43 @@ How can I help you today?</div>
       refreshQueue();
       loadActivityLogsStream();
       renderIcons();
+    }
+  }
+
+  async function triggerBookingBlitz() {
+    if (!confirm("🚀 LAUNCH DIRECT BOOKING BLITZ?\n\nThis will trigger parallel direct booking for ALL currently queued applicants on or after their preferred dates across all active fleet operators without waiting for a search.\n\nProceed?")) return;
+
+    const btn = document.getElementById('btn-booking-blitz');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="icon" style="animation:spin 1s linear infinite;"></i> Blitzing...`;
+      renderIcons();
+    }
+
+    try {
+      const resp = await fetch('/api/queue/blitz-book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (resp.status === 401) { showLogin(); return; }
+
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`⚡ BOOKING BLITZ LAUNCHED!\n\n${data.message || 'Parallel direct bookings dispatched for all queued applicants.'}\n\nCheck Activity Stream and Queue table for live updates.`);
+      } else {
+        alert(`Blitz Notice: ${data.message || data.detail || 'No clients to blitz.'}`);
+      }
+    } catch (err) {
+      alert(`Network error launching booking blitz: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        renderIcons();
+      }
+      refreshQueue();
+      loadActivityLogsStream();
     }
   }
 
