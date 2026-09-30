@@ -75,7 +75,15 @@ from agents.appointments.db import (
     save_gvc_session,
     get_active_gvc_session,
     invalidate_gvc_session,
+    add_gvc_portal_account,
+    get_gvc_portal_accounts,
+    get_gvc_portal_account_by_id,
+    update_gvc_portal_account,
+    delete_gvc_portal_account,
+    update_gvc_account_session,
+    toggle_gvc_account_worker,
 )
+from agents.appointments.fleet_manager import fleet_manager
 from agents.appointments.monitor import slot_monitor
 from agents.appointments.portals.gvc_auth import gvc_auth_solver
 from agents.appointments.solver_worker import solver_worker
@@ -95,13 +103,15 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("[api] Initializing background solver worker...")
+    logger.info("[api] Initializing background solver worker and GVC fleet manager...")
     solver_worker.start()
+    fleet_manager.start()
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    logger.info("[api] Stopping background solver worker...")
+    logger.info("[api] Stopping background solver worker and GVC fleet manager...")
     solver_worker.stop()
+    fleet_manager.stop()
 
 app.add_middleware(
     CORSMiddleware,
@@ -649,6 +659,186 @@ async def gvc_solve_now_endpoint(
             set_captcha_settings(req.captcha_provider or "capsolver", req.captcha_api_key)
     res = await gvc_auth_solver.login_with_credentials(email=email, password=password)
     return res
+
+
+# ── GVC Multi-Account Fleet Management REST Endpoints ─────────────────────────
+
+class GVCAccountCreateRequest(BaseModel):
+    account_label: str
+    email: str
+    password: str
+    otp_phone_number: str
+    target_vac_id: Optional[str] = "138"
+    target_visa_type: Optional[str] = "26"
+    assigned_proxy_url: Optional[str] = None
+    auth_mode: Optional[str] = "auto_solver"
+
+
+class GVCAccountUpdateRequest(BaseModel):
+    account_label: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    otp_phone_number: Optional[str] = None
+    target_vac_id: Optional[str] = None
+    target_visa_type: Optional[str] = None
+    assigned_proxy_url: Optional[str] = None
+    auth_mode: Optional[str] = None
+    is_worker_active: Optional[bool] = None
+
+
+class GVCAccountSyncTokenRequest(BaseModel):
+    token: str
+    bearer_token: Optional[str] = None
+    cookies: Optional[Union[dict, str]] = None
+
+
+@app.get("/api/gvc/accounts")
+async def list_gvc_portal_accounts(user: dict = Depends(get_current_user)):
+    """List GVC portal accounts (staff sees their own accounts, admin sees all)."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    accounts = get_gvc_portal_accounts(owner_username=username, is_admin=is_admin)
+    return {
+        "is_admin": is_admin,
+        "total_accounts": len(accounts),
+        "accounts": accounts,
+    }
+
+
+@app.post("/api/gvc/accounts")
+async def create_gvc_portal_account(req: GVCAccountCreateRequest, user: dict = Depends(get_current_user)):
+    """Register a new GVC portal account owned by the current staff member."""
+    username = user.get("username", "staff")
+    account_data = req.model_dump()
+    account_data["owner_username"] = username
+
+    try:
+        acc_id = add_gvc_portal_account(account_data)
+        fleet_manager.refresh_workers()
+        return {
+            "success": True,
+            "account_id": acc_id,
+            "message": f"GVC Portal Account '{req.account_label}' ({req.email}) registered successfully.",
+        }
+    except Exception as e:
+        logger.error(f"[api] Error adding GVC portal account: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Failed to add account: {e}")
+
+
+@app.put("/api/gvc/accounts/{account_id}")
+async def edit_gvc_portal_account(account_id: int, req: GVCAccountUpdateRequest, user: dict = Depends(get_current_user)):
+    """Update GVC portal account settings."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    acc = get_gvc_portal_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="GVC Account not found.")
+    if not is_admin and acc["owner_username"] != username:
+        raise HTTPException(status_code=403, detail="You can only edit your own portal accounts.")
+
+    updated = update_gvc_portal_account(account_id, req.model_dump(exclude_unset=True))
+    fleet_manager.refresh_workers()
+    return {"success": updated, "message": f"Account #{account_id} updated."}
+
+
+@app.delete("/api/gvc/accounts/{account_id}")
+async def remove_gvc_portal_account(account_id: int, user: dict = Depends(get_current_user)):
+    """Delete a GVC portal account from the fleet."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    acc = get_gvc_portal_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="GVC Account not found.")
+    if not is_admin and acc["owner_username"] != username:
+        raise HTTPException(status_code=403, detail="You can only delete your own portal accounts.")
+
+    deleted = delete_gvc_portal_account(account_id)
+    fleet_manager.refresh_workers()
+    return {"success": deleted, "message": f"Account #{account_id} removed from fleet."}
+
+
+@app.post("/api/gvc/accounts/{account_id}/toggle-worker")
+async def toggle_account_worker_endpoint(account_id: int, user: dict = Depends(get_current_user)):
+    """Toggle background worker for a specific GVC account."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    acc = get_gvc_portal_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="GVC Account not found.")
+    if not is_admin and acc["owner_username"] != username:
+        raise HTTPException(status_code=403, detail="Unauthorized.")
+
+    toggle_gvc_account_worker(account_id)
+    fleet_manager.refresh_workers()
+    updated = get_gvc_portal_account_by_id(account_id)
+    return {
+        "success": True,
+        "is_worker_active": updated.get("is_worker_active") if updated else False,
+        "message": f"Worker for #{account_id} {'started' if updated and updated.get('is_worker_active') else 'paused'}.",
+    }
+
+
+@app.post("/api/gvc/accounts/{account_id}/login")
+async def login_account_endpoint(account_id: int, user: dict = Depends(get_current_user)):
+    """Trigger an immediate CapSolver auto-login for a specific GVC account."""
+    acc = get_gvc_portal_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found.")
+
+    res = await gvc_auth_solver.login_with_credentials(
+        email=acc["email"],
+        password=acc["password"]
+    )
+    if res.get("success"):
+        update_gvc_account_session(
+            account_id=account_id,
+            auth_token=res.get("auth_token", ""),
+            bearer_token=res.get("bearer_token", ""),
+            cookies_json=str(res.get("cookies", {})),
+            is_authenticated=True,
+        )
+        fleet_manager.refresh_workers()
+        return {"success": True, "message": f"Account #{account_id} ({acc['email']}) logged in successfully!"}
+    else:
+        update_gvc_account_session(
+            account_id=account_id,
+            auth_token="",
+            bearer_token="",
+            cookies_json="{}",
+            is_authenticated=False,
+            last_error=res.get("error", "Login failed"),
+        )
+        return {"success": False, "error": res.get("error", "Login failed")}
+
+
+@app.post("/api/gvc/accounts/{account_id}/sync-token")
+async def sync_account_token_endpoint(account_id: int, req: GVCAccountSyncTokenRequest, user: dict = Depends(get_current_user)):
+    """Manually sync token / cookies for a specific GVC account."""
+    acc = get_gvc_portal_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found.")
+
+    clean_token = req.token.replace("Bearer ", "").strip()
+    clean_bearer = (req.bearer_token or req.token).replace("Bearer ", "").strip()
+    cookies_str = json.dumps(req.cookies) if isinstance(req.cookies, dict) else str(req.cookies or "{}")
+
+    updated = update_gvc_account_session(
+        account_id=account_id,
+        auth_token=clean_token,
+        bearer_token=clean_bearer,
+        cookies_json=cookies_str,
+        is_authenticated=True,
+    )
+    fleet_manager.refresh_workers()
+    return {"success": updated, "message": f"Token synced for account #{account_id} ({acc['email']})."}
+
+
+@app.get("/api/gvc/fleet/status")
+async def get_fleet_status_endpoint(user: dict = Depends(get_current_user)):
+    """Get aggregated or staff-scoped telemetry of the GVC Worker Fleet."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    return fleet_manager.get_telemetry(owner_username=username, is_admin=is_admin)
 
 
 @app.get("/api/monitor/status")

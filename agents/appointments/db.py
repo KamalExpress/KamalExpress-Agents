@@ -237,6 +237,33 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_otp_phone_ts ON otp_records(phone, timestamp DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_otp_ts ON otp_records(timestamp DESC);")
 
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS gvc_portal_accounts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        account_label TEXT NOT NULL,
+                        owner_username TEXT NOT NULL,
+                        email TEXT NOT NULL UNIQUE,
+                        password TEXT NOT NULL,
+                        otp_phone_number TEXT NOT NULL,
+                        target_vac_id TEXT DEFAULT '138',
+                        target_visa_type TEXT DEFAULT '26',
+                        assigned_proxy_url TEXT,
+                        auth_mode TEXT DEFAULT 'auto_solver',
+                        auth_token TEXT DEFAULT '',
+                        bearer_token TEXT DEFAULT '',
+                        cookies_json TEXT DEFAULT '{}',
+                        is_authenticated INTEGER DEFAULT 0,
+                        is_worker_active INTEGER DEFAULT 1,
+                        last_login_at TEXT,
+                        last_checked_at TEXT,
+                        last_error TEXT,
+                        total_booked_count INTEGER DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_gvc_accounts_owner ON gvc_portal_accounts(owner_username);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_gvc_accounts_worker ON gvc_portal_accounts(is_worker_active, is_authenticated);")
+
                 # ── Schema Migrations (Ensure columns exist on existing databases) ────
                 def _ensure_cols(table: str, col_defs: dict[str, str]):
                     try:
@@ -1642,6 +1669,213 @@ def clear_all_persisted_otps(db_path: Path = DB_PATH) -> int:
         except Exception as e:
             logger.error(f"[db] Failed to clear all OTP records: {e}", exc_info=True)
             return 0
+        finally:
+            conn.close()
+
+
+# ── GVC Multi-Account Portal Fleet Database Functions ─────────────────────────
+
+def add_gvc_portal_account(account_data: dict, db_path: Path = DB_PATH) -> int:
+    """Add or register a new GVC portal account for a staff member."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cur = conn.execute(
+                    """
+                    INSERT INTO gvc_portal_accounts (
+                        account_label, owner_username, email, password, otp_phone_number,
+                        target_vac_id, target_visa_type, assigned_proxy_url, auth_mode,
+                        auth_token, bearer_token, cookies_json, is_authenticated,
+                        is_worker_active, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        account_data.get("account_label") or f"Account ({account_data.get('email', '')[:10]})",
+                        account_data.get("owner_username", "staff"),
+                        account_data.get("email", "").strip().lower(),
+                        account_data.get("password", ""),
+                        account_data.get("otp_phone_number", "").strip(),
+                        account_data.get("target_vac_id", "138"),
+                        account_data.get("target_visa_type", "26"),
+                        account_data.get("assigned_proxy_url") or None,
+                        account_data.get("auth_mode", "auto_solver"),
+                        account_data.get("auth_token", ""),
+                        account_data.get("bearer_token", ""),
+                        account_data.get("cookies_json", "{}"),
+                        1 if account_data.get("is_authenticated") else 0,
+                        1 if account_data.get("is_worker_active", True) else 0,
+                        now_str,
+                    ),
+                )
+                return cur.lastrowid
+        finally:
+            conn.close()
+
+
+def get_gvc_portal_accounts(owner_username: Optional[str] = None, is_admin: bool = False, db_path: Path = DB_PATH) -> List[dict]:
+    """Retrieve all GVC portal accounts (filtered by staff owner unless admin)."""
+    conn = get_connection(db_path)
+    try:
+        if is_admin or not owner_username:
+            cur = conn.execute("SELECT * FROM gvc_portal_accounts ORDER BY id ASC")
+        else:
+            cur = conn.execute("SELECT * FROM gvc_portal_accounts WHERE owner_username = ? ORDER BY id ASC", (owner_username,))
+        
+        rows = cur.fetchall()
+        results = []
+        for r in rows:
+            results.append({
+                "id": r["id"],
+                "account_label": r["account_label"],
+                "owner_username": r["owner_username"],
+                "email": r["email"],
+                "password": r["password"],
+                "otp_phone_number": r["otp_phone_number"],
+                "target_vac_id": r["target_vac_id"] or "138",
+                "target_visa_type": r["target_visa_type"] or "26",
+                "assigned_proxy_url": r["assigned_proxy_url"],
+                "auth_mode": r["auth_mode"] or "auto_solver",
+                "has_token": bool(r["auth_token"]),
+                "auth_token": r["auth_token"] or "",
+                "bearer_token": r["bearer_token"] or "",
+                "cookies_json": r["cookies_json"] or "{}",
+                "is_authenticated": bool(r["is_authenticated"]),
+                "is_worker_active": bool(r["is_worker_active"]),
+                "last_login_at": r["last_login_at"],
+                "last_checked_at": r["last_checked_at"],
+                "last_error": r["last_error"],
+                "total_booked_count": r["total_booked_count"] or 0,
+                "created_at": r["created_at"],
+            })
+        return results
+    finally:
+        conn.close()
+
+
+def get_gvc_portal_account_by_id(account_id: int, db_path: Path = DB_PATH) -> Optional[dict]:
+    """Retrieve single GVC portal account by ID."""
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM gvc_portal_accounts WHERE id = ?", (account_id,))
+        r = cur.fetchone()
+        if not r:
+            return None
+        return {
+            "id": r["id"],
+            "account_label": r["account_label"],
+            "owner_username": r["owner_username"],
+            "email": r["email"],
+            "password": r["password"],
+            "otp_phone_number": r["otp_phone_number"],
+            "target_vac_id": r["target_vac_id"] or "138",
+            "target_visa_type": r["target_visa_type"] or "26",
+            "assigned_proxy_url": r["assigned_proxy_url"],
+            "auth_mode": r["auth_mode"] or "auto_solver",
+            "has_token": bool(r["auth_token"]),
+            "auth_token": r["auth_token"] or "",
+            "bearer_token": r["bearer_token"] or "",
+            "cookies_json": r["cookies_json"] or "{}",
+            "is_authenticated": bool(r["is_authenticated"]),
+            "is_worker_active": bool(r["is_worker_active"]),
+            "last_login_at": r["last_login_at"],
+            "last_checked_at": r["last_checked_at"],
+            "last_error": r["last_error"],
+            "total_booked_count": r["total_booked_count"] or 0,
+            "created_at": r["created_at"],
+        }
+    finally:
+        conn.close()
+
+
+def update_gvc_portal_account(account_id: int, update_data: dict, db_path: Path = DB_PATH) -> bool:
+    """Update general fields of a GVC portal account."""
+    allowed = {
+        "account_label", "email", "password", "otp_phone_number",
+        "target_vac_id", "target_visa_type", "assigned_proxy_url",
+        "auth_mode", "is_worker_active"
+    }
+    fields = []
+    values = []
+    for k, v in update_data.items():
+        if k in allowed:
+            fields.append(f"{k} = ?")
+            values.append(v)
+    if not fields:
+        return False
+    values.append(account_id)
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cur = conn.execute(f"UPDATE gvc_portal_accounts SET {', '.join(fields)} WHERE id = ?", values)
+                return cur.rowcount > 0
+        finally:
+            conn.close()
+
+
+def delete_gvc_portal_account(account_id: int, db_path: Path = DB_PATH) -> bool:
+    """Delete a GVC portal account from the fleet."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cur = conn.execute("DELETE FROM gvc_portal_accounts WHERE id = ?", (account_id,))
+                return cur.rowcount > 0
+        finally:
+            conn.close()
+
+
+def update_gvc_account_session(
+    account_id: int,
+    auth_token: str,
+    bearer_token: str,
+    cookies_json: str,
+    is_authenticated: bool = True,
+    last_error: Optional[str] = None,
+    db_path: Path = DB_PATH,
+) -> bool:
+    """Update authenticated session tokens and status for a specific GVC account."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cur = conn.execute(
+                    """
+                    UPDATE gvc_portal_accounts
+                    SET auth_token = ?, bearer_token = ?, cookies_json = ?,
+                        is_authenticated = ?, last_login_at = ?, last_error = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        auth_token,
+                        bearer_token or auth_token,
+                        cookies_json or "{}",
+                        1 if is_authenticated else 0,
+                        now_str if is_authenticated else None,
+                        last_error,
+                        account_id,
+                    ),
+                )
+                return cur.rowcount > 0
+        finally:
+            conn.close()
+
+
+def toggle_gvc_account_worker(account_id: int, is_active: Optional[bool] = None, db_path: Path = DB_PATH) -> bool:
+    """Enable or disable the booker worker for a specific account."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                if is_active is None:
+                    conn.execute("UPDATE gvc_portal_accounts SET is_worker_active = 1 - is_worker_active WHERE id = ?", (account_id,))
+                else:
+                    conn.execute("UPDATE gvc_portal_accounts SET is_worker_active = ? WHERE id = ?", (1 if is_active else 0, account_id))
+                return True
         finally:
             conn.close()
 

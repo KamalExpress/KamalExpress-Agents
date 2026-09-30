@@ -867,158 +867,130 @@ How can I help you today?</div>
   </div>
 </div>
 
-<!-- ── VIEW 4: GVC AUTH & SESSION CONTROL ── -->
+<!-- ── VIEW 4: GVC MULTI-ACCOUNT FLEET & WORKER CENTER ── -->
 <div class="view-container" id="auth-view" style="padding:18px; overflow-y:auto;">
   <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
     
-    <!-- Mode Switch Banner Card -->
-    <div class="card" style="border: 1px solid #bae6fd; background: linear-gradient(135deg, #f0f9ff, #ffffff);">
-      <div class="card-header" style="border-bottom: 1px solid #e0f2fe; padding-bottom: 12px;">
-        <div>
-          <div class="card-title" style="color: var(--primary);">
-            <i data-lucide="shield-check" class="icon"></i> GVC Authentication Mode Selector
-          </div>
-          <div class="card-desc">Switch between Manual Browser Sync (Free / Low Load) and Autonomous CapSolver Auto-Login (High Load / Slot Drops).</div>
+    <!-- Top Fleet Metrics -->
+    <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="stat-box">
+        <div class="stat-header">
+          <span class="stat-lbl">Portal Accounts</span>
+          <i data-lucide="users" class="icon" style="width:14px; height:14px; color:var(--primary)"></i>
         </div>
-        <div id="auth-mode-badge" class="badge badge-in_progress" style="font-size:12px; padding:5px 12px;">
-          MODE: MANUAL (FREE)
-        </div>
+        <div class="stat-val" id="fleet-stat-total">0</div>
       </div>
-
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 6px;">
-        <!-- Option 1 Selector Card -->
-        <div id="mode-opt-manual" onclick="setGVCAuthMode('manual')" style="border: 2px solid var(--primary); border-radius: var(--radius); padding: 14px; background: #ffffff; cursor: pointer; transition: all 0.15s ease;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <div style="font-weight: 600; font-size: 13.5px; color: var(--foreground); display:flex; align-items:center; gap:6px;">
-              <input type="radio" name="auth_mode_choice" id="radio-mode-manual" value="manual" checked>
-              Option 1: Manual Token Sync (Free)
-            </div>
-            <span class="badge badge-in_progress">Zero Cost</span>
-          </div>
-          <p style="font-size: 12px; color: var(--muted-foreground); line-height: 1.5;">
-            Used during normal hours. Staff logs in on their workstation and syncs session with 1-click bookmarklet. Auto-Solver is <b>PAUSED</b> to save CapSolver costs.
-          </p>
+      <div class="stat-box">
+        <div class="stat-header">
+          <span class="stat-lbl">Active Workers</span>
+          <i data-lucide="bot" class="icon" style="width:14px; height:14px; color:var(--success)"></i>
         </div>
-
-        <!-- Option 3 Selector Card -->
-        <div id="mode-opt-auto" onclick="setGVCAuthMode('auto_solver')" style="border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; background: #ffffff; cursor: pointer; transition: all 0.15s ease;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <div style="font-weight: 600; font-size: 13.5px; color: var(--foreground); display:flex; align-items:center; gap:6px;">
-              <input type="radio" name="auth_mode_choice" id="radio-mode-auto" value="auto_solver">
-              Option 3: Autonomous Auto-Solver
-            </div>
-            <span class="badge badge-booked">Slot Drop Mode</span>
-          </div>
-          <p style="font-size: 12px; color: var(--muted-foreground); line-height: 1.5;">
-            Used during slot drop periods when staff are frequently logged out. VPS solves reCAPTCHA autonomously with CapSolver/2Captcha and keeps session active 24/7.
-          </p>
+        <div class="stat-val" id="fleet-stat-workers" style="color:var(--success)">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-header">
+          <span class="stat-lbl">Authenticated</span>
+          <i data-lucide="shield-check" class="icon" style="width:14px; height:14px; color:#0284c7"></i>
         </div>
+        <div class="stat-val" id="fleet-stat-auth" style="color:#0284c7">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-header">
+          <span class="stat-lbl">Slots Auto-Booked</span>
+          <i data-lucide="check-circle-2" class="icon" style="width:14px; height:14px; color:var(--accent)"></i>
+        </div>
+        <div class="stat-val" id="fleet-stat-booked" style="color:var(--accent)">0</div>
       </div>
     </div>
 
-    <!-- Dual Action Grid -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-      
-      <!-- Option 1 Panel: 1-Click Bookmarklet & Manual Token Sync -->
-      <div class="card" id="panel-option-1">
-        <div class="card-header">
+    <!-- Main Card: Multi-Account Fleet Table -->
+    <div class="card">
+      <div class="card-header">
+        <div>
           <div class="card-title">
-            <i data-lucide="bookmark" class="icon"></i> Option 1: Manual Session Sync
+            <i data-lucide="shield-check" class="icon"></i> GVC Portal Account Fleet & Parallel Booker Workers
           </div>
-          <span class="badge badge-active" id="opt1-status-pill">Active Mode</span>
+          <div class="card-desc">Staff can register multiple GVC portal accounts with dedicated SIM numbers for parallel multi-applicant booking.</div>
         </div>
-
-        <!-- 1-Click Bookmarklet Section -->
-        <div style="background: var(--secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display:flex; flex-direction:column; gap:8px;">
-          <div style="font-weight: 600; font-size: 13px; color: var(--foreground); display:flex; align-items:center; gap:6px;">
-            <i data-lucide="zap" class="icon" style="width:14px; height:14px; color:var(--accent);"></i> 1-Click Browser Bookmarklet
-          </div>
-          <p style="font-size: 12px; color: var(--muted-foreground); line-height: 1.4;">
-            <b>Instructions:</b> Drag the button below to your Bookmarks bar. Then open your logged-in <b>GVC tab</b> (<code>pk-gr-services.gvcworld.eu</code>) and click the bookmark!
-          </p>
-          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top: 4px;">
-            <a id="btn-bookmarklet-link" class="btn btn-primary btn-sm" style="cursor: grab;" href="#" onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar!');">
-              <i data-lucide="bookmark-plus" class="icon"></i> Sync GVC Session to Kamal Express
-            </a>
-            <button type="button" class="btn btn-outline btn-sm" onclick="copyConsoleSnippet()">
-              <i data-lucide="terminal" class="icon"></i> Copy Console Script (F12)
-            </button>
-          </div>
-        </div>
-
-        <!-- Manual Paste Section -->
-        <form onsubmit="event.preventDefault(); submitManualGVCAuth();" style="display:flex; flex-direction:column; gap:10px;">
-          <div class="form-group" style="margin-bottom:0;">
-            <label>Paste GVC Auth Token or Raw Cookie Header</label>
-            <textarea id="gvc-manual-token" rows="3" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... or auth_token=eyJ...; ASP.NET_SessionId=..." style="font-family:monospace; font-size:11px;"></textarea>
-          </div>
-          <button type="submit" id="btn-save-manual-token" class="btn btn-primary">
-            <i data-lucide="save" class="icon"></i> Save & Sync Session Token
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="loadGvcAccounts()">
+            <i data-lucide="rotate-cw" class="icon"></i> Refresh Fleet
           </button>
-        </form>
-
-        <!-- Current Session Details Box -->
-        <div id="gvc-active-session-box" style="padding: 12px; border-radius: var(--radius); background: var(--secondary); border: 1px solid var(--border); font-size: 12px; display:flex; flex-direction:column; gap:6px;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <b style="font-weight:600;">Current Session State:</b>
-            <span id="gvc-sess-validity" class="badge badge-queued">Checking...</span>
-          </div>
-          <div style="color:var(--muted-foreground);">Source: <span id="gvc-sess-source" style="font-weight:600; color:var(--foreground);">—</span></div>
-          <div style="color:var(--muted-foreground);">Last Synced: <span id="gvc-sess-synced" style="font-weight:600; color:var(--foreground);">—</span></div>
-          <div style="color:var(--muted-foreground);">Expires At: <span id="gvc-sess-expires" style="font-weight:600; color:var(--foreground);">—</span></div>
+          <button class="btn btn-primary btn-sm" onclick="openAddGvcAccountModal()">
+            <i data-lucide="plus-circle" class="icon"></i> + Add GVC Account
+          </button>
         </div>
       </div>
 
-      <!-- Option 3 Panel: Autonomous CapSolver Auto-Login -->
-      <div class="card" id="panel-option-3">
+      <div class="queue-table-wrap" style="max-height:420px;">
+        <table>
+          <thead>
+            <tr>
+              <th>ID / Account</th>
+              <th>Owner</th>
+              <th>Login Email</th>
+              <th>OTP SIM Number</th>
+              <th>Target Center & Visa</th>
+              <th>Session Auth</th>
+              <th>Worker Status</th>
+              <th style="text-align:right; min-width:160px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="gvc-accounts-table-body">
+            <tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading GVC portal accounts...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Dual Bottom Row: Global Solver Settings & 1-Click Bookmarklet -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      
+      <!-- Left: CapSolver API Key & Autonomous Keepalive Config -->
+      <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <i data-lucide="bot" class="icon"></i> Option 3: Auto-Solver Engine
+            <i data-lucide="zap" class="icon"></i> CapSolver / Autonomous Solver Configuration
           </div>
-          <span class="badge badge-disabled" id="opt3-status-pill">Paused</span>
+          <span class="badge badge-booked">FLEET SOLVER</span>
         </div>
-
-        <div style="background: var(--secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display:flex; flex-direction:column; gap:6px;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-weight: 600; font-size: 13px; color: var(--foreground);">Background Worker:</span>
-            <span id="solver-worker-state" class="badge badge-warn">PAUSED</span>
-          </div>
-          <div style="font-size:12px; color:var(--muted-foreground);">
-            Total Solves: <b id="solver-total-solves" style="color:var(--foreground)">0</b> | Last Error: <span id="solver-last-error" style="color:var(--destructive)">None</span>
-          </div>
-        </div>
-
-        <!-- Account Credentials Form -->
         <form onsubmit="event.preventDefault(); submitGVCCredentials();" style="display:flex; flex-direction:column; gap:10px;">
           <div class="form-group" style="margin-bottom:0;">
-            <label>GVC Account Email *</label>
-            <input type="email" id="gvc-acc-email" required placeholder="account@kamalexpress.com" autocomplete="off">
-          </div>
-          <div class="form-group" style="margin-bottom:0;">
-            <label>GVC Account Password *</label>
-            <input type="password" id="gvc-acc-password" required placeholder="••••••••••••" autocomplete="new-password">
-          </div>
-          <div class="form-group" style="margin-bottom:0;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <label>CapSolver API Key *</label>
+              <label>CapSolver API Key (Shared for Fleet Auto-Login) *</label>
               <span id="capsolver-key-status" style="font-size:11px; color:var(--muted-foreground);">Checking...</span>
             </div>
             <input type="password" id="gvc-capsolver-key" placeholder="Enter CapSolver API Key (CAP-...)" autocomplete="off">
           </div>
           <div class="form-group" style="margin-bottom:0;">
-            <label>Auto-Renew Interval (Seconds)</label>
+            <label>Auto-Renew / Keepalive Interval (Seconds)</label>
             <input type="number" id="gvc-acc-interval" min="60" value="300" placeholder="300">
           </div>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;">
-            <button type="submit" class="btn btn-outline">
-              <i data-lucide="save" class="icon"></i> Save Credentials
-            </button>
-            <button type="button" class="btn btn-primary" onclick="testSolveNow()" id="btn-test-solve">
-              <i data-lucide="zap" class="icon"></i> Test Auto-Login
-            </button>
-          </div>
+          <button type="submit" class="btn btn-primary" style="align-self:flex-start;">
+            <i data-lucide="save" class="icon"></i> Save Solver Key
+          </button>
         </form>
+      </div>
 
+      <!-- Right: 1-Click Bookmarklet (Manual Sync Option) -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <i data-lucide="bookmark" class="icon"></i> Manual Token Sync & Bookmarklet
+          </div>
+          <span class="badge badge-in_progress">Free Option</span>
+        </div>
+        <p style="font-size: 12px; color: var(--muted-foreground); line-height: 1.4; margin:0;">
+          Drag this bookmarklet to your bookmarks bar. When signed into GVC World on Chrome, click it to extract your active session token.
+        </p>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top: 4px;">
+          <a id="btn-bookmarklet-link" class="btn btn-outline btn-sm" style="cursor: grab;" href="#" onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar!');">
+            <i data-lucide="bookmark-plus" class="icon"></i> Bookmarklet: Sync Token
+          </a>
+          <button type="button" class="btn btn-outline btn-sm" onclick="copyConsoleSnippet()">
+            <i data-lucide="terminal" class="icon"></i> Copy Console Script (F12)
+          </button>
+        </div>
       </div>
 
     </div>
@@ -1489,6 +1461,103 @@ How can I help you today?</div>
   </div>
 </div>
 
+<!-- ── ADD GVC PORTAL ACCOUNT MODAL ── -->
+<div class="modal" id="add-gvc-account-modal">
+  <div class="modal-content" style="width: 520px;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="shield-check" class="icon"></i> Register GVC Portal Account to Fleet
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeAddGvcAccountModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <form onsubmit="event.preventDefault(); submitAddGvcAccount();" style="display:flex; flex-direction:column; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Account Label / Friendly Name *</label>
+        <input type="text" id="gvc-new-label" required placeholder="e.g. Zeeshan - Islamabad Account #1">
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>GVC Login Email *</label>
+          <input type="email" id="gvc-new-email" required placeholder="account@gvcworld.eu" autocomplete="off">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>GVC Login Password *</label>
+          <input type="password" id="gvc-new-password" required placeholder="••••••••••••" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>OTP Phone SIM (without 0) *</label>
+          <input type="text" id="gvc-new-phone" required placeholder="3342502270">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Auth Mode</label>
+          <select id="gvc-new-authmode">
+            <option value="auto_solver">Autonomous CapSolver Auto-Login</option>
+            <option value="manual">Manual Browser Token Sync</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Target VAC Center</label>
+          <select id="gvc-new-vac">
+            <option value="138">Islamabad (138)</option>
+            <option value="137">Karachi (137)</option>
+            <option value="139">Lahore (139)</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Target Visa Category</label>
+          <select id="gvc-new-visatype">
+            <option value="26">Type 26 (Seasonal Work)</option>
+            <option value="0">Type 0 (Schengen C)</option>
+            <option value="2">Type 2 (National D)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeAddGvcAccountModal()">Cancel</button>
+        <button type="submit" id="btn-save-gvc-acc" class="btn btn-primary">
+          <i data-lucide="plus-circle" class="icon"></i> Save & Launch Worker
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── SYNC ACCOUNT TOKEN MODAL ── -->
+<div class="modal" id="sync-gvc-account-modal">
+  <div class="modal-content" style="width: 500px;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="key" class="icon"></i> Manual Session Sync: <span id="sync-modal-acc-title" style="color:var(--primary);">Account</span>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeSyncAccountTokenModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <form onsubmit="event.preventDefault(); submitSyncAccountToken();" style="display:flex; flex-direction:column; gap:10px;">
+      <input type="hidden" id="sync-modal-acc-id" value="">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Paste GVC Auth Token or Raw Cookie Header</label>
+        <textarea id="sync-modal-token-input" rows="4" required placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... or auth_token=eyJ...; ASP.NET_SessionId=..." style="font-family:monospace; font-size:11px;"></textarea>
+      </div>
+
+      <div class="modal-actions" style="margin-top:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeSyncAccountTokenModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">
+          <i data-lucide="save" class="icon"></i> Sync Token to Account
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
   let activeAgent = 'orchestrator';
   let history = [];
@@ -1509,8 +1578,10 @@ How can I help you today?</div>
     }
     initGVCBookmarklet();
     checkAuth();
+    loadGvcAccounts();
     loadOtpStream();
-    setInterval(loadGVCAuthStatus, 8000);
+    setInterval(loadGvcAccounts, 8000);
+    setInterval(loadGVCAuthStatus, 10000);
     setInterval(loadOtpStream, 10000);
     renderIcons();
   });
@@ -1719,97 +1790,232 @@ How can I help you today?</div>
     if (tab) tab.click();
   }
 
-  async function loadGVCAuthStatus() {
+  // ── Multi-Account GVC Fleet Management ───────────────────────
+  async function loadGvcAccounts() {
     try {
-      const resp = await fetch('/api/gvc/session/status');
+      const resp = await fetch('/api/gvc/accounts');
       if (resp.status === 401) return;
       const data = await resp.json();
 
-      const mode = data.auth_mode || 'manual';
-      const hasSess = data.has_active_session;
-      const sess = data.session || {};
-      const telemetry = data.solver_worker || {};
+      const fleetResp = await fetch('/api/gvc/fleet/status');
+      const fleetData = fleetResp.ok ? await fleetResp.json() : {};
+
+      const statTotal = document.getElementById('fleet-stat-total');
+      if (statTotal) statTotal.textContent = data.total_accounts || 0;
+
+      const statWorkers = document.getElementById('fleet-stat-workers');
+      if (statWorkers) statWorkers.textContent = fleetData.active_workers_count || 0;
+
+      const statAuth = document.getElementById('fleet-stat-auth');
+      if (statAuth) statAuth.textContent = fleetData.authenticated_accounts_count || 0;
+      
+      const totalBooked = (data.accounts || []).reduce((acc, a) => acc + (a.total_booked_count || 0), 0);
+      const statBooked = document.getElementById('fleet-stat-booked');
+      if (statBooked) statBooked.textContent = totalBooked;
 
       // Update Header Pill
       const dot = document.getElementById('dot-gvc-auth');
       const hdrText = document.getElementById('hdr-gvc-auth-text');
       if (dot && hdrText) {
-        if (hasSess) {
-          dot.className = 'status-dot active';
-          hdrText.textContent = `GVC: Active (${mode === 'auto_solver' ? 'Auto' : 'Manual'})`;
-        } else {
-          dot.className = 'status-dot ' + (mode === 'auto_solver' ? 'warn' : 'idle');
-          hdrText.textContent = `GVC: ${mode === 'auto_solver' ? 'Solving...' : 'Standby'}`;
-        }
+        const hasAuth = (fleetData.authenticated_accounts_count || 0) > 0;
+        dot.className = 'status-dot ' + (hasAuth ? 'active' : 'warn');
+        hdrText.textContent = `Fleet: ${fleetData.active_workers_count || 0} Workers (${hasAuth ? 'Auth OK' : 'Standby'})`;
       }
 
-      // Update Mode Selector UI
-      const badge = document.getElementById('auth-mode-badge');
-      const radioManual = document.getElementById('radio-mode-manual');
-      const radioAuto = document.getElementById('radio-mode-auto');
-      const cardManual = document.getElementById('mode-opt-manual');
-      const cardAuto = document.getElementById('mode-opt-auto');
-      const opt1Pill = document.getElementById('opt1-status-pill');
-      const opt3Pill = document.getElementById('opt3-status-pill');
+      const tbody = document.getElementById('gvc-accounts-table-body');
+      if (!tbody) return;
+      tbody.innerHTML = '';
 
-      if (mode === 'auto_solver') {
-        if (badge) { badge.textContent = 'MODE: AUTO-SOLVER (HIGH LOAD)'; badge.className = 'badge badge-booked'; }
-        if (radioAuto) radioAuto.checked = true;
-        if (cardAuto) { cardAuto.style.borderColor = 'var(--primary)'; cardAuto.style.borderWidth = '2px'; }
-        if (cardManual) { cardManual.style.borderColor = 'var(--border)'; cardManual.style.borderWidth = '1px'; }
-        if (opt1Pill) { opt1Pill.textContent = 'Standby'; opt1Pill.className = 'badge badge-disabled'; }
-        if (opt3Pill) { opt3Pill.textContent = 'ACTIVE'; opt3Pill.className = 'badge badge-booked'; }
+      if (!data.accounts || data.accounts.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:24px;">No GVC portal accounts registered yet. Click '+ Add GVC Account' to register your first portal account and launch a worker.</td></tr>`;
+        return;
+      }
+
+      data.accounts.forEach(acc => {
+        const tr = document.createElement('tr');
+        const isAuth = acc.is_authenticated;
+        const authBadgeClass = isAuth ? 'badge-booked' : (acc.last_error ? 'badge-failed' : 'badge-disabled');
+        const authBadgeText = isAuth ? 'AUTHENTICATED' : (acc.last_error ? 'LOGIN_FAILED' : 'UNAUTHENTICATED');
+
+        const isWorkerActive = acc.is_worker_active;
+        const workerBadgeClass = isWorkerActive ? 'badge-active' : 'badge-disabled';
+        const workerBadgeText = isWorkerActive ? 'ACTIVE (Monitoring)' : 'PAUSED';
+
+        const vacName = acc.target_vac_id === '138' ? 'ISB (138)' : (acc.target_vac_id === '137' ? 'KHI (137)' : 'LHE (139)');
+        const isOwner = currentUser && (currentUser.username === acc.owner_username || currentUser.role === 'admin');
+
+        tr.innerHTML = `
+          <td><b>#${acc.id} ${escapeHtml(acc.account_label)}</b></td>
+          <td><span class="badge badge-in_progress" style="font-size:11px;">${escapeHtml(acc.owner_username)}</span></td>
+          <td><code>${escapeHtml(acc.email)}</code></td>
+          <td><b>+92-${escapeHtml(acc.otp_phone_number)}</b></td>
+          <td>${vacName} — Type ${acc.target_visa_type}</td>
+          <td><span class="badge ${authBadgeClass}">${authBadgeText}</span></td>
+          <td><span class="badge ${workerBadgeClass}">${workerBadgeText}</span></td>
+          <td style="text-align:right; white-space:nowrap;">
+            <button class="btn btn-outline btn-sm" onclick="loginGvcAccount(${acc.id})" title="Auto-Login with CapSolver" style="padding:3px 7px; font-size:11.5px;">
+              <i data-lucide="zap" class="icon" style="width:12px; height:12px; color:var(--accent);"></i> Login
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="toggleGvcAccountWorker(${acc.id})" title="${isWorkerActive ? 'Pause Worker' : 'Start Worker'}" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
+              <i data-lucide="${isWorkerActive ? 'pause' : 'play'}" class="icon" style="width:12px; height:12px;"></i>
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="openSyncAccountTokenModal(${acc.id}, '${escapeHtml(acc.account_label)}')" title="Manual Token Sync" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
+              <i data-lucide="key" class="icon" style="width:12px; height:12px;"></i>
+            </button>
+            ${isOwner ? `
+              <button class="btn btn-destructive btn-sm" onclick="deleteGvcAccount(${acc.id})" title="Delete Account" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
+                <i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i>
+              </button>
+            ` : ''}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      renderIcons();
+    } catch (err) {
+      console.error("GVC accounts load error:", err);
+    }
+  }
+
+  function openAddGvcAccountModal() {
+    document.getElementById('add-gvc-account-modal').classList.add('active');
+    renderIcons();
+  }
+
+  function closeAddGvcAccountModal() {
+    document.getElementById('add-gvc-account-modal').classList.remove('active');
+  }
+
+  async function submitAddGvcAccount() {
+    const payload = {
+      account_label: document.getElementById('gvc-new-label').value.trim(),
+      email: document.getElementById('gvc-new-email').value.trim(),
+      password: document.getElementById('gvc-new-password').value,
+      otp_phone_number: document.getElementById('gvc-new-phone').value.trim(),
+      auth_mode: document.getElementById('gvc-new-authmode').value,
+      target_vac_id: document.getElementById('gvc-new-vac').value,
+      target_visa_type: document.getElementById('gvc-new-visatype').value,
+    };
+
+    if (!payload.account_label || !payload.email || !payload.password || !payload.otp_phone_number) {
+      alert("Please fill all required fields.");
+      return;
+    }
+
+    const btn = document.getElementById('btn-save-gvc-acc');
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch('/api/gvc/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`✅ ${data.message || 'Account registered!'}`);
+        closeAddGvcAccountModal();
+        document.getElementById('gvc-new-label').value = '';
+        document.getElementById('gvc-new-email').value = '';
+        document.getElementById('gvc-new-password').value = '';
+        document.getElementById('gvc-new-phone').value = '';
+        loadGvcAccounts();
       } else {
-        if (badge) { badge.textContent = 'MODE: MANUAL (FREE)'; badge.className = 'badge badge-in_progress'; }
-        if (radioManual) radioManual.checked = true;
-        if (cardManual) { cardManual.style.borderColor = 'var(--primary)'; cardManual.style.borderWidth = '2px'; }
-        if (cardAuto) { cardAuto.style.borderColor = 'var(--border)'; cardAuto.style.borderWidth = '1px'; }
-        if (opt1Pill) { opt1Pill.textContent = 'Active Mode'; opt1Pill.className = 'badge badge-active'; }
-        if (opt3Pill) { opt3Pill.textContent = 'PAUSED (Zero Cost)'; opt3Pill.className = 'badge badge-disabled'; }
+        alert(`❌ Error: ${data.detail || 'Could not add account.'}`);
       }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      renderIcons();
+    }
+  }
 
-      // Update Active Session Details
-      const sessVal = document.getElementById('gvc-sess-validity');
-      const sessSrc = document.getElementById('gvc-sess-source');
-      const sessSync = document.getElementById('gvc-sess-synced');
-      const sessExp = document.getElementById('gvc-sess-expires');
+  function openSyncAccountTokenModal(id, label) {
+    document.getElementById('sync-modal-acc-id').value = id;
+    document.getElementById('sync-modal-acc-title').textContent = label;
+    document.getElementById('sync-modal-token-input').value = '';
+    document.getElementById('sync-gvc-account-modal').classList.add('active');
+    renderIcons();
+  }
 
-      if (sessVal) {
-        if (hasSess) {
-          sessVal.textContent = 'VALID & READY';
-          sessVal.className = 'badge badge-booked';
-        } else {
-          sessVal.textContent = sess.is_expired ? 'EXPIRED' : 'NO ACTIVE SESSION';
-          sessVal.className = 'badge badge-failed';
-        }
-      }
-      if (sessSrc) sessSrc.textContent = sess.source || '—';
-      if (sessSync) sessSync.textContent = sess.last_synced_at ? sess.last_synced_at.replace('T', ' ').slice(0, 19) : '—';
-      if (sessExp) sessExp.textContent = sess.expires_at ? sess.expires_at.replace('T', ' ').slice(0, 19) : '—';
+  function closeSyncAccountTokenModal() {
+    document.getElementById('sync-gvc-account-modal').classList.remove('active');
+  }
 
-      // Update Solver Worker Details
-      const workerState = document.getElementById('solver-worker-state');
-      const totalSolves = document.getElementById('solver-total-solves');
-      const lastErr = document.getElementById('solver-last-error');
-      const accEmail = document.getElementById('gvc-acc-email');
+  async function submitSyncAccountToken() {
+    const id = document.getElementById('sync-modal-acc-id').value;
+    const token = document.getElementById('sync-modal-token-input').value.trim();
+    if (!token) { alert('Please paste a token or cookie string.'); return; }
 
-      if (workerState) {
-        workerState.textContent = telemetry.worker_status || (mode === 'auto_solver' ? 'RUNNING' : 'PAUSED');
-        workerState.className = 'badge ' + (mode === 'auto_solver' ? 'badge-active' : 'badge-warn');
+    try {
+      const resp = await fetch(`/api/gvc/accounts/${id}/sync-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, cookies: token }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`🎉 ${data.message || 'Token synced!'}`);
+        closeSyncAccountTokenModal();
+        loadGvcAccounts();
+      } else {
+        alert(`❌ Sync failed: ${data.detail || 'Error'}`);
       }
-      if (totalSolves) totalSolves.textContent = telemetry.total_solves || 0;
-      if (lastErr) lastErr.textContent = telemetry.last_error || 'None';
-      if (accEmail && data.credentials_email && !accEmail.value) {
-        accEmail.value = data.credentials_email;
+    } catch (e) {
+      alert(`Error: ${e.message}`);
+    }
+  }
+
+  async function toggleGvcAccountWorker(id) {
+    try {
+      const resp = await fetch(`/api/gvc/accounts/${id}/toggle-worker`, { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        loadGvcAccounts();
+      } else {
+        alert(`❌ Could not toggle worker: ${data.detail || 'Error'}`);
       }
-      const accPass = document.getElementById('gvc-acc-password');
-      if (accPass && data.credentials_password && !accPass.value) {
-        accPass.value = data.credentials_password;
+    } catch (e) {
+      alert(`Error: ${e.message}`);
+    }
+  }
+
+  async function loginGvcAccount(id) {
+    try {
+      const resp = await fetch(`/api/gvc/accounts/${id}/login`, { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`🎉 ${data.message}`);
+        loadGvcAccounts();
+      } else {
+        alert(`❌ Auto-login failed: ${data.error || data.detail || 'Error'}`);
       }
-      const accInterval = document.getElementById('gvc-acc-interval');
-      if (accInterval && data.credentials_interval) {
-        accInterval.value = data.credentials_interval;
+    } catch (e) {
+      alert(`Login error: ${e.message}`);
+    }
+  }
+
+  async function deleteGvcAccount(id) {
+    if (!confirm(`Are you sure you want to remove GVC Account #${id} from the fleet?`)) return;
+    try {
+      const resp = await fetch(`/api/gvc/accounts/${id}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        loadGvcAccounts();
+      } else {
+        alert(`❌ Could not delete account: ${data.detail || 'Error'}`);
       }
+    } catch (e) {
+      alert(`Delete error: ${e.message}`);
+    }
+  }
+
+  async function loadGVCAuthStatus() {
+    try {
+      const resp = await fetch('/api/gvc/session/status');
+      if (resp.status === 401) return;
+      const data = await resp.json();
 
       // Update CapSolver Status & Auto-populate
       const capsolverStatus = document.getElementById('capsolver-key-status');
@@ -1830,96 +2036,12 @@ How can I help you today?</div>
     }
   }
 
-  async function setGVCAuthMode(mode) {
-    try {
-      const resp = await fetch('/api/gvc/auth/mode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      });
-      const data = await resp.json();
-      if (data.success) {
-        loadGVCAuthStatus();
-      }
-    } catch (e) {
-      alert('Failed to set auth mode: ' + e.message);
-    }
-  }
-
-  async function submitManualGVCAuth() {
-    const tokenInput = document.getElementById('gvc-manual-token');
-    let rawVal = tokenInput.value.trim();
-    if (!rawVal) {
-      alert('Please paste an auth token or cookie header.');
-      return;
-    }
-
-    // Auto-clean user input
-    if (rawVal.toLowerCase().startsWith('bearer ')) {
-      rawVal = rawVal.substring(7).trim();
-    }
-    if (rawVal.startsWith('{') && rawVal.endsWith('}')) {
-      try {
-        const obj = JSON.parse(rawVal);
-        const extracted = obj.token || obj.auth_token || obj.accessToken || obj.returnobject || obj.ReturnObject || obj.jwt || obj.data;
-        if (extracted && typeof extracted === 'string') rawVal = extracted.trim();
-      } catch (e) {}
-    }
-    if (rawVal.includes('auth_token=')) {
-      const match = rawVal.match(/auth_token=([^;]+)/i);
-      if (match) rawVal = decodeURIComponent(match[1]).trim();
-    }
-
-    const btn = document.getElementById('btn-save-manual-token');
-    btn.disabled = true;
-    btn.innerHTML = `<i data-lucide="loader" class="icon"></i> Saving Session...`;
-    renderIcons();
-
-    try {
-      const resp = await fetch('/api/gvc/session/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: rawVal, bearer_token: rawVal, cookies: rawVal, source: 'MANUAL_SYNC' }),
-      });
-      const text = await resp.text();
-      let data = null;
-      try {
-        data = JSON.parse(text);
-      } catch (parseErr) {
-        throw new Error(`Server HTTP ${resp.status}: ${text.slice(0, 120)}`);
-      }
-
-      if (resp.ok && data.success) {
-        alert('🎉 GVC Session token saved and synced successfully!\n\nSession Status is now Active & Ready.');
-        tokenInput.value = '';
-        loadGVCAuthStatus();
-      } else {
-        alert('❌ Failed to save session: ' + (data.detail || data.message || `HTTP ${resp.status}`));
-      }
-    } catch (e) {
-      alert('Sync error: ' + e.message);
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = `<i data-lucide="save" class="icon"></i> Save & Sync Session Token`;
-      renderIcons();
-    }
-  }
-
   async function submitGVCCredentials() {
-    const email = document.getElementById('gvc-acc-email').value.trim();
-    const password = document.getElementById('gvc-acc-password').value;
     const interval = parseInt(document.getElementById('gvc-acc-interval').value || '300');
     const capsolverKey = (document.getElementById('gvc-capsolver-key').value || '').trim();
 
-    if (!email || !password) {
-      alert('Please enter both GVC email and password.');
-      return;
-    }
-
     try {
       const payload = {
-        email,
-        password,
         interval_seconds: interval,
         captcha_provider: 'capsolver',
       };
@@ -1934,54 +2056,13 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (data.success) {
-        alert('✅ GVC account credentials & CapSolver settings saved successfully.');
+        alert('✅ CapSolver settings saved successfully.');
         loadGVCAuthStatus();
       } else {
         alert('❌ Failed: ' + (data.detail || 'Error'));
       }
     } catch (e) {
       alert('Error: ' + e.message);
-    }
-  }
-
-  async function testSolveNow() {
-    const btn = document.getElementById('btn-test-solve');
-    btn.disabled = true;
-    btn.textContent = '⏳ Solving reCAPTCHA & Logging in...';
-
-    const email = document.getElementById('gvc-acc-email').value.trim();
-    const password = document.getElementById('gvc-acc-password').value;
-    const capsolverKey = (document.getElementById('gvc-capsolver-key').value || '').trim();
-
-    const payload = {};
-    if (email && password) {
-      payload.email = email;
-      payload.password = password;
-    }
-    if (capsolverKey) {
-      payload.captcha_api_key = capsolverKey;
-      payload.captcha_provider = 'capsolver';
-    }
-
-    try {
-      const resp = await fetch('/api/gvc/auth/solve-now', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await resp.json();
-      if (data.success) {
-        alert('🎉 SUCCESS: ' + (data.message || 'Authenticated successfully!'));
-        loadGVCAuthStatus();
-      } else {
-        alert('❌ Auto-login test failed: ' + (data.error || JSON.stringify(data)));
-      }
-    } catch (e) {
-      alert('Error: ' + e.message);
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = `<i data-lucide="zap" class="icon"></i> Test Auto-Login`;
-      renderIcons();
     }
   }
 
