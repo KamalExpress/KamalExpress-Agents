@@ -1517,7 +1517,8 @@ async def delete_otp_endpoint(record_id: str, user: dict = Depends(get_current_u
 # ── Proxy Management REST Endpoints ──────────────────────────────────────────
 
 class ProxyBulkInput(BaseModel):
-    proxies_text: str
+    proxies_text: Optional[str] = None
+    proxies: Optional[List[str]] = None
 
 
 @app.get("/api/proxies")
@@ -1533,16 +1534,42 @@ async def list_proxies(status: Optional[str] = Query(None), user: dict = Depends
 
 
 @app.post("/api/proxies/bulk")
-async def add_proxies_endpoint(req: ProxyBulkInput, admin: dict = Depends(require_admin)):
-    """Paste 10, 30, 50+ proxy lines and save to SQLite table (Admin only)."""
-    lines = req.proxies_text.strip().splitlines()
+async def add_proxies_endpoint(
+    request: Request,
+    admin: dict = Depends(require_admin),
+):
+    """Paste 10, 30, 50, 100+ proxy lines and save to SQLite table (Admin only)."""
+    lines: List[str] = []
+    
+    # Try parsing JSON body
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            if body.get("proxies") and isinstance(body["proxies"], list):
+                lines.extend([str(p) for p in body["proxies"]])
+            if body.get("proxies_text"):
+                lines.extend(str(body["proxies_text"]).strip().splitlines())
+            if body.get("text"):
+                lines.extend(str(body["text"]).strip().splitlines())
+        elif isinstance(body, list):
+            lines.extend([str(p) for p in body])
+    except Exception:
+        # If raw text body
+        raw_body = await request.body()
+        raw_str = raw_body.decode("utf-8", errors="ignore").strip()
+        if raw_str:
+            lines.extend(raw_str.splitlines())
+
+    if not lines:
+        raise HTTPException(status_code=400, detail="No valid proxy strings provided.")
+
     added = add_proxies_bulk(lines)
     stats = get_proxy_stats()
     return {
         "success": True,
         "added": added,
         "total": stats["total"],
-        "message": f"Successfully ingested {added} proxies into SQLite pool.",
+        "message": f"Successfully ingested {added} proxies into SQLite pool (Total in pool: {stats['total']}).",
         "stats": stats,
     }
 

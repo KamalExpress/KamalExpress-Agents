@@ -1163,10 +1163,13 @@ How can I help you today?</div>
       <!-- Bulk Paste Input -->
       <form onsubmit="event.preventDefault(); submitBulkProxies();" style="display:flex; flex-direction:column; gap:10px;">
         <div class="form-group" style="margin-bottom:0;">
-          <label>Paste IP List (10, 30, 50+ lines) — Formats: <code>ip:port</code> or <code>http://user:pass@ip:port</code></label>
-          <textarea id="proxy-bulk-input" rows="4" placeholder="182.180.12.34:8080&#10;http://user:pass@111.119.123.45:3128&#10;socks5://user:pass@202.47.33.10:1080" style="font-family:monospace; font-size:12px;"></textarea>
+          <label>Paste IP List (10, 50, 100+ lines) — Formats: <code>host:port:user:pass</code> (Decodo), <code>user:pass@host:port</code>, <code>http://...</code>, or <code>host:port</code></label>
+          <textarea id="proxy-bulk-input" rows="5" placeholder="pk.decodo.com:10001:username:password&#10;http://user:pass@111.119.123.45:3128&#10;182.180.12.34:8080" style="font-family:monospace; font-size:12px;"></textarea>
         </div>
-        <div style="display:flex; justify-content:flex-end;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:12px; color:var(--muted-foreground);">
+            Supports Pakistan Residential, Static Datacenter, and Rotating IPs from Decodo, Webshare, Oxylabs, etc.
+          </div>
           <button type="submit" id="btn-import-proxies" class="btn btn-primary">
             <i data-lucide="plus-circle" class="icon"></i> Import Proxies to SQLite
           </button>
@@ -1176,13 +1179,16 @@ How can I help you today?</div>
 
     <!-- Proxy List Table -->
     <div class="card">
-      <div class="card-header">
+      <div class="card-header" style="flex-wrap:wrap; gap:10px;">
         <div class="card-title">
-          <i data-lucide="list" class="icon"></i> Managed Proxy Catalog
+          <i data-lucide="list" class="icon"></i> Managed Proxy Catalog (<span id="proxy-table-count">0</span> Proxies)
         </div>
-        <button class="btn btn-outline btn-sm" onclick="loadProxies()">
-          <i data-lucide="rotate-cw" class="icon"></i> Refresh
-        </button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="text" id="proxy-search-filter" placeholder="Search host, port, status..." oninput="filterProxiesTable()" style="font-size:12px; padding:4px 8px; width:190px; border:1px solid var(--border); border-radius:var(--radius); background:var(--secondary);" />
+          <button class="btn btn-outline btn-sm" onclick="loadProxies()">
+            <i data-lucide="rotate-cw" class="icon"></i> Refresh
+          </button>
+        </div>
       </div>
 
       <div class="queue-table-wrap">
@@ -3483,6 +3489,8 @@ How can I help you today?</div>
   }
 
   // ── Proxy Operations ─────────────────────────────────────────
+  let cachedProxiesList = [];
+
   async function loadProxies() {
     try {
       const resp = await fetch('/api/proxies');
@@ -3495,36 +3503,59 @@ How can I help you today?</div>
       document.getElementById('proxy-stat-quarantined').textContent = stats.quarantined || 0;
       document.getElementById('proxy-stat-success-rate').textContent = (stats.success_rate || 100) + '%';
 
-      const tbody = document.getElementById('proxy-table-body');
-      tbody.innerHTML = '';
-
-      if (!data.proxies || data.proxies.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted-foreground); padding:20px;">No proxies found in SQLite. Paste IPs above and click 'Import Proxies'.</td></tr>`;
-        return;
-      }
-
-      const isAdmin = currentUser && currentUser.role === 'admin';
-
-      data.proxies.forEach(p => {
-        const tr = document.createElement('tr');
-        const badgeClass = p.status === 'ACTIVE' ? 'badge-active' : (p.status === 'QUARANTINED' ? 'badge-quarantined' : 'badge-disabled');
-        tr.innerHTML = `
-          <td><b>#${p.id}</b></td>
-          <td><code>${escapeHtml(p.host)}:${p.port}</code></td>
-          <td><span class="badge badge-in_progress">${p.country || 'PK'}</span></td>
-          <td><span class="badge ${badgeClass}">${p.status}</span></td>
-          <td style="color:var(--success); font-weight:600;">${p.success_count}</td>
-          <td style="color:var(--destructive); font-weight:600;">${p.fail_count}</td>
-          <td><small style="color:var(--muted-foreground)">${p.quarantined_until ? `Until ${p.quarantined_until.slice(11,19)}` : (p.last_error ? escapeHtml(p.last_error) : '—')}</small></td>
-          <td><small style="color:var(--muted-foreground)">${p.last_used_at ? p.last_used_at.slice(11,19) : 'Never'}</small></td>
-          <td>${isAdmin ? `<button class="btn btn-destructive btn-sm" onclick="deleteProxy(${p.id})"><i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i></button>` : '<span style="color:var(--muted-foreground); font-size:11px;">Staff View</span>'}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-      renderIcons();
+      cachedProxiesList = data.proxies || [];
+      renderProxiesTable(cachedProxiesList);
     } catch (err) {
       console.error("Proxy load error:", err);
     }
+  }
+
+  function renderProxiesTable(proxies) {
+    const tbody = document.getElementById('proxy-table-body');
+    const countEl = document.getElementById('proxy-table-count');
+    if (countEl) countEl.textContent = proxies.length;
+    tbody.innerHTML = '';
+
+    if (!proxies || proxies.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted-foreground); padding:20px;">No proxies found in SQLite. Paste IPs above and click 'Import Proxies to SQLite'.</td></tr>`;
+      return;
+    }
+
+    const isAdmin = currentUser && currentUser.role === 'admin';
+
+    proxies.forEach(p => {
+      const tr = document.createElement('tr');
+      const badgeClass = p.status === 'ACTIVE' ? 'badge-active' : (p.status === 'QUARANTINED' ? 'badge-quarantined' : 'badge-disabled');
+      tr.innerHTML = `
+        <td><b>#${p.id}</b></td>
+        <td><code>${escapeHtml(p.host)}:${p.port}</code></td>
+        <td><span class="badge badge-in_progress">${p.country || 'PK'}</span></td>
+        <td><span class="badge ${badgeClass}">${p.status}</span></td>
+        <td style="color:var(--success); font-weight:600;">${p.success_count}</td>
+        <td style="color:var(--destructive); font-weight:600;">${p.fail_count}</td>
+        <td><small style="color:var(--muted-foreground)">${p.quarantined_until ? `Until ${p.quarantined_until.slice(11,19)}` : (p.last_error ? escapeHtml(p.last_error) : '—')}</small></td>
+        <td><small style="color:var(--muted-foreground)">${p.last_used_at ? p.last_used_at.slice(11,19) : 'Never'}</small></td>
+        <td>${isAdmin ? `<button class="btn btn-destructive btn-sm" onclick="deleteProxy(${p.id})" title="Delete Proxy"><i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i></button>` : '<span style="color:var(--muted-foreground); font-size:11px;">Staff View</span>'}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    renderIcons();
+  }
+
+  function filterProxiesTable() {
+    const q = (document.getElementById('proxy-search-filter')?.value || '').toLowerCase().trim();
+    if (!q) {
+      renderProxiesTable(cachedProxiesList);
+      return;
+    }
+    const filtered = cachedProxiesList.filter(p => {
+      return String(p.id).includes(q) ||
+             String(p.host).toLowerCase().includes(q) ||
+             String(p.port).includes(q) ||
+             String(p.status).toLowerCase().includes(q) ||
+             String(p.country || '').toLowerCase().includes(q);
+    });
+    renderProxiesTable(filtered);
   }
 
   async function submitBulkProxies() {
@@ -3540,12 +3571,16 @@ How can I help you today?</div>
       const resp = await fetch('/api/proxies/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proxies: lines }),
+        body: JSON.stringify({ proxies: lines, proxies_text: raw }),
       });
       const data = await resp.json();
-      alert(`✅ ${data.message || 'Proxies imported!'}`);
-      document.getElementById('proxy-bulk-input').value = '';
-      loadProxies();
+      if (resp.ok && data.success) {
+        alert(`✅ ${data.message || `Ingested ${data.added} proxies!`}`);
+        document.getElementById('proxy-bulk-input').value = '';
+        loadProxies();
+      } else {
+        alert(`❌ Proxy import error: ${data.detail || data.error || 'Failed'}`);
+      }
     } catch (err) {
       alert(`Error importing proxies: ${err.message}`);
     } finally {

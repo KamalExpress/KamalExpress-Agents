@@ -637,8 +637,8 @@ def get_queue_stats(db_path: Path = DB_PATH) -> dict:
 
 def add_proxies_bulk(proxy_lines: List[str], db_path: Path = DB_PATH) -> int:
     """
-    Parse a list of proxy strings (host:port:user:pass or http://...) and insert into SQLite.
-    Returns count of added/updated proxies.
+    Parse a list of proxy strings (host:port:user:pass, user:pass:host:port, user:pass@host:port, http://...)
+    and insert/update in SQLite proxies pool. Returns count of added/updated proxies.
     """
     if not proxy_lines:
         return 0
@@ -658,20 +658,48 @@ def add_proxies_bulk(proxy_lines: List[str], db_path: Path = DB_PATH) -> int:
                     host, port, user, pwd = "", "", "", ""
                     proxy_url = ""
 
-                    if line.startswith("http://") or line.startswith("https://"):
+                    if "://" in line:
                         proxy_url = line
-                        # Parse components
                         from urllib.parse import urlparse
                         p = urlparse(line)
                         host = p.hostname or ""
                         port = str(p.port or 80)
                         user = p.username or ""
                         pwd = p.password or ""
+                    elif "@" in line:
+                        # user:pass@host:port
+                        auth_part, host_part = line.rsplit("@", 1)
+                        if ":" in auth_part:
+                            user, pwd = auth_part.split(":", 1)
+                        else:
+                            user = auth_part
+                        if ":" in host_part:
+                            host, port = host_part.split(":", 1)
+                        else:
+                            host, port = host_part, "80"
+                        proxy_url = f"http://{user}:{pwd}@{host}:{port}" if user else f"http://{host}:{port}"
                     else:
                         parts = line.split(":")
-                        if len(parts) == 4:
-                            host, port, user, pwd = parts
-                            proxy_url = f"http://{user}:{pwd}@{host}:{port}"
+                        if len(parts) >= 4:
+                            # Detect whether host:port:user:pass or user:pass:host:port
+                            if parts[1].isdigit():
+                                # host:port:user:pass (Decodo, Webshare, Oxylabs standard)
+                                host = parts[0]
+                                port = parts[1]
+                                user = parts[2]
+                                pwd = ":".join(parts[3:])
+                            elif parts[3].isdigit() or parts[-1].isdigit():
+                                # user:pass:host:port
+                                user = parts[0]
+                                pwd = parts[1]
+                                host = parts[2]
+                                port = parts[3]
+                            else:
+                                host = parts[0]
+                                port = parts[1]
+                                user = parts[2]
+                                pwd = parts[3]
+                            proxy_url = f"http://{user}:{pwd}@{host}:{port}" if user else f"http://{host}:{port}"
                         elif len(parts) == 2:
                             host, port = parts
                             proxy_url = f"http://{host}:{port}"
@@ -694,6 +722,14 @@ def add_proxies_bulk(proxy_lines: List[str], db_path: Path = DB_PATH) -> int:
                     inserted_count += 1
 
             logger.info(f"[db] Successfully ingested {inserted_count} proxies into SQLite.")
+            if inserted_count > 0:
+                log_system_event(
+                    level="INFO",
+                    category="PROXY",
+                    message=f"Ingested/Refreshed {inserted_count} Pakistan residential proxies into SQLite pool.",
+                    details={"ingested_count": inserted_count},
+                    db_path=db_path,
+                )
             return inserted_count
         finally:
             conn.close()
