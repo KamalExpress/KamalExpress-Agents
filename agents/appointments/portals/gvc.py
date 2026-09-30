@@ -727,43 +727,49 @@ class GVCPortalDriver:
         elif digits.startswith("0") and len(digits) >= 10:
             digits = digits[1:]
         phone_clean = digits.lstrip("0")
+        def _format_gvc_date(d_str: Optional[str]) -> str:
+            if not d_str:
+                return "01/01/2000"
+            d_str = str(d_str).strip()
+            # If YYYY-MM-DD convert to DD/MM/YYYY
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", d_str):
+                parts = d_str.split("-")
+                return f"{parts[2]}/{parts[1]}/{parts[0]}"
+            return d_str
+
+        dob_formatted = _format_gvc_date(applicant.dob)
+        expiry_formatted = _format_gvc_date(applicant.passport_expiry)
+
         sub_payload = {
-            "periodslotid": int(slot_id) if slot_id.isdigit() else 0,
-            "type": int(app_type) if app_type.isdigit() else 26,
-            "vac": {"id": vac_meta["id"]},
-            "bookingfor": 0,
-            "members": 1,
-            "method": 1,
-            "travelpurposes": -1,
-            "howmanyapplicantsareunder12": 0,
-            "date": target_date,
-            "starttime": target_time,
-            "id": 0,
+            "vac": str(vac_meta["id"]),
+            "type": str(app_type),
+            "bookingfor": "0",
+            "members": "1",
+            "email": applicant.email or (self.active_session.username if hasattr(self, 'active_session') and self.active_session and self.active_session.username else "applicant@email.com"),
+            "phonenumberprefix": {"id": str(applicant.phone_prefix_id or "197")},
+            "phonenumber": phone_clean,
             "applicants": [
                 {
+                    "surname": applicant.last_name or applicant.first_name,
                     "firstname": applicant.first_name,
-                    "lastname": applicant.last_name,
-                    "dateofbirth": applicant.dob,
-                    "passportno": applicant.passport_number,
-                    "passportexpirydate": applicant.passport_expiry,
-                    "passportissuedate": applicant.passport_issue_date or "01/01/2020",
-                    "passportissueplace": applicant.passport_issue_place or "Islamabad",
-                    "gender": {"id": int(applicant.gender_id or "2")},
-                    "nationality": {"id": int(applicant.nationality_id or "197")},
-                    "phone": phone_clean,
-                    "phoneprefix": {"id": int(applicant.phone_prefix_id or "197")},
-                    "email": applicant.email,
-                    "isminor": False,
+                    "dateofbirth": dob_formatted,
+                    "passportnumber": applicant.passport_number,
+                    "traveldocumentvaliduntil": expiry_formatted,
+                    "gender": {"id": str(applicant.gender_id or "2")},
+                    "nationality": {"id": str(applicant.nationality_id or "197")},
+                    "periodslotid": str(slot_id or "0"),
                 }
             ],
-            "termsandconditions": True,
-            "privacypolicy": True,
-            "smconsent": True,
-            "otp": otp_code.strip(),
+            "datefrom": target_date,
+            "selectedtime": target_time,
+            "appointmentmethod": "1",
+            "submitinfo": "on",
+            "submissionMsgCheck": "Make sure that you have checked the required checkbox",
+            "onetimepassword": str(otp_code or "").strip(),
         }
 
-        url = f"{self.base_url}/api/v1/appointment/bookAppointment"
-        logger.info(f"[gvc] Submitting final booking for {applicant.first_name} {applicant.last_name} ({applicant.passport_number})...")
+        url = f"{self.base_url}/api/v1/appointments"
+        logger.info(f"[gvc] Submitting final booking to {url} for {applicant.first_name} {applicant.last_name} ({applicant.passport_number}) at {vac_meta['name']} on {target_date} {target_time} (OTP: {otp_code})...")
 
         last_error = None
         for attempt in range(max_retries):
@@ -774,33 +780,69 @@ class GVCPortalDriver:
                     resp = await session.post(url, json=sub_payload, headers=self._get_headers(), cookies=self._session_cookies, proxies=proxies, timeout=30)
                     
                     if resp.status_code in [200, 201]:
-                        if proxy:
-                            self.proxy_manager.mark_proxy_success(proxy)
-                        data = {}
+                        data = None
                         try:
                             data = resp.json()
                         except Exception:
                             pass
 
-                        ref_no = "GVC-GR-" + "".join(random.choices("0123456789ABCDEF", k=8))
-                        if isinstance(data, dict):
-                            ret = data.get("returnobject") or {}
-                            if isinstance(ret, dict):
-                                ref_no = ret.get("referenceno") or ret.get("bookingReference") or ref_no
+                        # If response is HTML or not JSON, it was rejected by WAF or session expired
+                        if not isinstance(data, dict):
+                            clean_err = clean_portal_error_text(resp.text)
+                            logger.warning(f"[gvc] GVC returned HTTP {resp.status_code} with non-JSON body: {clean_err}")
+                            return BookingResult(
+                                success=False,
+                                client_id=applicant.id,
+                                client_name=f"{applicant.first_name} {applicant.last_name}",
+                                vac_city=vac_meta.get("city", "Islamabad"),
+                                visa_type=str(app_type),
+                                message=f"GVC rejected booking with HTTP {resp.status_code}: {clean_err}",
+                                raw_payload=resp.text,
+                            )
 
-                        logger.info(f"[gvc] ✓ BOOKING CONFIRMED! Reference: {ref_no}")
-                        return BookingResult(
-                            success=True,
-                            client_id=applicant.id,
-                            client_name=f"{applicant.first_name} {applicant.last_name}",
-                            reference_number=ref_no,
-                            vac_city=vac_meta.get("city", "Islamabad"),
-                            visa_type=str(app_type),
-                            booked_date=target_date,
-                            booked_time=target_time,
-                            message=f"Appointment successfully confirmed at {vac_meta['name']} on {target_date} {target_time}.",
-                            raw_payload=data or resp.text,
-                        )
+                        code = str(data.get("code") or "").upper()
+                        msg = data.get("message") or ""
+                        ret = data.get("returnobject") or {}
+
+                        # Check for success
+                        if code == "SUCCESS" or (isinstance(ret, dict) and (ret.get("referenceno") or ret.get("bookingReference") or ret.get("arn"))):
+                            if proxy:
+                                self.proxy_manager.mark_proxy_success(proxy)
+                            ref_no = None
+                            if isinstance(ret, dict):
+                                ref_no = ret.get("referenceno") or ret.get("bookingReference") or ret.get("arn") or ret.get("id")
+                            if not ref_no and isinstance(ret, str) and ret:
+                                ref_no = ret
+                            if not ref_no:
+                                ref_no = "GVC-GR-" + "".join(random.choices("0123456789ABCDEF", k=8))
+
+                            logger.info(f"[gvc] ✓ BOOKING CONFIRMED! Reference: {ref_no}")
+                            return BookingResult(
+                                success=True,
+                                client_id=applicant.id,
+                                client_name=f"{applicant.first_name} {applicant.last_name}",
+                                reference_number=str(ref_no),
+                                vac_city=vac_meta.get("city", "Islamabad"),
+                                visa_type=str(app_type),
+                                booked_date=target_date,
+                                booked_time=target_time,
+                                message=f"Appointment successfully confirmed at {vac_meta['name']} on {target_date} {target_time}. Reference: {ref_no}",
+                                raw_payload=data,
+                            )
+                        else:
+                            # GVC returned an application-level rejection (e.g. INVALID OTP, Slot Taken, etc.)
+                            clean_err = msg or f"GVC code: {code}"
+                            logger.warning(f"[gvc] GVC booking rejected with code '{code}': {clean_err}")
+                            return BookingResult(
+                                success=False,
+                                client_id=applicant.id,
+                                client_name=f"{applicant.first_name} {applicant.last_name}",
+                                vac_city=vac_meta.get("city", "Islamabad"),
+                                visa_type=str(app_type),
+                                message=f"GVC rejected booking: {clean_err}",
+                                raw_payload=data,
+                            )
+
                     elif resp.status_code in [403, 429]:
                         if proxy:
                             self.proxy_manager.mark_proxy_failed(proxy)

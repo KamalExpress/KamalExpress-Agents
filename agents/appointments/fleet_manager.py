@@ -943,13 +943,15 @@ class GVCFleetManager:
                 )
                 rate_booking = int(get_system_setting("worker_rate_per_booking_pkr", "5000") or "5000")
                 acc_email = selected_account.get("email", "") if selected_account else ""
+                final_booked_date = target_slot.date if target_slot else target_date
+                final_booked_time = target_slot.time if target_slot else target_time
 
                 update_client_status(
                     client_id=client.id,
                     status="BOOKED",
                     booking_reference=result.reference_number,
-                    booked_date=target_slot.date,
-                    booked_time=target_slot.time,
+                    booked_date=final_booked_date,
+                    booked_time=final_booked_time,
                     notes=f"Manually triggered by {triggered_by}. Booked by {persona} ({acc_email}).",
                     raw_confirmation_path=conf_path,
                     booked_by_account_id=account_id,
@@ -957,22 +959,23 @@ class GVCFleetManager:
                     booking_cost_pkr=rate_booking,
                 )
                 self.log_event(
-                    f"🎉 [MANUAL TRIGGER] BOOKING SUCCESSFUL! Ref: {result.reference_number} for Client #{client.id} ({client.first_name} {client.last_name}) by Operator '{persona}' at {vac_name} ({visa_label}) on {target_slot.date} {target_slot.time}!",
+                    f"🎉 [MANUAL TRIGGER] BOOKING SUCCESSFUL! Ref: {result.reference_number} for Client #{client.id} ({client.first_name} {client.last_name}) by Operator '{persona}' at {vac_name} ({visa_label}) on {final_booked_date} {final_booked_time}!",
                     level="SUCCESS",
                     category="BOOKING",
                     account_id=account_id,
                     worker_name=persona,
-                    details={"arn": result.reference_number, "client_id": client.id, "slot": target_slot.date, "cost_pkr": rate_booking},
+                    details={"arn": result.reference_number, "client_id": client.id, "slot": final_booked_date, "cost_pkr": rate_booking},
                 )
-                target_slot.available_capacity -= 1
+                if target_slot:
+                    target_slot.available_capacity -= 1
                 return {
                     "success": True,
                     "status": "BOOKED",
                     "reference_number": result.reference_number,
-                    "slot_date": target_slot.date,
-                    "slot_time": target_slot.time,
+                    "slot_date": final_booked_date,
+                    "slot_time": final_booked_time,
                     "worker_name": persona,
-                    "message": f"Appointment booked successfully (Ref: {result.reference_number}) on {target_slot.date} {target_slot.time}!",
+                    "message": f"Appointment booked successfully (Ref: {result.reference_number}) on {final_booked_date} {final_booked_time}!",
                 }
             else:
                 if account_id:
