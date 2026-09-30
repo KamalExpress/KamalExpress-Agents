@@ -1387,11 +1387,11 @@ How can I help you today?</div>
     
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
       <div class="form-group" style="margin-bottom:0;">
-        <label>First Name *</label>
+        <label>First Name (as on Passport) *</label>
         <input type="text" id="m-first-name" required placeholder="e.g. Ali">
       </div>
       <div class="form-group" style="margin-bottom:0;">
-        <label>Last Name *</label>
+        <label>Surname (as on Passport) *</label>
         <input type="text" id="m-last-name" required placeholder="e.g. Ahmed">
       </div>
     </div>
@@ -2507,8 +2507,8 @@ How can I help you today?</div>
       vac_city: document.getElementById('m-vac').options[document.getElementById('m-vac').selectedIndex].text.split(' ')[0],
     };
 
-    if (!payload.first_name || !payload.passport_number || !payload.phone_number || !payload.email) {
-      alert("Please fill all required fields.");
+    if (!payload.first_name || !payload.last_name || !payload.passport_number || !payload.phone_number || !payload.email) {
+      alert("Please fill all required fields (First Name, Surname, Passport, DOB, Expiry, Phone, and Email).");
       return;
     }
 

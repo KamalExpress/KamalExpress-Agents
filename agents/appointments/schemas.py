@@ -7,8 +7,8 @@ and slot discovery queries.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Any, Literal, Optional
 
 
 class ClientProfile(BaseModel):
@@ -45,6 +45,20 @@ class ClientProfile(BaseModel):
     booked_time: Optional[str] = Field(default=None, description="Confirmed appointment time")
     notes: Optional[str] = Field(default="", description="Operator or agent notes")
     created_at: Optional[str] = Field(default_factory=lambda: datetime.utcnow().isoformat())
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_surname_alias(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "surname" in data and "last_name" not in data:
+                data["last_name"] = data["surname"]
+            elif "last_name" in data and "surname" not in data:
+                data["surname"] = data["last_name"]
+        return data
+
+    @property
+    def surname(self) -> str:
+        return self.last_name
 
     @field_validator("phone_number")
     def clean_phone(cls, v: str) -> str:
