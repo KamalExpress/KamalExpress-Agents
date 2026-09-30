@@ -72,7 +72,14 @@ class ProxyManager:
 
         return []
 
-    def mark_proxy_failed(self, proxy_url: Optional[str], error: Optional[str] = None) -> None:
+    def mark_proxy_failed(
+        self,
+        proxy_url: Optional[str],
+        error: Optional[str] = None,
+        worker_name: Optional[str] = None,
+        account_id: Optional[int] = None,
+        log_event: bool = True,
+    ) -> None:
         """Mark a proxy as failed in SQLite and quarantine it for 5 minutes."""
         if not proxy_url:
             return
@@ -83,7 +90,20 @@ class ProxyManager:
                 error=error or "Imperva WAF / Timeout Block",
                 quarantine_seconds=int(self._cooldown_seconds),
             )
-            logger.warning(f"[proxy] ⚠️ Proxy {proxy_url.split('@')[-1]} marked failed in SQLite (quarantined 5m).")
+            clean = proxy_url.split("@")[-1]
+            logger.warning(f"[proxy] ⚠️ Proxy {clean} marked failed in SQLite (quarantined 5m).")
+            if log_event:
+                from .db import log_system_event
+                active_proxies = len(get_active_proxies())
+                total = len(get_all_proxies())
+                log_system_event(
+                    level="WARNING",
+                    category="PROXY",
+                    message=f"Quarantined residential proxy {clean} for 5m due to {error or 'WAF challenge'}. Active pool: {active_proxies}/{total} healthy proxies available.",
+                    account_id=account_id,
+                    worker_name=worker_name or "",
+                    details={"quarantined_proxy": clean, "error": error, "active_pool": active_proxies, "total_pool": total},
+                )
         except Exception as e:
             logger.error(f"[proxy] Failed to record proxy failure in DB: {e}")
 

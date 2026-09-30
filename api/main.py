@@ -88,6 +88,11 @@ from agents.appointments.db import (
     get_recent_system_logs,
     clear_system_logs,
     mask_phone_pii,
+    get_raw_confirmation,
+    get_worker_accounting_summary,
+    update_worker_accounting_settings,
+    update_user_password,
+    get_system_user_by_id,
 )
 from agents.appointments.fleet_manager import fleet_manager
 from agents.appointments.monitor import slot_monitor
@@ -198,6 +203,21 @@ class UserStatusRequest(BaseModel):
     is_active: bool
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str
+
+
+class WorkerAccountingSettingsRequest(BaseModel):
+    rate_per_booking: Optional[int] = None
+    rate_per_task: Optional[int] = None
+    rate_per_captcha: Optional[int] = None
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
@@ -286,6 +306,29 @@ async def get_me_endpoint(user: dict = Depends(get_current_user)):
     return {"authenticated": True, "user": user}
 
 
+@app.post("/api/auth/change-password")
+async def change_my_password_endpoint(req: ChangePasswordRequest, user: dict = Depends(get_current_user)):
+    """Allow any authenticated staff or admin user to update their own password."""
+    # Verify current password
+    auth_check = authenticate_user(user["username"], req.current_password)
+    if not auth_check:
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    
+    if len(req.new_password.strip()) < 4:
+        raise HTTPException(status_code=400, detail="New password must be at least 4 characters long.")
+
+    updated = update_user_password(user["id"], req.new_password)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update password.")
+
+    log_system_event(
+        message=f"User '{user['username']}' successfully updated their password.",
+        level="INFO",
+        category="AUTH",
+    )
+    return {"success": True, "message": "Password updated successfully."}
+
+
 # ── User & Staff Management (Admin Only) ──────────────────────────────────────
 
 @app.get("/api/users")
@@ -308,6 +351,28 @@ async def create_user_endpoint(req: UserCreateRequest, admin: dict = Depends(req
         return {"success": True, "user": new_user, "message": f"User '{new_user['username']}' created successfully."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/admin/users/{user_id}/reset-password")
+async def admin_reset_user_password_endpoint(user_id: int, req: AdminResetPasswordRequest, admin: dict = Depends(require_admin)):
+    """Allow Admin to reset the password for any staff member."""
+    target_user = get_system_user_by_id(user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if len(req.new_password.strip()) < 4:
+        raise HTTPException(status_code=400, detail="New password must be at least 4 characters long.")
+
+    updated = update_user_password(user_id, req.new_password)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to reset password.")
+
+    log_system_event(
+        message=f"Admin '{admin['username']}' reset password for user '{target_user['username']}'.",
+        level="INFO",
+        category="AUTH",
+    )
+    return {"success": True, "message": f"Password reset successfully for user '{target_user['username']}'."}
 
 
 @app.delete("/api/users/{user_id}")
@@ -707,10 +772,10 @@ async def bulk_upload_clients(
                 passport_expiry=passport_expiry,
                 passport_issue_date=issue_date,
                 passport_issue_place=row.get("passport_issue_place") or row.get("issue_place") or "",
-                gender=row.get("gender", "Male").capitalize() if row.get("gender") in ["Female", "female", "Other", "other"] else "Male",
-                gender_id="1" if str(row.get("gender", "")).lower() == "female" else "2",
-                nationality=row.get("nationality", "Pakistani"),
-                nationality_id="197",
+                gender=row.get("gender", "Male"),
+                gender_id="1" if str(row.get("gender", "")).lower() in ["female", "f", "1", "woman"] else ("3" if str(row.get("gender", "")).lower() in ["other", "o", "3"] else "2"),
+                nationality=row.get("nationality", "Pakistani") or "Pakistani",
+                nationality_id=str(row.get("nationality_id", "197")) or "197",
                 phone_number=phone,
                 email=email,
                 destination=row.get("destination", "Greece"),
@@ -758,6 +823,23 @@ async def get_client(client_id: int, user: dict = Depends(get_current_user)):
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     return client.model_dump()
+
+
+@app.get("/api/clients/{client_id}/confirmation")
+async def get_client_confirmation_endpoint(client_id: int, user: dict = Depends(get_current_user)):
+    """Fetch raw confirmation payload, worker attribution, and metadata for a client."""
+    client = get_client_by_id(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    data = get_raw_confirmation(client_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="No confirmation data found for this client")
+    return {
+        "success": True,
+        "client_id": client_id,
+        "client": client.model_dump(),
+        "confirmation": data,
+    }
 
 
 @app.put("/api/clients/{client_id}")
@@ -1190,6 +1272,35 @@ async def reschedule_checks_endpoint(
     return {
         "success": True,
         "message": "Slot discovery checks rescheduled across all centers.",
+    }
+
+
+@app.get("/api/fleet/worker-accounting")
+async def get_worker_accounting_endpoint(user: dict = Depends(get_current_user)):
+    """Fetch remote worker performance metrics, task costs, and compensation breakdown."""
+    return get_worker_accounting_summary()
+
+
+@app.post("/api/fleet/worker-accounting/settings")
+async def update_worker_accounting_settings_endpoint(
+    req: WorkerAccountingSettingsRequest,
+    admin: dict = Depends(require_admin),
+):
+    """Update system-wide worker rate settings (Admin only)."""
+    res = update_worker_accounting_settings(
+        rate_per_booking=req.rate_per_booking,
+        rate_per_task=req.rate_per_task,
+        rate_per_captcha=req.rate_per_captcha,
+    )
+    log_system_event(
+        message=f"Admin '{admin['username']}' updated worker accounting rates.",
+        level="INFO",
+        category="FLEET",
+    )
+    return {
+        "success": True,
+        "message": "Worker accounting rates updated successfully.",
+        "accounting": res,
     }
 
 

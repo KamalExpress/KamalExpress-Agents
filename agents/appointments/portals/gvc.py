@@ -499,32 +499,35 @@ class GVCPortalDriver:
                 elif is_waf_block:
                     logger.warning(f"[gvc] Imperva WAF challenge page still active after refresh attempt on proxy {proxy or 'direct'}. Session is preserved.")
                     if proxy:
-                        self.proxy_manager.mark_proxy_failed(proxy)
+                        self.proxy_manager.mark_proxy_failed(proxy, error="Imperva WAF challenge on slot query", log_event=False)
                     self.last_search_status = {
                         "status": "WAF_CHALLENGE",
                         "code": 403,
                         "error": "Imperva WAF challenge encountered on server connection. Rotating Pakistan residential proxy...",
+                        "proxy": proxy,
                     }
                     return []
 
                 else:
                     logger.warning(f"[gvc] Direct REST returned HTTP {resp.status_code}: {resp.text[:120]}")
                     if proxy:
-                        self.proxy_manager.mark_proxy_failed(proxy)
+                        self.proxy_manager.mark_proxy_failed(proxy, error=f"HTTP {resp.status_code} response", log_event=False)
                     self.last_search_status = {
                         "status": "ERROR",
                         "code": resp.status_code,
                         "error": f"GVC Portal responded with HTTP {resp.status_code}: {resp.text[:120]}",
+                        "proxy": proxy,
                     }
                     return []
             except Exception as e:
                 logger.warning(f"[gvc] Direct REST slot query failed: {e}")
                 if proxy:
-                    self.proxy_manager.mark_proxy_failed(proxy)
+                    self.proxy_manager.mark_proxy_failed(proxy, error=f"Slot query exception: {str(e)}", log_event=False)
                 self.last_search_status = {
                     "status": "ERROR",
                     "code": 500,
                     "error": f"Network error during slot query: {str(e)}",
+                    "proxy": proxy,
                 }
                 return []
 
@@ -746,13 +749,15 @@ class GVCPortalDriver:
                         logger.info(f"[gvc] ✓ BOOKING CONFIRMED! Reference: {ref_no}")
                         return BookingResult(
                             success=True,
-                            booking_reference=ref_no,
+                            client_id=applicant.id,
+                            client_name=f"{applicant.first_name} {applicant.last_name}",
+                            reference_number=ref_no,
+                            vac_city=vac_meta.get("city", "Islamabad"),
+                            visa_type=str(app_type),
                             booked_date=target_date,
                             booked_time=target_time,
-                            vac_name=vac_meta["name"],
-                            applicant_name=f"{applicant.first_name} {applicant.last_name}",
-                            passport_number=applicant.passport_number,
                             message=f"Appointment successfully confirmed at {vac_meta['name']} on {target_date} {target_time}.",
+                            raw_payload=data or resp.text,
                         )
                     elif resp.status_code in [403, 429]:
                         if proxy:
@@ -760,9 +765,12 @@ class GVCPortalDriver:
                     else:
                         return BookingResult(
                             success=False,
-                            applicant_name=f"{applicant.first_name} {applicant.last_name}",
-                            passport_number=applicant.passport_number,
+                            client_id=applicant.id,
+                            client_name=f"{applicant.first_name} {applicant.last_name}",
+                            vac_city=vac_meta.get("city", "Islamabad"),
+                            visa_type=str(app_type),
                             message=f"GVC rejected booking with HTTP {resp.status_code}: {resp.text[:200]}",
+                            raw_payload=resp.text,
                         )
             except Exception as e:
                 if proxy:
@@ -771,7 +779,9 @@ class GVCPortalDriver:
 
         return BookingResult(
             success=False,
-            applicant_name=f"{applicant.first_name} {applicant.last_name}",
-            passport_number=applicant.passport_number,
+            client_id=applicant.id,
+            client_name=f"{applicant.first_name} {applicant.last_name}",
+            vac_city=vac_meta.get("city", "Islamabad"),
+            visa_type=str(app_type),
             message=f"Booking submission failed after {max_retries} attempts: {last_error}",
         )

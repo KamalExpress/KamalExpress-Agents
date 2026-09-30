@@ -28,6 +28,10 @@ from .db import (
     log_system_event,
     mask_phone_pii,
     get_next_persona_name,
+    save_raw_confirmation,
+    record_worker_task,
+    record_worker_error,
+    get_system_setting,
 )
 from .otp import wait_for_otp
 from .portals.gvc import GVCPortalDriver, GVC_VACS, GVC_VISA_TYPES
@@ -297,12 +301,30 @@ class AccountWorkerInstance:
                         continue
 
                     if status_info.get("status") == "WAF_CHALLENGE":
+                        failed_proxy = status_info.get("proxy") or self._driver._session_proxy
+                        if failed_proxy:
+                            self._driver.proxy_manager.mark_proxy_failed(
+                                failed_proxy,
+                                error="Imperva WAF challenge on slot scan",
+                                worker_name=persona,
+                                account_id=self.account_id,
+                                log_event=False,
+                            )
+                        next_proxy = self._driver.proxy_manager.get_proxy_url()
+                        self._driver._session_proxy = next_proxy
+
+                        active_count = len(self._driver.proxy_manager._get_healthy_proxies())
+                        total_count = self._driver.proxy_manager.total_proxies
+                        clean_failed = failed_proxy.split("@")[-1] if failed_proxy else "direct"
+                        clean_next = next_proxy.split("@")[-1] if next_proxy else "default"
+
                         fleet_manager.log_event(
-                            f"Operator '{persona}' encountered Imperva WAF challenge while scanning {vac_meta.get('name', 'VAC')}. Rotating residential proxy...",
+                            f"Operator '{persona}' encountered Imperva WAF challenge while scanning {vac_meta.get('name', 'VAC')}. Quarantined proxy {clean_failed} (5m). Successfully rotated to residential proxy {clean_next} ({active_count}/{total_count} active in pool).",
                             level="WARNING",
-                            category="FLEET",
+                            category="PROXY",
                             account_id=self.account_id,
                             worker_name=persona,
+                            details={"quarantined_proxy": clean_failed, "next_proxy": clean_next, "active_pool": active_count, "total_pool": total_count},
                         )
                     elif not slots or all(s.available_capacity <= 0 for s in slots):
                         fleet_manager.log_event(
@@ -379,6 +401,9 @@ class AccountWorkerInstance:
                             )
                             continue
 
+                        # Record executed booking task
+                        record_worker_task(self.account_id)
+
                         # Submit final booking using applicant's profile VAC & Visa Type
                         result = await self._driver.submit_booking(
                             applicant=client,
@@ -392,28 +417,53 @@ class AccountWorkerInstance:
 
                         if result.success:
                             self._total_booked += 1
+                            # Save raw confirmation payload to disk
+                            conf_path = save_raw_confirmation(
+                                client_id=client.id,
+                                booking_reference=result.reference_number or "CONFIRMED",
+                                payload_data=result.raw_payload or {"booking_reference": result.reference_number, "status": "CONFIRMED"},
+                                worker_name=persona,
+                                account_id=self.account_id
+                            )
+                            rate_booking = int(get_system_setting("worker_rate_per_booking_pkr", "5000") or "5000")
+
                             update_client_status(
                                 client_id=client.id,
                                 status="BOOKED",
                                 booking_reference=result.reference_number,
                                 booked_date=slot.date,
                                 booked_time=slot.time,
-                                notes=f"Auto-booked by {persona} (Account: {acc['email']})."
+                                notes=f"Auto-booked by {persona} (Account: {acc['email']}).",
+                                raw_confirmation_path=conf_path,
+                                booked_by_account_id=self.account_id,
+                                booked_by_worker_name=persona,
+                                booking_cost_pkr=rate_booking,
                             )
                             fleet_manager.log_event(
-                                f"🎉 BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} at {vac_meta.get('name', 'VAC')} on {slot.date} {slot.time}!",
+                                f"🎉 BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {slot.date} {slot.time}!",
                                 level="SUCCESS",
                                 category="BOOKING",
                                 account_id=self.account_id,
                                 worker_name=persona,
-                                details={"arn": result.reference_number, "client_id": client.id, "slot": slot.date}
+                                details={"arn": result.reference_number, "client_id": client.id, "slot": slot.date, "cost_pkr": rate_booking}
                             )
                             slot.available_capacity -= 1
                         else:
+                            record_worker_error(self.account_id)
+                            conf_path = save_raw_confirmation(
+                                client_id=client.id,
+                                booking_reference="FAILED",
+                                payload_data=result.raw_payload or {"error": result.message, "status": "FAILED"},
+                                worker_name=persona,
+                                account_id=self.account_id
+                            )
                             update_client_status(
                                 client_id=client.id,
                                 status="FAILED",
-                                notes=f"Submission error on {persona}: {result.message}"
+                                notes=f"Submission error on {persona}: {result.message}",
+                                raw_confirmation_path=conf_path,
+                                booked_by_account_id=self.account_id,
+                                booked_by_worker_name=persona,
                             )
                             fleet_manager.log_event(
                                 f"❌ Booking submission failed for {client.passport_number}: {result.message}",

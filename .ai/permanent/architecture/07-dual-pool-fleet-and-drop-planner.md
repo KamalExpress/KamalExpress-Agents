@@ -183,9 +183,11 @@ sequenceDiagram
 
 6. **Stage 6: Confirmation, Audit Broadcast & Multi-Wave Continuation**
    * Booker extracts the confirmed Booking Reference (e.g. `GR-ISB-2026-9842`).
-   * Atomically updates `client_queue` (`status = 'BOOKED'`, `booking_reference = 'GR-ISB-2026-9842'`, `booked_at = datetime.utcnow()`).
+   * **Raw Response Archive (Audit Ground-Truth):** Saves the exact byte-for-byte server response payload from GVC World to `data/confirmations/booking_{client_id}_{booking_ref}.json`.
+   * **Worker Attribution & Cost Calculation:** Calculates the operational booking cost based on configured rate rules (e.g. PKR 5,000 success fee + PKR 50/task) and links the executing remote worker persona (`booked_by_worker_name`, e.g. "Yaqoob Masih").
+   * Atomically updates `client_queue` (`status = 'BOOKED'`, `booking_reference = 'GR-ISB-2026-9842'`, `raw_confirmation_path`, `booked_by_account_id`, `booked_by_worker_name`, `booking_cost_pkr`, `booked_at = datetime.utcnow()`).
    * Emits a `SUCCESS` event to `system_logs` and daily rotating log file (`data/logs/activity_YYYY-MM-DD.log`).
-   * Broadcasts to UI Activity Stream (`[BOOKING] Successfully booked appointment for Client: Muhammad Tariq (Ref: GR-ISB-2026-9842)`).
+   * Broadcasts to UI Activity Stream (`[BOOKING] Successfully booked appointment for Client: Muhammad Tariq by Operator Yaqoob Masih (Ref: GR-ISB-2026-9842)`).
    * **Multi-Wave Processing:** If pending applicants remain in `client_queue`, the booker immediately loops back to Stage 2 to claim the next applicant in Wave 2; otherwise, it returns to idle hot-standby.
 
 ---
@@ -279,6 +281,47 @@ sequenceDiagram
   8. *Rashid Minhas*
 * Displayed in UI with masked PII:
   `[ 🤖 Tariq Mehmood (ISB - Type 26) | SIM: +92-334-***-2969 | Status: PRE-STAGED ]`
+
+---
+
+### Subsystem 6: Worker Performance & Cost/Compensation Accounting
+* **Operational Accounting Concept:**
+  * Tracks individual remote operator contributions (tasks executed, successful bookings secured, errors encountered).
+  * Calculates financial compensation/charges in figures and **words** (e.g. `PKR 27,100 (Twenty-Seven Thousand One Hundred PKR)`).
+  * Provides operational cost transparency for agency management and clients.
+* **Configurable System Settings:**
+  * `worker_rate_per_booking_pkr` (Default: `5000` PKR / ~$18 per confirmed booking).
+  * `worker_rate_per_task_pkr` (Default: `50` PKR / ~$0.18 per API cycle/task execution).
+  * `worker_rate_per_captcha_pkr` (Default: `100` PKR / ~$0.36 per solved CAPTCHA).
+* **Metrics Tracked per Worker:**
+  * Total Booking Tasks Executed ($N_{tasks}$).
+  * Total Bookings Won ($N_{bookings}$).
+  * Total Error/Failed attempts ($N_{errors}$).
+  * Calculated Total Compensation: $(N_{bookings} \times \text{Rate}_{booking}) + (N_{tasks} \times \text{Rate}_{task})$.
+* **API Endpoints:**
+  * `GET /api/fleet/worker-accounting` — Returns real-time metrics, earnings in numbers, and formal words representation (Staff & Admin).
+  * `POST /api/fleet/worker-accounting/settings` — Updates cost and rate parameters (**Admin Only**).
+* **Password & Credential Management:**
+  * User Accounts: `POST /api/auth/change-password` (Self-service for Staff/Admin), `POST /api/admin/users/{id}/reset-password` (**Admin Only**).
+  * GVC Portal Accounts: `PUT /api/gvc/accounts/{id}` (Staff edit own accounts, Admin can edit all).
+
+---
+
+### Subsystem 7: Raw Confirmation Archive & In-Dashboard Inspection
+* **Storage Location:** `data/confirmations/booking_{client_id}_{booking_ref}.json` (and `.html`).
+* **Database Columns in `client_queue`:**
+  * `raw_confirmation_path`: File path to stored JSON payload.
+  * `booked_by_account_id`: Integer foreign reference to `gvc_portal_accounts.id`.
+  * `booked_by_worker_name`: Operator persona name (e.g. "Yaqoob Masih").
+  * `booking_cost_pkr`: Total accrued cost for this booking.
+* **API Endpoints:**
+  * `GET /api/clients/{client_id}/confirmation` — Fetches raw confirmation payload, worker details, and timestamp.
+* **Dashboard UX:**
+  * In the Client Queue row for any `BOOKED` applicant, clicking the booking reference badge (or `[ 📄 View Raw Confirmation ]`) opens a clean, syntax-highlighted modal displaying:
+    * Booking Reference & Exact Submission Timestamp.
+    * Assigned Remote Worker Persona & GVC Account.
+    * Full raw JSON/HTML server response from GVC.
+    * 1-Click **Copy JSON** and **Download File** actions.
 
 ---
 

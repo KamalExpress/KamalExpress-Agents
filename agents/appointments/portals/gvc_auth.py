@@ -207,12 +207,20 @@ class GVCAuthSolver:
                 is_waf_challenge = "_incapsula_resource" in body_text.lower() or (resp.status_code == 200 and body_text.lower().startswith("<html"))
 
                 if is_waf_challenge:
-                    logger.warning(f"[gvc_auth] Login hit WAF challenge HTML on proxy {proxy}. Retrying on next attempt...")
+                    logger.warning(f"[gvc_auth] Login hit WAF challenge HTML on proxy {proxy}. Quarantining and rotating...")
+                    if proxy:
+                        self.proxy_manager.mark_proxy_failed(proxy, error="Imperva WAF challenge on login", log_event=False)
+                    next_proxy = self.proxy_manager.get_proxy_url()
+                    clean_proxy = proxy.split("@")[-1] if proxy else "direct"
+                    clean_next = next_proxy.split("@")[-1] if next_proxy else "default"
+                    active_count = len(self.proxy_manager._get_healthy_proxies())
+                    total_count = self.proxy_manager.total_proxies
+
                     log_system_event(
                         level="WARNING",
-                        category="AUTH",
-                        message=f"Imperva WAF challenge encountered on login for '{email}'. Rotating residential proxy...",
-                        details={"email": email, "proxy": proxy},
+                        category="PROXY",
+                        message=f"Imperva WAF challenge on login for '{email}'. Quarantined proxy {clean_proxy} (5m). Rotated to residential proxy {clean_next} ({active_count}/{total_count} active in pool).",
+                        details={"email": email, "quarantined_proxy": clean_proxy, "next_proxy": clean_next, "active_pool": active_count, "total_pool": total_count},
                     )
                     continue
 

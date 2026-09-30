@@ -44,16 +44,41 @@ class ClientProfile(BaseModel):
     booked_date: Optional[str] = Field(default=None, description="Confirmed appointment date")
     booked_time: Optional[str] = Field(default=None, description="Confirmed appointment time")
     notes: Optional[str] = Field(default="", description="Operator or agent notes")
+    raw_confirmation_path: Optional[str] = Field(default="", description="Path to archived raw server confirmation payload")
+    booked_by_account_id: Optional[int] = Field(default=None, description="GVC portal account ID that booked this client")
+    booked_by_worker_name: Optional[str] = Field(default="", description="Name of remote worker persona that booked this client")
+    booking_cost_pkr: Optional[int] = Field(default=0, description="Calculated operational cost for securing this booking")
     created_at: Optional[str] = Field(default_factory=lambda: datetime.utcnow().isoformat())
 
     @model_validator(mode="before")
     @classmethod
-    def handle_surname_alias(cls, data: Any) -> Any:
+    def normalize_client_data(cls, data: Any) -> Any:
         if isinstance(data, dict):
             if "surname" in data and "last_name" not in data:
                 data["last_name"] = data["surname"]
             elif "last_name" in data and "surname" not in data:
                 data["surname"] = data["last_name"]
+            
+            # Normalize gender & gender_id
+            g = str(data.get("gender", "")).strip().lower()
+            if g in ["female", "f", "1", "woman"]:
+                data["gender"] = "Female"
+                data["gender_id"] = "1"
+            elif g in ["other", "o", "3"]:
+                data["gender"] = "Other"
+                data["gender_id"] = "3"
+            elif g in ["male", "m", "2", "man"]:
+                data["gender"] = "Male"
+                data["gender_id"] = "2"
+            elif not data.get("gender"):
+                data["gender"] = "Male"
+                data["gender_id"] = "2"
+
+            # Normalize nationality & nationality_id
+            nat = str(data.get("nationality", "")).strip()
+            if nat.lower() in ["pakistan", "pakistani", "pk", "197", ""]:
+                data["nationality"] = "Pakistani"
+                data["nationality_id"] = "197"
         return data
 
     @property
@@ -98,3 +123,4 @@ class BookingResult(BaseModel):
     message: str
     requires_otp: bool = False
     details: Optional[dict] = None
+    raw_payload: Optional[Any] = None

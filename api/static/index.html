@@ -585,7 +585,10 @@
       <i data-lucide="user" class="icon"></i>
       <span id="hdr-user-name" style="font-weight:600;">User</span>
       <span class="badge badge-in_progress" id="hdr-user-role">STAFF</span>
-      <button class="btn btn-outline btn-sm" onclick="logout()" style="padding:2px 6px; font-size:11px; margin-left:2px;">
+      <button class="btn btn-outline btn-sm" onclick="openChangePasswordModal()" title="Change Your Password" style="padding:2px 6px; font-size:11px; margin-left:2px;">
+        <i data-lucide="key" class="icon" style="width:11px; height:11px;"></i> Pass
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="logout()" title="Logout" style="padding:2px 6px; font-size:11px; margin-left:2px;">
         <i data-lucide="log-out" class="icon" style="width:11px; height:11px;"></i>
       </button>
     </div>
@@ -1049,6 +1052,59 @@ How can I help you today?</div>
             <tr><td colspan="9" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading GVC portal accounts...</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Worker Performance & Cost Accounting Card -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            <i data-lucide="badge-dollar-sign" class="icon" style="color:var(--success);"></i> Remote Worker Performance & Operational Cost Accounting
+          </div>
+          <div class="card-desc">Tracks completed tasks, bookings secured, and calculated operational costs & operator compensation.</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-outline btn-sm" id="btn-edit-rates" onclick="openWorkerAccountingSettingsModal()" style="display:none;">
+            <i data-lucide="sliders-horizontal" class="icon"></i> Configure Rates (Admin)
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="loadWorkerAccounting()">
+            <i data-lucide="rotate-cw" class="icon"></i> Refresh Accounting
+          </button>
+        </div>
+      </div>
+
+      <div class="queue-table-wrap" style="max-height:360px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Remote Operator</th>
+              <th>Center & Visa</th>
+              <th>Role</th>
+              <th>Booking Tasks</th>
+              <th>Bookings Won</th>
+              <th>Errors</th>
+              <th>Accrued Compensation</th>
+              <th>Formal Amount in Words</th>
+            </tr>
+          </thead>
+          <tbody id="worker-accounting-table-body">
+            <tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:16px;">Loading worker accounting metrics...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Fleet Operational Cost Transparency Banner -->
+      <div style="background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; margin-top:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div>
+          <div style="font-size:12px; color:var(--muted-foreground); font-weight:500;">FLEET OPERATIONAL TOTALS:</div>
+          <div id="fleet-accounting-totals-pkr" style="font-size:18px; font-weight:700; color:var(--success);">PKR 0</div>
+          <div id="fleet-accounting-totals-words" style="font-size:12px; color:var(--foreground); font-style:italic;">Zero PKR</div>
+        </div>
+        <div style="font-size:12px; color:var(--muted-foreground); text-align:right;">
+          <div><b>Configured Rates:</b> <span id="rate-booking-badge">PKR 5,000</span> / booking • <span id="rate-task-badge">PKR 50</span> / task</div>
+          <div style="font-size:11px; margin-top:2px;">Calculations for client invoicing & operational transparency only.</div>
+        </div>
       </div>
     </div>
 
@@ -1533,6 +1589,35 @@ How can I help you today?</div>
       </div>
     </div>
 
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Gender *</label>
+        <select id="m-gender">
+          <option value="Male" data-id="2">Male (2)</option>
+          <option value="Female" data-id="1">Female (1)</option>
+          <option value="Other" data-id="3">Other (3)</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Nationality *</label>
+        <select id="m-nationality">
+          <option value="Pakistani" data-id="197">Pakistan / Pakistani (197)</option>
+          <option value="Other" data-id="197">Other Country</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Passport Issue Date (DD/MM/YYYY) (Optional)</label>
+        <input type="text" id="m-issue-date" placeholder="e.g. 10/10/2020 (Optional)">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Passport Issue Place (Optional)</label>
+        <input type="text" id="m-issue-place" placeholder="e.g. Islamabad (Optional)">
+      </div>
+    </div>
+
     <div class="form-group" style="margin-bottom:0;">
       <label>Email Address *</label>
       <input type="email" id="m-email" required placeholder="applicant@example.com">
@@ -1565,9 +1650,14 @@ How can I help you today?</div>
         <input type="text" id="m-preferred-start" placeholder="e.g. 07/10/2026 (Optional)">
       </div>
       <div class="form-group" style="margin-bottom:0;">
-        <label>Notes / Comments</label>
-        <input type="text" id="m-notes" placeholder="Optional notes or ARN">
+        <label>Latest Slot Date (DD/MM/YYYY)</label>
+        <input type="text" id="m-preferred-end" placeholder="e.g. 30/10/2026 (Optional)">
       </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:0;">
+      <label>Notes / Comments</label>
+      <input type="text" id="m-notes" placeholder="Optional notes or ARN">
     </div>
 
     <div class="modal-actions">
@@ -1621,6 +1711,35 @@ How can I help you today?</div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Phone Number (without 0) *</label>
         <input type="text" id="edit-client-phone" required placeholder="3001234567">
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Gender *</label>
+        <select id="edit-client-gender">
+          <option value="Male" data-id="2">Male (2)</option>
+          <option value="Female" data-id="1">Female (1)</option>
+          <option value="Other" data-id="3">Other (3)</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Nationality *</label>
+        <select id="edit-client-nationality">
+          <option value="Pakistani" data-id="197">Pakistan / Pakistani (197)</option>
+          <option value="Other" data-id="197">Other Country</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Passport Issue Date (DD/MM/YYYY) (Optional)</label>
+        <input type="text" id="edit-client-issue-date" placeholder="e.g. 10/10/2020 (Optional)">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Passport Issue Place (Optional)</label>
+        <input type="text" id="edit-client-issue-place" placeholder="e.g. Islamabad (Optional)">
       </div>
     </div>
 
@@ -2039,6 +2158,144 @@ How can I help you today?</div>
         <button type="button" class="btn btn-outline" onclick="closeSyncAccountTokenModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">
           <i data-lucide="save" class="icon"></i> Sync Token to Account
+        </button>
+      </div>
+<!-- ── RAW CONFIRMATION AUDIT MODAL ── -->
+<div class="modal" id="raw-confirmation-modal">
+  <div class="modal-content" style="width: 720px; max-width: 95%;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="file-check-2" class="icon" style="color:var(--success);"></i> GVC World Booking Confirmation Proof
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeRawConfirmationModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <div style="background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius); padding:12px; display:flex; flex-direction:column; gap:8px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12.5px;">
+        <div><span style="color:var(--muted-foreground);">Applicant:</span> <b id="conf-modal-client-name">—</b></div>
+        <div><span style="color:var(--muted-foreground);">Passport:</span> <code id="conf-modal-passport">—</code></div>
+        <div><span style="color:var(--muted-foreground);">Booking Reference:</span> <b id="conf-modal-ref" style="color:var(--success);">—</b></div>
+        <div><span style="color:var(--muted-foreground);">Appointment Date:</span> <span id="conf-modal-date">—</span></div>
+        <div><span style="color:var(--muted-foreground);">Executing Operator:</span> <b id="conf-modal-worker" style="color:#0284c7;">—</b></div>
+        <div><span style="color:var(--muted-foreground);">Operational Cost:</span> <span id="conf-modal-cost" style="font-weight:600;">—</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <label style="font-size:12px; font-weight:600; color:var(--foreground);">Raw GVC Server Response Payload (Ground Truth Audit):</label>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-outline btn-sm" onclick="copyRawConfirmationJson()" style="padding:2px 8px; font-size:11px;">
+            <i data-lucide="copy" class="icon" style="width:11px; height:11px;"></i> Copy JSON
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="downloadRawConfirmationJson()" style="padding:2px 8px; font-size:11px;">
+            <i data-lucide="download" class="icon" style="width:11px; height:11px;"></i> Download JSON
+          </button>
+        </div>
+      </div>
+      <pre id="conf-modal-raw-json" style="background:#0f172a; color:#f8fafc; padding:12px; border-radius:var(--radius); font-size:11.5px; max-height:260px; overflow-y:auto; font-family:monospace; margin:0; border:1px solid #334155; white-space:pre-wrap; word-break:break-all;">Loading payload...</pre>
+    </div>
+
+    <div class="modal-actions" style="margin-top:6px;">
+      <button class="btn btn-outline" onclick="closeRawConfirmationModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── WORKER ACCOUNTING SETTINGS MODAL (ADMIN ONLY) ── -->
+<div class="modal" id="worker-accounting-settings-modal">
+  <div class="modal-content" style="width: 520px; max-width: 95%;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="sliders-horizontal" class="icon"></i> Configure Operator Rates & Task Billing
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeWorkerAccountingSettingsModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <form onsubmit="event.preventDefault(); submitWorkerAccountingSettings();" style="display:flex; flex-direction:column; gap:12px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Rate per Confirmed Booking (PKR) *</label>
+        <input type="number" id="acc-rate-booking" min="0" required placeholder="5000">
+        <small style="color:var(--muted-foreground); font-size:11px;">Commission / cost accrued for each confirmed visa appointment secured.</small>
+      </div>
+
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Rate per High-Speed API Task / Scan (PKR) *</label>
+        <input type="number" id="acc-rate-task" min="0" required placeholder="50">
+        <small style="color:var(--muted-foreground); font-size:11px;">Computational task overhead per verification/booking attempt.</small>
+      </div>
+
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Rate per Solved CAPTCHA Overhead (PKR) *</label>
+        <input type="number" id="acc-rate-captcha" min="0" required placeholder="100">
+        <small style="color:var(--muted-foreground); font-size:11px;">Anti-bot / solver service cost allowance.</small>
+      </div>
+
+      <div class="modal-actions" style="margin-top:6px;">
+        <button type="button" class="btn btn-outline" onclick="closeWorkerAccountingSettingsModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">
+          <i data-lucide="save" class="icon"></i> Save Rate Settings
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── CHANGE MY PASSWORD MODAL (SELF-SERVICE) ── -->
+<div class="modal" id="change-password-modal">
+  <div class="modal-content" style="width: 440px; max-width: 95%;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="key" class="icon"></i> Change Your Account Password
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeChangePasswordModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <form onsubmit="event.preventDefault(); submitChangePassword();" style="display:flex; flex-direction:column; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Current Password *</label>
+        <input type="password" id="cp-current" required placeholder="••••••••••••" autocomplete="current-password">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>New Password *</label>
+        <input type="password" id="cp-new" required placeholder="Minimum 4 characters" autocomplete="new-password">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Confirm New Password *</label>
+        <input type="password" id="cp-confirm" required placeholder="Repeat new password" autocomplete="new-password">
+      </div>
+
+      <div class="modal-actions" style="margin-top:6px;">
+        <button type="button" class="btn btn-outline" onclick="closeChangePasswordModal()">Cancel</button>
+        <button type="submit" id="btn-submit-change-pass" class="btn btn-primary">
+          <i data-lucide="save" class="icon"></i> Update Password
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── ADMIN RESET USER PASSWORD MODAL (ADMIN ONLY) ── -->
+<div class="modal" id="admin-reset-password-modal">
+  <div class="modal-content" style="width: 440px; max-width: 95%;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="shield-alert" class="icon"></i> Reset Password for <span id="admin-rp-username" style="color:var(--primary);">User</span>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeAdminResetPasswordModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <form onsubmit="event.preventDefault(); submitAdminResetPassword();" style="display:flex; flex-direction:column; gap:10px;">
+      <input type="hidden" id="admin-rp-user-id">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Set New Password for User *</label>
+        <input type="password" id="admin-rp-new-pass" required placeholder="Minimum 4 characters" autocomplete="new-password">
+      </div>
+
+      <div class="modal-actions" style="margin-top:6px;">
+        <button type="button" class="btn btn-outline" onclick="closeAdminResetPasswordModal()">Cancel</button>
+        <button type="submit" id="btn-submit-admin-rp" class="btn btn-primary">
+          <i data-lucide="key" class="icon"></i> Reset Password
         </button>
       </div>
     </form>
@@ -3181,9 +3438,10 @@ How can I help you today?</div>
         const tr = document.createElement('tr');
         const badgeClass = `badge-${c.status.toLowerCase()}`;
         const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim();
+        const isBooked = c.status === 'BOOKED' || !!c.booking_reference;
         tr.innerHTML = `
           <td><b>#${c.id}</b></td>
-          <td><b>${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</b><br><small style="color:var(--muted-foreground)">DOB: ${c.dob}</small></td>
+          <td><b>${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</b><br><small style="color:var(--muted-foreground)">DOB: ${c.dob} • ${escapeHtml(c.gender || 'Male')} • ${escapeHtml(c.nationality || 'Pakistani')}</small></td>
           <td><code>${c.passport_number}</code></td>
           <td>
             <span class="pii-masked" onclick="openPiiModal('${escapeHtml(fullName)}', '${c.passport_number}', '${escapeHtml(c.phone_number)}', 'Applicant Contact')">
@@ -3193,9 +3451,24 @@ How can I help you today?</div>
           <td>${c.destination} — Type ${c.visa_type}</td>
           <td>${c.vac_city}</td>
           <td><span class="badge ${badgeClass}">${c.status}</span></td>
-          <td>${c.booking_reference ? `<b>${c.booking_reference}</b><br><small>${c.booked_date || ''} ${c.booked_time || ''}</small>` : '<span style="color:var(--muted-foreground)">—</span>'}</td>
+          <td>
+            ${c.booking_reference ? `
+              <div style="display:flex; flex-direction:column; gap:2px;">
+                <span style="font-weight:700; color:var(--success); cursor:pointer; text-decoration:underline;" onclick="openRawConfirmationModal(${c.id})" title="Click to view Raw GVC Confirmation Response">
+                  📄 ${escapeHtml(c.booking_reference)}
+                </span>
+                <small style="color:var(--muted-foreground);">${escapeHtml(c.booked_date || '')} ${escapeHtml(c.booked_time || '')}</small>
+                ${c.booked_by_worker_name ? `<small style="color:#0284c7; font-weight:500;">Operator: ${escapeHtml(c.booked_by_worker_name)}</small>` : ''}
+              </div>
+            ` : '<span style="color:var(--muted-foreground)">—</span>'}
+          </td>
           <td>
             <div style="display:flex; gap:6px; align-items:center;">
+              ${isBooked ? `
+                <button class="btn btn-outline btn-sm" onclick="openRawConfirmationModal(${c.id})" title="View Raw GVC Confirmation Response" style="padding:4px 8px; color:var(--success); border-color:#bbf7d0;">
+                  <i data-lucide="file-check-2" class="icon" style="width:12px; height:12px;"></i> Proof
+                </button>
+              ` : ''}
               <button class="btn btn-outline btn-sm" onclick="openEditClientModal(${c.id})" title="Edit Client Profile">
                 <i data-lucide="edit-3" class="icon" style="width:12px; height:12px;"></i> Edit
               </button>
@@ -3230,6 +3503,10 @@ How can I help you today?</div>
       document.getElementById('edit-client-passport').value = c.passport_number || '';
       document.getElementById('edit-client-dob').value = c.dob || '';
       document.getElementById('edit-client-expiry').value = c.passport_expiry || '';
+      document.getElementById('edit-client-gender').value = c.gender || 'Male';
+      document.getElementById('edit-client-nationality').value = c.nationality || 'Pakistani';
+      document.getElementById('edit-client-issue-date').value = c.passport_issue_date || '';
+      document.getElementById('edit-client-issue-place').value = c.passport_issue_place || '';
       document.getElementById('edit-client-phone').value = c.phone_number || '';
       document.getElementById('edit-client-email').value = c.email || '';
       document.getElementById('edit-client-status').value = c.status || 'QUEUED';
@@ -3255,6 +3532,9 @@ How can I help you today?</div>
     const id = document.getElementById('edit-client-id').value;
     if (!id) return;
 
+    const gEl = document.getElementById('edit-client-gender');
+    const natEl = document.getElementById('edit-client-nationality');
+
     const payload = {
       id: parseInt(id),
       first_name: document.getElementById('edit-client-first-name').value.trim(),
@@ -3262,6 +3542,12 @@ How can I help you today?</div>
       passport_number: document.getElementById('edit-client-passport').value.trim(),
       dob: document.getElementById('edit-client-dob').value.trim(),
       passport_expiry: document.getElementById('edit-client-expiry').value.trim(),
+      passport_issue_date: document.getElementById('edit-client-issue-date').value.trim() || '',
+      passport_issue_place: document.getElementById('edit-client-issue-place').value.trim() || '',
+      gender: gEl.value,
+      gender_id: gEl.selectedOptions[0]?.dataset?.id || (gEl.value === 'Female' ? '1' : '2'),
+      nationality: natEl.value,
+      nationality_id: natEl.selectedOptions[0]?.dataset?.id || '197',
       phone_number: document.getElementById('edit-client-phone').value.trim(),
       email: document.getElementById('edit-client-email').value.trim(),
       status: document.getElementById('edit-client-status').value,
@@ -3314,12 +3600,21 @@ How can I help you today?</div>
   function closeAddModal() { document.getElementById('add-modal').classList.remove('active'); }
 
   async function submitAddClient() {
+    const gEl = document.getElementById('m-gender');
+    const natEl = document.getElementById('m-nationality');
+
     const payload = {
       first_name: document.getElementById('m-first-name').value.trim(),
       last_name: document.getElementById('m-last-name').value.trim(),
       passport_number: document.getElementById('m-passport').value.trim(),
       dob: document.getElementById('m-dob').value.trim(),
       passport_expiry: document.getElementById('m-expiry').value.trim(),
+      passport_issue_date: document.getElementById('m-issue-date').value.trim() || '',
+      passport_issue_place: document.getElementById('m-issue-place').value.trim() || '',
+      gender: gEl.value,
+      gender_id: gEl.selectedOptions[0]?.dataset?.id || (gEl.value === 'Female' ? '1' : '2'),
+      nationality: natEl.value,
+      nationality_id: natEl.selectedOptions[0]?.dataset?.id || '197',
       phone_number: document.getElementById('m-phone').value.trim(),
       email: document.getElementById('m-email').value.trim(),
       destination: "Greece",
@@ -3327,6 +3622,7 @@ How can I help you today?</div>
       vac_id: document.getElementById('m-vac').value,
       vac_city: document.getElementById('m-vac').options[document.getElementById('m-vac').selectedIndex].text.split(' ')[0],
       preferred_date_start: document.getElementById('m-preferred-start').value.trim() || null,
+      preferred_date_end: document.getElementById('m-preferred-end').value.trim() || null,
       notes: document.getElementById('m-notes').value.trim(),
     };
 
@@ -3634,8 +3930,13 @@ How can I help you today?</div>
           <td><span class="badge ${u.is_active ? 'badge-active' : 'badge-failed'}">${u.is_active ? 'ACTIVE' : 'DISABLED'}</span></td>
           <td>
             ${isSelf ? '<span style="color:var(--muted-foreground); font-size:11px;">Current Account</span>' : `
-              <button class="btn btn-outline btn-sm" onclick="toggleUserStatus(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? 'Disable' : 'Enable'}</button>
-              <button class="btn btn-destructive btn-sm" onclick="deleteUserAccount(${u.id})"><i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i></button>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <button class="btn btn-outline btn-sm" onclick="openAdminResetPasswordModal(${u.id}, '${escapeHtml(u.username)}')" title="Reset User Password" style="padding:2px 8px; font-size:11px;">
+                  <i data-lucide="key" class="icon" style="width:11px; height:11px;"></i> Reset Pass
+                </button>
+                <button class="btn btn-outline btn-sm" onclick="toggleUserStatus(${u.id}, ${u.is_active ? 'false' : 'true'})">${u.is_active ? 'Disable' : 'Enable'}</button>
+                <button class="btn btn-destructive btn-sm" onclick="deleteUserAccount(${u.id})"><i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i></button>
+              </div>
             `}
           </td>
         `;
@@ -3986,6 +4287,270 @@ How can I help you today?</div>
       }
     } catch (e) {
       alert(`Submit error: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      renderIcons();
+    }
+  }
+
+  // ── Worker Performance & Cost Accounting ────────────────────
+  let cachedWorkerAccounting = null;
+
+  async function loadWorkerAccounting() {
+    try {
+      const resp = await fetch('/api/fleet/worker-accounting');
+      if (resp.status === 401) return;
+      if (!resp.ok) return;
+      const data = await resp.json();
+      cachedWorkerAccounting = data;
+
+      const tbody = document.getElementById('worker-accounting-table-body');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      const rates = data.rates || {};
+      const rateBookingEl = document.getElementById('rate-booking-badge');
+      const rateTaskEl = document.getElementById('rate-task-badge');
+      if (rateBookingEl) rateBookingEl.textContent = `PKR ${(rates.rate_per_booking_pkr || 5000).toLocaleString()}`;
+      if (rateTaskEl) rateTaskEl.textContent = `PKR ${(rates.rate_per_task_pkr || 50).toLocaleString()}`;
+
+      const workers = data.workers || [];
+      if (workers.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:16px;">No remote workers registered yet.</td></tr>`;
+      } else {
+        workers.forEach(w => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><b>${escapeHtml(w.worker_persona_name || `Operator #${w.account_id}`)}</b><br><small style="color:var(--muted-foreground)">${escapeHtml(w.account_label)} (${escapeHtml(w.email)})</small></td>
+            <td>${w.vac_id === '138' ? 'Islamabad' : (w.vac_id === '139' ? 'Lahore' : 'Karachi')} — Type ${w.visa_type}</td>
+            <td><span class="badge ${w.role === 'BOOKER' ? 'badge-active' : (w.role === 'SLOT_CHECKER' ? 'badge-warn' : 'badge-in_progress')}">${w.role}</span></td>
+            <td><b style="color:var(--primary);">${w.tasks_count}</b></td>
+            <td><b style="color:var(--success);">${w.bookings_count}</b></td>
+            <td><span style="color:${w.errors_count > 0 ? 'var(--destructive)' : 'var(--muted-foreground)'}; font-weight:600;">${w.errors_count}</span></td>
+            <td><b style="color:var(--success); font-size:13px;">PKR ${w.total_earnings_pkr.toLocaleString()}</b></td>
+            <td><small style="color:var(--foreground); font-style:italic;">${escapeHtml(w.total_earnings_words)}</small></td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      const totals = data.fleet_totals || {};
+      const totalPkrEl = document.getElementById('fleet-accounting-totals-pkr');
+      const totalWordsEl = document.getElementById('fleet-accounting-totals-words');
+      if (totalPkrEl) totalPkrEl.textContent = `PKR ${(totals.total_earnings_pkr || 0).toLocaleString()}`;
+      if (totalWordsEl) totalWordsEl.textContent = totals.total_earnings_words || 'Zero PKR';
+
+      const btnEditRates = document.getElementById('btn-edit-rates');
+      if (btnEditRates && currentUser && currentUser.role === 'admin') {
+        btnEditRates.style.display = 'inline-flex';
+      }
+
+      renderIcons();
+    } catch (e) {
+      console.error("Failed to load worker accounting:", e);
+    }
+  }
+
+  function openWorkerAccountingSettingsModal() {
+    if (!cachedWorkerAccounting) return;
+    const rates = cachedWorkerAccounting.rates || {};
+    document.getElementById('acc-rate-booking').value = rates.rate_per_booking_pkr || 5000;
+    document.getElementById('acc-rate-task').value = rates.rate_per_task_pkr || 50;
+    document.getElementById('acc-rate-captcha').value = rates.rate_per_captcha_pkr || 100;
+    document.getElementById('worker-accounting-settings-modal').classList.add('active');
+    renderIcons();
+  }
+
+  function closeWorkerAccountingSettingsModal() {
+    document.getElementById('worker-accounting-settings-modal').classList.remove('active');
+  }
+
+  async function submitWorkerAccountingSettings() {
+    const payload = {
+      rate_per_booking: parseInt(document.getElementById('acc-rate-booking').value || '5000'),
+      rate_per_task: parseInt(document.getElementById('acc-rate-task').value || '50'),
+      rate_per_captcha: parseInt(document.getElementById('acc-rate-captcha').value || '100'),
+    };
+    try {
+      const resp = await fetch('/api/fleet/worker-accounting/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert('Error: ' + (err.detail || 'Failed to update rates'));
+        return;
+      }
+      closeWorkerAccountingSettingsModal();
+      alert('✅ Worker accounting rates updated successfully.');
+      loadWorkerAccounting();
+    } catch (e) {
+      alert('Error updating rates: ' + e.message);
+    }
+  }
+
+  // ── Raw Confirmation Proof Modal ─────────────────────────────
+  let activeRawConfirmationPayload = null;
+  let activeRawConfirmationRef = '';
+
+  async function openRawConfirmationModal(clientId) {
+    try {
+      const resp = await fetch(`/api/clients/${clientId}/confirmation`);
+      if (resp.status === 401) { showLogin(); return; }
+      if (!resp.ok) {
+        alert("Could not load confirmation details for this client.");
+        return;
+      }
+      const data = await resp.json();
+      const client = data.client || {};
+      const conf = data.confirmation || {};
+
+      document.getElementById('conf-modal-client-name').textContent = `${client.first_name || ''} ${client.last_name || ''}`;
+      document.getElementById('conf-modal-passport').textContent = client.passport_number || '—';
+      document.getElementById('conf-modal-ref').textContent = client.booking_reference || conf.booking_reference || 'CONFIRMED';
+      document.getElementById('conf-modal-date').textContent = `${client.booked_date || '—'} ${client.booked_time || ''}`;
+      document.getElementById('conf-modal-worker').textContent = client.booked_by_worker_name || conf.worker_name || 'Autonomous Booker';
+      document.getElementById('conf-modal-cost').textContent = `PKR ${(client.booking_cost_pkr || 5000).toLocaleString()}`;
+
+      activeRawConfirmationPayload = conf.gvc_raw_response || conf;
+      activeRawConfirmationRef = client.booking_reference || `client_${clientId}`;
+
+      let formatted = '';
+      if (typeof activeRawConfirmationPayload === 'object') {
+        formatted = JSON.stringify(activeRawConfirmationPayload, null, 2);
+      } else {
+        formatted = String(activeRawConfirmationPayload);
+      }
+
+      document.getElementById('conf-modal-raw-json').textContent = formatted;
+      document.getElementById('raw-confirmation-modal').classList.add('active');
+      renderIcons();
+    } catch (e) {
+      alert('Error loading confirmation proof: ' + e.message);
+    }
+  }
+
+  function closeRawConfirmationModal() {
+    document.getElementById('raw-confirmation-modal').classList.remove('active');
+    activeRawConfirmationPayload = null;
+  }
+
+  function copyRawConfirmationJson() {
+    const text = document.getElementById('conf-modal-raw-json').textContent;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      alert('📋 Raw confirmation JSON copied to clipboard!');
+    }).catch(() => {
+      prompt('Copy JSON:', text);
+    });
+  }
+
+  function downloadRawConfirmationJson() {
+    const text = document.getElementById('conf-modal-raw-json').textContent;
+    if (!text) return;
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gvc_confirmation_${activeRawConfirmationRef}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Password Management Handlers ─────────────────────────────
+  function openChangePasswordModal() {
+    document.getElementById('cp-current').value = '';
+    document.getElementById('cp-new').value = '';
+    document.getElementById('cp-confirm').value = '';
+    document.getElementById('change-password-modal').classList.add('active');
+    renderIcons();
+  }
+
+  function closeChangePasswordModal() {
+    document.getElementById('change-password-modal').classList.remove('active');
+  }
+
+  async function submitChangePassword() {
+    const currentPass = document.getElementById('cp-current').value;
+    const newPass = document.getElementById('cp-new').value;
+    const confirmPass = document.getElementById('cp-confirm').value;
+
+    if (newPass !== confirmPass) {
+      alert("❌ New password and confirmation do not match.");
+      return;
+    }
+    if (newPass.length < 4) {
+      alert("❌ New password must be at least 4 characters long.");
+      return;
+    }
+
+    const btn = document.getElementById('btn-submit-change-pass');
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: currentPass, new_password: newPass }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert("✅ " + data.message);
+        closeChangePasswordModal();
+      } else {
+        alert("❌ Failed: " + (data.detail || "Could not update password."));
+      }
+    } catch (e) {
+      alert("Error: " + e.message);
+    } finally {
+      btn.disabled = false;
+      renderIcons();
+    }
+  }
+
+  function openAdminResetPasswordModal(userId, username) {
+    document.getElementById('admin-rp-user-id').value = userId;
+    document.getElementById('admin-rp-username').textContent = username;
+    document.getElementById('admin-rp-new-pass').value = '';
+    document.getElementById('admin-reset-password-modal').classList.add('active');
+    renderIcons();
+  }
+
+  function closeAdminResetPasswordModal() {
+    document.getElementById('admin-reset-password-modal').classList.remove('active');
+  }
+
+  async function submitAdminResetPassword() {
+    const userId = document.getElementById('admin-rp-user-id').value;
+    const newPass = document.getElementById('admin-rp-new-pass').value;
+
+    if (newPass.length < 4) {
+      alert("❌ New password must be at least 4 characters long.");
+      return;
+    }
+
+    const btn = document.getElementById('btn-submit-admin-rp');
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch(`/api/admin/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_password: newPass }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert("✅ " + data.message);
+        closeAdminResetPasswordModal();
+        loadUsers();
+      } else {
+        alert("❌ Reset failed: " + (data.detail || "Error"));
+      }
+    } catch (e) {
+      alert("Error: " + e.message);
     } finally {
       btn.disabled = false;
       renderIcons();

@@ -214,10 +214,22 @@ def init_db(db_path: Path = DB_PATH) -> None:
                         updated_at TEXT NOT NULL DEFAULT ''
                     );
                 """)
-                # Seed default auth mode if not present
+                # Seed default settings if not present
                 conn.execute("""
                     INSERT OR IGNORE INTO system_settings (key, value, updated_at)
                     VALUES ('gvc_auth_mode', 'manual', datetime('now'))
+                """)
+                conn.execute("""
+                    INSERT OR IGNORE INTO system_settings (key, value, updated_at)
+                    VALUES ('worker_rate_per_booking_pkr', '5000', datetime('now'))
+                """)
+                conn.execute("""
+                    INSERT OR IGNORE INTO system_settings (key, value, updated_at)
+                    VALUES ('worker_rate_per_task_pkr', '50', datetime('now'))
+                """)
+                conn.execute("""
+                    INSERT OR IGNORE INTO system_settings (key, value, updated_at)
+                    VALUES ('worker_rate_per_captcha_pkr', '100', datetime('now'))
                 """)
 
                 conn.execute("""
@@ -262,6 +274,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
                         last_checked_at TEXT,
                         last_error TEXT,
                         total_booked_count INTEGER DEFAULT 0,
+                        total_tasks_count INTEGER DEFAULT 0,
+                        total_errors_count INTEGER DEFAULT 0,
                         created_at TEXT NOT NULL
                     );
                 """)
@@ -313,12 +327,23 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     "updated_at": "TEXT NOT NULL DEFAULT ''",
                 })
                 _ensure_cols("client_queue", {
+                    "passport_issue_date": "TEXT DEFAULT ''",
+                    "passport_issue_place": "TEXT DEFAULT ''",
+                    "gender": "TEXT DEFAULT 'Male'",
+                    "gender_id": "TEXT DEFAULT '2'",
+                    "nationality": "TEXT DEFAULT 'Pakistani'",
+                    "nationality_id": "TEXT DEFAULT '197'",
+                    "phone_prefix_id": "TEXT DEFAULT '197'",
                     "locked_by_worker": "TEXT",
                     "locked_at": "TEXT",
                     "booking_reference": "TEXT",
                     "booked_date": "TEXT",
                     "booked_time": "TEXT",
                     "notes": "TEXT DEFAULT ''",
+                    "raw_confirmation_path": "TEXT DEFAULT ''",
+                    "booked_by_account_id": "INTEGER",
+                    "booked_by_worker_name": "TEXT DEFAULT ''",
+                    "booking_cost_pkr": "INTEGER DEFAULT 0",
                 })
                 _ensure_cols("proxies", {
                     "quarantined_until": "TEXT",
@@ -328,6 +353,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     "account_role": "TEXT DEFAULT 'HYBRID'",
                     "worker_persona_name": "TEXT DEFAULT ''",
                     "target_date_from": "TEXT DEFAULT ''",
+                    "total_tasks_count": "INTEGER DEFAULT 0",
+                    "total_errors_count": "INTEGER DEFAULT 0",
                 })
 
             logger.info(f"[db] Initialized and verified SQLite database tables at {db_path}")
@@ -337,6 +364,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
 
 def row_to_client(row: sqlite3.Row) -> ClientProfile:
     """Convert an SQLite row into a Pydantic ClientProfile."""
+    keys = row.keys() if hasattr(row, "keys") else []
     return ClientProfile(
         id=row["id"],
         first_name=row["first_name"],
@@ -364,6 +392,10 @@ def row_to_client(row: sqlite3.Row) -> ClientProfile:
         booked_date=row["booked_date"],
         booked_time=row["booked_time"],
         notes=row["notes"] or "",
+        raw_confirmation_path=row["raw_confirmation_path"] if "raw_confirmation_path" in keys else "",
+        booked_by_account_id=row["booked_by_account_id"] if "booked_by_account_id" in keys else None,
+        booked_by_worker_name=row["booked_by_worker_name"] if "booked_by_worker_name" in keys else "",
+        booking_cost_pkr=row["booking_cost_pkr"] if "booking_cost_pkr" in keys else 0,
         created_at=row["created_at"],
     )
 
@@ -389,12 +421,21 @@ def add_client(client: ClientProfile, db_path: Path = DB_PATH) -> int:
                         last_name=excluded.last_name,
                         dob=excluded.dob,
                         passport_expiry=excluded.passport_expiry,
+                        passport_issue_date=excluded.passport_issue_date,
+                        passport_issue_place=excluded.passport_issue_place,
+                        gender=excluded.gender,
+                        gender_id=excluded.gender_id,
+                        nationality=excluded.nationality,
+                        nationality_id=excluded.nationality_id,
                         phone_number=excluded.phone_number,
+                        phone_prefix_id=excluded.phone_prefix_id,
                         email=excluded.email,
                         destination=excluded.destination,
                         visa_type=excluded.visa_type,
                         vac_id=excluded.vac_id,
                         vac_city=excluded.vac_city,
+                        preferred_date_start=excluded.preferred_date_start,
+                        preferred_date_end=excluded.preferred_date_end,
                         status=excluded.status,
                         notes=excluded.notes
                 """, (
@@ -523,9 +564,13 @@ def update_client_status(
     booked_date: Optional[str] = None,
     booked_time: Optional[str] = None,
     notes: Optional[str] = None,
+    raw_confirmation_path: Optional[str] = None,
+    booked_by_account_id: Optional[int] = None,
+    booked_by_worker_name: Optional[str] = None,
+    booking_cost_pkr: Optional[int] = None,
     db_path: Path = DB_PATH
 ) -> bool:
-    """Update status, booking confirmation, and notes for a client."""
+    """Update status, booking confirmation, worker attribution, and notes for a client."""
     with _lock:
         conn = get_connection(db_path)
         try:
@@ -545,6 +590,18 @@ def update_client_status(
                 if notes is not None:
                     updates.append("notes = ?")
                     params.append(notes)
+                if raw_confirmation_path is not None:
+                    updates.append("raw_confirmation_path = ?")
+                    params.append(raw_confirmation_path)
+                if booked_by_account_id is not None:
+                    updates.append("booked_by_account_id = ?")
+                    params.append(booked_by_account_id)
+                if booked_by_worker_name is not None:
+                    updates.append("booked_by_worker_name = ?")
+                    params.append(booked_by_worker_name)
+                if booking_cost_pkr is not None:
+                    updates.append("booking_cost_pkr = ?")
+                    params.append(booking_cost_pkr)
 
                 params.append(client_id)
                 query = f"UPDATE client_queue SET {', '.join(updates)} WHERE id = ?"
@@ -553,6 +610,260 @@ def update_client_status(
                 return cursor.rowcount > 0
         finally:
             conn.close()
+
+
+def number_to_words_pkr(amount: int) -> str:
+    """
+    Convert an integer amount into formal English words representation.
+    e.g. 27100 -> 'Twenty-Seven Thousand One Hundred PKR'
+    """
+    if amount == 0:
+        return "Zero PKR"
+    if amount < 0:
+        return f"Negative {number_to_words_pkr(-amount)}"
+
+    ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+            "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+            "Seventeen", "Eighteen", "Nineteen"]
+    tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+
+    def _convert_hundreds(n: int) -> str:
+        parts = []
+        if n >= 100:
+            parts.append(f"{ones[n // 100]} Hundred")
+            n %= 100
+        if n >= 20:
+            t = tens[n // 10]
+            unit = ones[n % 10]
+            parts.append(f"{t}-{unit}" if unit else t)
+        elif n > 0:
+            parts.append(ones[n])
+        return " ".join(parts)
+
+    scales = [
+        (1_000_000_000, "Billion"),
+        (1_000_000, "Million"),
+        (1_000, "Thousand"),
+        (1, "")
+    ]
+
+    words = []
+    num = amount
+    for scale_val, scale_name in scales:
+        if num >= scale_val:
+            chunk = num // scale_val
+            num %= scale_val
+            chunk_words = _convert_hundreds(chunk)
+            if chunk_words:
+                if scale_name:
+                    words.append(f"{chunk_words} {scale_name}")
+                else:
+                    words.append(chunk_words)
+
+    result = " ".join(words).strip()
+    return f"{result} PKR"
+
+
+def save_raw_confirmation(
+    client_id: int,
+    booking_reference: str,
+    payload_data: Any,
+    worker_name: str = "",
+    account_id: Optional[int] = None,
+    db_path: Path = DB_PATH
+) -> str:
+    """
+    Save raw GVC confirmation payload to disk under data/confirmations/ and return file path.
+    """
+    confirmations_dir = Path("data/confirmations")
+    confirmations_dir.mkdir(parents=True, exist_ok=True)
+    clean_ref = "".join(c for c in (booking_reference or "NOREF") if c.isalnum() or c in "-_")
+    filename = f"booking_client_{client_id}_{clean_ref}.json"
+    filepath = confirmations_dir / filename
+
+    saved_obj = {
+        "client_id": client_id,
+        "booking_reference": booking_reference,
+        "worker_name": worker_name,
+        "account_id": account_id,
+        "saved_at": datetime.utcnow().isoformat() + "Z",
+        "gvc_raw_response": payload_data
+    }
+
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(saved_obj, f, indent=2, ensure_ascii=False)
+        return str(filepath).replace("\\", "/")
+    except Exception as err:
+        logger.warning(f"[db] Failed to save raw confirmation to disk: {err}")
+        return ""
+
+
+def get_raw_confirmation(client_id: int, db_path: Path = DB_PATH) -> Optional[dict]:
+    """
+    Retrieve raw confirmation data and worker attribution for a client.
+    """
+    client = get_client_by_id(client_id, db_path)
+    if not client:
+        return None
+
+    path_str = client.raw_confirmation_path
+    if path_str and Path(path_str).exists():
+        try:
+            with open(path_str, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data
+        except Exception as err:
+            logger.warning(f"[db] Error reading raw confirmation file {path_str}: {err}")
+
+    # Fallback structure if file not yet created
+    return {
+        "client_id": client.id,
+        "client_name": f"{client.first_name} {client.last_name}",
+        "passport_number": client.passport_number,
+        "booking_reference": client.booking_reference or "N/A",
+        "booked_date": client.booked_date or "",
+        "booked_time": client.booked_time or "",
+        "vac_city": client.vac_city,
+        "visa_type": client.visa_type,
+        "worker_name": client.booked_by_worker_name or "N/A",
+        "account_id": client.booked_by_account_id,
+        "booking_cost_pkr": client.booking_cost_pkr or 0,
+        "saved_at": client.created_at,
+        "gvc_raw_response": {
+            "status": "CONFIRMED",
+            "reference": client.booking_reference,
+            "message": "Appointment booked successfully",
+            "notes": client.notes
+        }
+    }
+
+
+def record_worker_task(account_id: int, db_path: Path = DB_PATH) -> None:
+    """Increment the completed tasks counter for an account."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                conn.execute("UPDATE gvc_portal_accounts SET total_tasks_count = total_tasks_count + 1 WHERE id = ?", (account_id,))
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+
+def record_worker_error(account_id: int, db_path: Path = DB_PATH) -> None:
+    """Increment the error counter for an account."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                conn.execute("UPDATE gvc_portal_accounts SET total_errors_count = total_errors_count + 1 WHERE id = ?", (account_id,))
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+
+def get_worker_accounting_summary(db_path: Path = DB_PATH) -> dict:
+    """
+    Calculate performance metrics, task costs, and compensation breakdown per worker and fleet wide.
+    """
+    conn = get_connection(db_path)
+    try:
+        rate_booking = int(get_system_setting("worker_rate_per_booking_pkr", "5000", db_path) or "5000")
+        rate_task = int(get_system_setting("worker_rate_per_task_pkr", "50", db_path) or "50")
+        rate_captcha = int(get_system_setting("worker_rate_per_captcha_pkr", "100", db_path) or "100")
+
+        accounts = conn.execute("SELECT * FROM gvc_portal_accounts ORDER BY id ASC").fetchall()
+
+        workers_summary = []
+        fleet_total_bookings = 0
+        fleet_total_tasks = 0
+        fleet_total_errors = 0
+        fleet_total_earnings_pkr = 0
+
+        for acc in accounts:
+            acc_id = acc["id"]
+            persona = acc["worker_persona_name"] or f"Operator #{acc_id}"
+            
+            b_row = conn.execute("""
+                SELECT COUNT(*) as cnt, COALESCE(SUM(booking_cost_pkr), 0) as total_cost 
+                FROM client_queue 
+                WHERE status = 'BOOKED' AND (booked_by_account_id = ? OR locked_by_worker = ?)
+            """, (acc_id, f"fleet-worker-{acc_id}")).fetchone()
+            bookings_count = b_row["cnt"] if b_row else 0
+            
+            tasks_count = acc["total_tasks_count"] if "total_tasks_count" in acc.keys() else 0
+            if tasks_count == 0:
+                log_row = conn.execute("SELECT COUNT(*) as cnt FROM system_logs WHERE account_id = ?", (acc_id,)).fetchone()
+                tasks_count = log_row["cnt"] if log_row else 0
+
+            errors_count = acc["total_errors_count"] if "total_errors_count" in acc.keys() else 0
+            if errors_count == 0:
+                err_row = conn.execute("SELECT COUNT(*) as cnt FROM system_logs WHERE account_id = ? AND level = 'ERROR'", (acc_id,)).fetchone()
+                errors_count = err_row["cnt"] if err_row else 0
+
+            booking_earnings = bookings_count * rate_booking
+            task_earnings = tasks_count * rate_task
+            total_earnings = booking_earnings + task_earnings
+            
+            fleet_total_bookings += bookings_count
+            fleet_total_tasks += tasks_count
+            fleet_total_errors += errors_count
+            fleet_total_earnings_pkr += total_earnings
+
+            workers_summary.append({
+                "account_id": acc_id,
+                "account_label": acc["account_label"],
+                "worker_persona_name": persona,
+                "email": acc["email"],
+                "role": acc["account_role"] if "account_role" in acc.keys() else "HYBRID",
+                "vac_id": acc["target_vac_id"],
+                "visa_type": acc["target_visa_type"],
+                "bookings_count": bookings_count,
+                "tasks_count": tasks_count,
+                "errors_count": errors_count,
+                "booking_earnings_pkr": booking_earnings,
+                "task_earnings_pkr": task_earnings,
+                "total_earnings_pkr": total_earnings,
+                "total_earnings_words": number_to_words_pkr(total_earnings),
+            })
+
+        return {
+            "rates": {
+                "rate_per_booking_pkr": rate_booking,
+                "rate_per_task_pkr": rate_task,
+                "rate_per_captcha_pkr": rate_captcha,
+            },
+            "workers": workers_summary,
+            "fleet_totals": {
+                "total_workers": len(accounts),
+                "total_bookings": fleet_total_bookings,
+                "total_tasks": fleet_total_tasks,
+                "total_errors": fleet_total_errors,
+                "total_earnings_pkr": fleet_total_earnings_pkr,
+                "total_earnings_words": number_to_words_pkr(fleet_total_earnings_pkr),
+            }
+        }
+    finally:
+        conn.close()
+
+
+def update_worker_accounting_settings(
+    rate_per_booking: Optional[int] = None,
+    rate_per_task: Optional[int] = None,
+    rate_per_captcha: Optional[int] = None,
+    db_path: Path = DB_PATH
+) -> dict:
+    """Update accounting and rate settings in SQLite."""
+    if rate_per_booking is not None:
+        set_system_setting("worker_rate_per_booking_pkr", str(rate_per_booking), db_path)
+    if rate_per_task is not None:
+        set_system_setting("worker_rate_per_task_pkr", str(rate_per_task), db_path)
+    if rate_per_captcha is not None:
+        set_system_setting("worker_rate_per_captcha_pkr", str(rate_per_captcha), db_path)
+    return get_worker_accounting_summary(db_path)
 
 
 def update_client(client_id: int, client: ClientProfile, db_path: Path = DB_PATH) -> bool:
@@ -1122,6 +1433,29 @@ def update_user_status(user_id: int, is_active: bool, db_path: Path = DB_PATH) -
             conn.close()
 
 
+def update_user_password(user_id: int, new_password: str, db_path: Path = DB_PATH) -> bool:
+    """Update password hash and salt for a system user."""
+    pwd_hash, salt = hash_password(new_password)
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?", (pwd_hash, salt, user_id))
+                return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+def get_system_user_by_id(user_id: int, db_path: Path = DB_PATH) -> Optional[dict]:
+    """Fetch system user by ID."""
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute("SELECT id, username, role, full_name, is_active, created_at, last_login_at FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 # ── Visa Rules Knowledge Engine ───────────────────────────────────────────────
 
 def seed_visa_rules(db_path: Path = DB_PATH) -> None:
@@ -1505,6 +1839,9 @@ def get_setting(key: str, default: str = "", db_path: Path = DB_PATH) -> str:
         conn.close()
 
 
+get_system_setting = get_setting
+
+
 def set_setting(key: str, value: str, db_path: Path = DB_PATH) -> None:
     """Store or update a system configuration setting."""
     now_str = datetime.utcnow().isoformat()
@@ -1519,6 +1856,9 @@ def set_setting(key: str, value: str, db_path: Path = DB_PATH) -> None:
                 """, (key, str(value), now_str))
         finally:
             conn.close()
+
+
+set_system_setting = set_setting
 
 
 def get_gvc_auth_mode(db_path: Path = DB_PATH) -> str:
@@ -2156,6 +2496,9 @@ def get_recent_system_logs(
         return results
     finally:
         conn.close()
+
+
+get_system_logs = get_recent_system_logs
 
 
 def clear_system_logs(db_path: Path = DB_PATH) -> int:
