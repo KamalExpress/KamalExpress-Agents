@@ -16,7 +16,7 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from .db import claim_next_client, get_all_clients, update_client_status
+from .db import claim_next_client, get_all_clients, update_client_status, log_system_event
 from .otp import wait_for_otp
 from .portals.gvc import GVCPortalDriver
 from .schemas import AvailableSlot, ClientProfile
@@ -41,14 +41,19 @@ class AutonomousSlotMonitor:
         self._total_auto_booked = 0
 
     def log_event(self, message: str, level: str = "INFO", details: Optional[dict] = None) -> None:
-        """Record an activity log entry for the UI dashboard."""
-        entry = {
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        """Record an activity log entry for the UI dashboard and persistent system stream."""
+        entry = log_system_event(
+            level=level,
+            category="MONITOR",
+            message=message,
+            details=details,
+        )
+        self._activity_logs.insert(0, {
+            "timestamp": entry.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "level": level,
             "message": message,
             "details": details or {},
-        }
-        self._activity_logs.insert(0, entry)
+        })
         if len(self._activity_logs) > self._max_logs:
             self._activity_logs.pop()
         logger.info(f"[monitor] {message}")

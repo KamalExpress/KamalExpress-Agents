@@ -35,6 +35,7 @@ from ..db import (
     get_gvc_credentials,
     invalidate_gvc_session,
     save_gvc_session,
+    log_system_event,
 )
 from ..proxy import ProxyManager
 
@@ -167,6 +168,13 @@ class GVCAuthSolver:
                     logger.warning(f"[gvc_auth] Captcha solving returned empty on attempt {attempt}.")
                     continue
 
+                log_system_event(
+                    level="INFO",
+                    category="AUTH",
+                    message=f"CapSolver solved reCAPTCHA v2 token for account '{email}' (Attempt {attempt}/{max_retries}).",
+                    details={"email": email, "attempt": attempt},
+                )
+
                 payload = {
                     "username": email,
                     "password": password,
@@ -200,6 +208,12 @@ class GVCAuthSolver:
 
                 if is_waf_challenge:
                     logger.warning(f"[gvc_auth] Login hit WAF challenge HTML on proxy {proxy}. Retrying on next attempt...")
+                    log_system_event(
+                        level="WARNING",
+                        category="AUTH",
+                        message=f"Imperva WAF challenge encountered on login for '{email}'. Rotating residential proxy...",
+                        details={"email": email, "proxy": proxy},
+                    )
                     continue
 
                 if resp.status_code in [200, 201]:
@@ -240,6 +254,12 @@ class GVCAuthSolver:
                             notes=f"Autonomous login successful for {email}",
                         )
                         logger.info(f"[gvc_auth] ✓ Successfully authenticated GVC session (ID: {saved['id']}) for {email}!")
+                        log_system_event(
+                            level="SUCCESS",
+                            category="AUTH",
+                            message=f"Autonomous login successful for account '{email}'. Session token synced and active.",
+                            details={"email": email, "session_id": saved["id"]},
+                        )
                         return {
                             "success": True,
                             "session_id": saved["id"],
@@ -267,6 +287,12 @@ class GVCAuthSolver:
 
             await asyncio.sleep(2 * attempt)
 
+        log_system_event(
+            level="ERROR",
+            category="AUTH",
+            message=f"Autonomous login failed for account '{email}' after {max_retries} attempts. Last error: {last_error}",
+            details={"email": email, "last_error": last_error},
+        )
         return {
             "success": False,
             "error": f"Autonomous login failed after {max_retries} attempts. Last error: {last_error}",

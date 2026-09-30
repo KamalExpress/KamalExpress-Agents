@@ -535,6 +535,13 @@ async def list_clients(status: Optional[str] = Query(None), user: dict = Depends
 async def create_client(client: ClientProfile, user: dict = Depends(get_current_user)):
     """Add or update a client in the queue database."""
     client_id = add_client(client)
+    username = user.get("username", "staff")
+    log_system_event(
+        level="INFO",
+        category="QUEUE",
+        message=f"Staff '{username}' added applicant '{client.first_name} {client.last_name}' ({client.passport_number}) to queue for {client.vac_city} (Type {client.visa_type}).",
+        details={"client_id": client_id, "passport": client.passport_number, "vac_city": client.vac_city},
+    )
     return {
         "success": True,
         "client_id": client_id,
@@ -765,6 +772,14 @@ async def update_client_endpoint(client_id: int, client: ClientProfile, user: di
     updated = update_client(client_id, client)
     if not updated:
         raise HTTPException(status_code=400, detail="Failed to update client")
+    
+    username = user.get("username", "staff")
+    log_system_event(
+        level="INFO",
+        category="QUEUE",
+        message=f"Staff '{username}' updated applicant #{client_id} ({client.first_name} {client.last_name}).",
+        details={"client_id": client_id, "passport": client.passport_number},
+    )
     return {
         "success": True,
         "client_id": client_id,
@@ -775,9 +790,19 @@ async def update_client_endpoint(client_id: int, client: ClientProfile, user: di
 @app.delete("/api/clients/{client_id}")
 async def remove_client(client_id: int, user: dict = Depends(get_current_user)):
     """Remove a client from the queue database (Staff and Admin)."""
+    existing = get_client_by_id(client_id)
     deleted = delete_client(client_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Client not found")
+    
+    username = user.get("username", "staff")
+    name_str = f" ({existing.first_name} {existing.last_name})" if existing else ""
+    log_system_event(
+        level="INFO",
+        category="QUEUE",
+        message=f"Staff '{username}' removed applicant #{client_id}{name_str} from queue.",
+        details={"client_id": client_id},
+    )
     return {"success": True, "message": f"Client #{client_id} removed."}
 
 

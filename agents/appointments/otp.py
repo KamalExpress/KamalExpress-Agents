@@ -20,6 +20,8 @@ from .db import (
     get_persisted_otps,
     delete_persisted_otp,
     clear_all_persisted_otps,
+    log_system_event,
+    mask_phone_pii,
 )
 
 logger = logging.getLogger(__name__)
@@ -168,6 +170,23 @@ def record_incoming_otp(
                         fut.set_result(clean_code)
                         notified_count += 1
                 OTP_WAITERS[key] = []
+
+    # Log to unified persistent system stream
+    masked_phone = mask_phone_pii(clean_phone)
+    if has_valid_otp:
+        log_system_event(
+            level="SUCCESS",
+            category="OTP",
+            message=f"Intercepted SMS from '{sender}' for SIM {masked_phone}: Extracted verification OTP '{display_code}'. (Dispatched to {notified_count} waiting booking task(s))",
+            details={"phone_masked": masked_phone, "sender": sender, "is_otp": True, "notified_tasks": notified_count},
+        )
+    else:
+        log_system_event(
+            level="INFO",
+            category="OTP",
+            message=f"Received general SMS from '{sender}' on SIM {masked_phone}: {raw_message[:90]}",
+            details={"phone_masked": masked_phone, "sender": sender, "is_otp": False},
+        )
 
     logger.info(
         f"[otp] ✓ Intercepted SMS: id='{record_id}', code='{display_code}', is_otp={has_valid_otp}, "

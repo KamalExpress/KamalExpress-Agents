@@ -296,6 +296,23 @@ class AccountWorkerInstance:
                         await asyncio.sleep(5)
                         continue
 
+                    if status_info.get("status") == "WAF_CHALLENGE":
+                        fleet_manager.log_event(
+                            f"Operator '{persona}' encountered Imperva WAF challenge while scanning {vac_meta.get('name', 'VAC')}. Rotating residential proxy...",
+                            level="WARNING",
+                            category="FLEET",
+                            account_id=self.account_id,
+                            worker_name=persona,
+                        )
+                    elif not slots or all(s.available_capacity <= 0 for s in slots):
+                        fleet_manager.log_event(
+                            f"Operator '{persona}' checked availability for {vac_meta.get('name', 'VAC')} (Type {visa_type}): 0 slots open (Shared discovery cache active for 3m).",
+                            level="INFO",
+                            category="FLEET",
+                            account_id=self.account_id,
+                            worker_name=persona,
+                        )
+
                     # Populate shared discovery cache
                     slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=180)
 
