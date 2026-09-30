@@ -1427,9 +1427,11 @@ How can I help you today?</div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Destination & Visa Type</label>
         <select id="m-type">
-          <option value="26">Greece — Type 26 (Seasonal Work)</option>
-          <option value="0">Greece — Type 0 (Schengen C)</option>
-          <option value="2">Greece — Type 2 (National D)</option>
+          <option value="26">Greece — 26: Long-Term Type D (Seasonal / Dependent)</option>
+          <option value="0">Greece — 0: Submission Schengen Visa (Type C)</option>
+          <option value="2">Greece — 2: National visa (Long term – Type D)</option>
+          <option value="5">Greece — 5: Premium Lounge (Optional Service)</option>
+          <option value="6">Greece — 6: Prime Time (Optional Service)</option>
         </select>
       </div>
       <div class="form-group" style="margin-bottom:0;">
@@ -1516,7 +1518,7 @@ How can I help you today?</div>
 
 <!-- ── ADD GVC PORTAL ACCOUNT MODAL ── -->
 <div class="modal" id="add-gvc-account-modal">
-  <div class="modal-content" style="width: 520px;">
+  <div class="modal-content" style="width: 620px; max-width: 95%;">
     <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
       <div class="card-title">
         <i data-lucide="shield-check" class="icon"></i> Register GVC Portal Account to Fleet
@@ -1555,9 +1557,9 @@ How can I help you today?</div>
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:10px;">
         <div class="form-group" style="margin-bottom:0;">
-          <label>Target VAC Center</label>
+          <label>Target VAC Center *</label>
           <select id="gvc-new-vac">
             <option value="138">Islamabad (138)</option>
             <option value="137">Karachi (137)</option>
@@ -1565,11 +1567,13 @@ How can I help you today?</div>
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <label>Target Visa Category</label>
-          <select id="gvc-new-visatype">
-            <option value="26">Type 26 (Seasonal Work)</option>
-            <option value="0">Type 0 (Schengen C)</option>
-            <option value="2">Type 2 (National D)</option>
+          <label>Target Visa Category *</label>
+          <select id="gvc-new-visatype" style="width:100%;">
+            <option value="26">26: Long-Term Type D (Seasonal / Dependent)</option>
+            <option value="0">0: Submission Schengen Visa (Short term – Type C)</option>
+            <option value="2">2: National visa (Long term – Type D)</option>
+            <option value="5">5: Premium Lounge (Optional Service)</option>
+            <option value="6">6: Prime Time (Optional Service)</option>
           </select>
         </div>
       </div>
@@ -1586,7 +1590,7 @@ How can I help you today?</div>
 
 <!-- ── EDIT GVC PORTAL ACCOUNT MODAL ── -->
 <div class="modal" id="edit-gvc-account-modal">
-  <div class="modal-content" style="width: 520px;">
+  <div class="modal-content" style="width: 620px; max-width: 95%;">
     <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
       <div class="card-title">
         <i data-lucide="edit-3" class="icon"></i> Edit GVC Portal Account Settings
@@ -1627,7 +1631,7 @@ How can I help you today?</div>
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:10px;">
         <div class="form-group" style="margin-bottom:0;">
           <label>Target VAC Center *</label>
           <select id="gvc-edit-vac">
@@ -1638,10 +1642,12 @@ How can I help you today?</div>
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label>Target Visa Category *</label>
-          <select id="gvc-edit-visatype">
-            <option value="26">Type 26 (Seasonal Work)</option>
-            <option value="0">Type 0 (Schengen C)</option>
-            <option value="2">Type 2 (National D)</option>
+          <select id="gvc-edit-visatype" style="width:100%;">
+            <option value="26">26: Long-Term Type D (Seasonal / Dependent)</option>
+            <option value="0">0: Submission Schengen Visa (Short term – Type C)</option>
+            <option value="2">2: National visa (Long term – Type D)</option>
+            <option value="5">5: Premium Lounge (Optional Service)</option>
+            <option value="6">6: Prime Time (Optional Service)</option>
           </select>
         </div>
       </div>
@@ -1970,6 +1976,14 @@ How can I help you today?</div>
         const workerBadgeText = isWorkerActive ? 'ACTIVE (Monitoring)' : 'PAUSED';
 
         const vacName = acc.target_vac_id === '138' ? 'ISB (138)' : (acc.target_vac_id === '137' ? 'KHI (137)' : 'LHE (139)');
+        const visaTypeLabels = {
+          '26': 'Type 26 (Seasonal/Work)',
+          '0': 'Type 0 (Schengen C)',
+          '2': 'Type 2 (National D)',
+          '5': 'Type 5 (Premium Lounge)',
+          '6': 'Type 6 (Prime Time)',
+        };
+        const visaTypeName = visaTypeLabels[String(acc.target_visa_type)] || `Type ${acc.target_visa_type}`;
         const isOwner = currentUser && (currentUser.username === acc.owner_username || currentUser.role === 'admin');
 
         tr.innerHTML = `
@@ -1977,7 +1991,7 @@ How can I help you today?</div>
           <td><span class="badge badge-in_progress" style="font-size:11px;">${escapeHtml(acc.owner_username)}</span></td>
           <td><code>${escapeHtml(acc.email)}</code></td>
           <td><b>+92-${escapeHtml(acc.otp_phone_number)}</b></td>
-          <td>${vacName} — Type ${acc.target_visa_type}</td>
+          <td><b>${vacName}</b><br><small style="color:var(--muted-foreground); font-size:11px;">${visaTypeName}</small></td>
           <td><span class="badge ${authBadgeClass}">${authBadgeText}</span></td>
           <td><span class="badge ${workerBadgeClass}">${workerBadgeText}</span></td>
           <td style="text-align:right; white-space:nowrap;">
