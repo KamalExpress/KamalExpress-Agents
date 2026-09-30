@@ -604,10 +604,26 @@ def add_proxies_bulk(proxy_lines: List[str], db_path: Path = DB_PATH) -> int:
             conn.close()
 
 
+def _auto_expire_quarantined_proxies(conn) -> int:
+    """Auto-restore proxies whose quarantine period has elapsed back to ACTIVE."""
+    now_str = datetime.utcnow().isoformat()
+    cursor = conn.execute("""
+        UPDATE proxies
+        SET status = 'ACTIVE',
+            quarantined_until = NULL
+        WHERE status = 'QUARANTINED'
+          AND (quarantined_until IS NULL OR quarantined_until <= ?)
+    """, (now_str,))
+    return cursor.rowcount
+
+
 def get_all_proxies(status: Optional[str] = None, db_path: Path = DB_PATH) -> List[dict]:
-    """Retrieve all proxies from SQLite."""
+    """Retrieve all proxies from SQLite with auto-expiration of elapsed quarantines."""
     conn = get_connection(db_path)
     try:
+        with _lock:
+            with conn:
+                _auto_expire_quarantined_proxies(conn)
         if status:
             rows = conn.execute("SELECT * FROM proxies WHERE status = ? ORDER BY id ASC", (status,)).fetchall()
         else:
@@ -622,10 +638,13 @@ def get_active_proxies(db_path: Path = DB_PATH) -> List[dict]:
     now_str = datetime.utcnow().isoformat()
     conn = get_connection(db_path)
     try:
+        with _lock:
+            with conn:
+                _auto_expire_quarantined_proxies(conn)
         rows = conn.execute("""
             SELECT * FROM proxies 
             WHERE status = 'ACTIVE' 
-              AND (quarantined_until IS NULL OR quarantined_until < ?)
+              AND (quarantined_until IS NULL OR quarantined_until <= ?)
             ORDER BY last_used_at ASC, id ASC
         """, (now_str,)).fetchall()
         return [dict(r) for r in rows]
@@ -715,14 +734,17 @@ def get_proxy_stats(db_path: Path = DB_PATH) -> dict:
     now_str = datetime.utcnow().isoformat()
     conn = get_connection(db_path)
     try:
+        with _lock:
+            with conn:
+                _auto_expire_quarantined_proxies(conn)
         total = conn.execute("SELECT COUNT(*) FROM proxies").fetchone()[0]
         active = conn.execute("""
             SELECT COUNT(*) FROM proxies 
-            WHERE status = 'ACTIVE' AND (quarantined_until IS NULL OR quarantined_until < ?)
+            WHERE status = 'ACTIVE' AND (quarantined_until IS NULL OR quarantined_until <= ?)
         """, (now_str,)).fetchone()[0]
         quarantined = conn.execute("""
             SELECT COUNT(*) FROM proxies 
-            WHERE status = 'QUARANTINED' OR (quarantined_until IS NOT NULL AND quarantined_until >= ?)
+            WHERE status = 'QUARANTINED' AND (quarantined_until IS NOT NULL AND quarantined_until > ?)
         """, (now_str,)).fetchone()[0]
         return {
             "total": total,
@@ -1880,8 +1902,112 @@ def toggle_gvc_account_worker(account_id: int, is_active: Optional[bool] = None,
             conn.close()
 
 
+def export_all_system_data(db_path: Path = DB_PATH) -> dict:
+    """
+    Export complete application database and system configuration for administrative backup.
+    Includes:
+    - Metadata (timestamp, schema version)
+    - Staff / Admin Accounts (users table)
+    - GVC Portal Accounts & Workers (gvc_portal_accounts table)
+    - Residential Proxies (proxies table)
+    - CapSolver & Auth System Settings (system_settings table, captcha keys, gvc credentials)
+    - Live OTP Message Logs & Stream (otp_records table)
+    - Client Queue & Appointment Bookings (client_queue table)
+    - GVC Active Sessions (gvc_sessions table)
+    - Hotel Bookings & Visa Rules (hotel_bookings, visa_rules tables)
+    """
+    conn = get_connection(db_path)
+    try:
+        with _lock:
+            # Auto-expire any pending proxy quarantines first
+            _auto_expire_quarantined_proxies(conn)
+
+            # 1. Staff Accounts
+            user_rows = conn.execute(
+                "SELECT id, username, role, full_name, is_active, created_at, last_login_at FROM users ORDER BY id ASC"
+            ).fetchall()
+            staff_accounts = [dict(r) for r in user_rows]
+
+            # 2. GVC Portal Accounts
+            gvc_rows = conn.execute("SELECT * FROM gvc_portal_accounts ORDER BY id ASC").fetchall()
+            gvc_accounts = [dict(r) for r in gvc_rows]
+
+            # 3. Proxies
+            proxy_rows = conn.execute("SELECT * FROM proxies ORDER BY id ASC").fetchall()
+            proxies = [dict(r) for r in proxy_rows]
+
+            # 4. System Settings & Keys
+            setting_rows = conn.execute("SELECT * FROM system_settings ORDER BY key ASC").fetchall()
+            system_settings = {r["key"]: r["value"] for r in setting_rows}
+
+            # Explicitly structured CapSolver & GVC Credentials helper
+            capsolver_config = {
+                "provider": system_settings.get("captcha_provider", "capsolver"),
+                "api_key": system_settings.get("captcha_api_key", ""),
+            }
+
+            gvc_creds = {
+                "email": system_settings.get("gvc_account_email", ""),
+                "password": system_settings.get("gvc_account_password", ""),
+                "interval_seconds": int(system_settings.get("auto_solver_interval_seconds", 300) or 300),
+            }
+
+            # 5. OTP Message Logs
+            otp_rows = conn.execute("SELECT * FROM otp_records ORDER BY timestamp DESC").fetchall()
+            otp_logs = [dict(r) for r in otp_rows]
+
+            # 6. Client Queue
+            queue_rows = conn.execute("SELECT * FROM client_queue ORDER BY id ASC").fetchall()
+            client_queue = [dict(r) for r in queue_rows]
+
+            # 7. GVC Sessions
+            session_rows = conn.execute("SELECT * FROM gvc_sessions ORDER BY id DESC").fetchall()
+            gvc_sessions = [dict(r) for r in session_rows]
+
+            # 8. Hotel Bookings & Visa Rules
+            hotel_rows = conn.execute("SELECT * FROM hotel_bookings ORDER BY id ASC").fetchall()
+            hotel_bookings = [dict(r) for r in hotel_rows]
+
+            visa_rows = conn.execute("SELECT * FROM visa_rules ORDER BY id ASC").fetchall()
+            visa_rules = [dict(r) for r in visa_rows]
+
+            now_iso = datetime.utcnow().isoformat() + "Z"
+
+            return {
+                "metadata": {
+                    "export_timestamp": now_iso,
+                    "platform": "Kamal Express AI Platform",
+                    "schema_version": "1.0",
+                    "summary_counts": {
+                        "staff_accounts": len(staff_accounts),
+                        "gvc_portal_accounts": len(gvc_accounts),
+                        "proxies": len(proxies),
+                        "otp_messages": len(otp_logs),
+                        "client_queue": len(client_queue),
+                        "gvc_sessions": len(gvc_sessions),
+                        "hotel_bookings": len(hotel_bookings),
+                        "visa_rules": len(visa_rules),
+                    },
+                },
+                "staff_accounts": staff_accounts,
+                "gvc_portal_accounts": gvc_accounts,
+                "proxies": proxies,
+                "capsolver_keys": capsolver_config,
+                "gvc_credentials": gvc_creds,
+                "system_settings": system_settings,
+                "otp_messages_log": otp_logs,
+                "client_queue": client_queue,
+                "gvc_sessions": gvc_sessions,
+                "hotel_bookings": hotel_bookings,
+                "visa_rules": visa_rules,
+            }
+    finally:
+        conn.close()
+
+
 # Ensure tables are created and default accounts seeded on module import
 init_db()
 seed_default_users()
 seed_visa_rules()
 seed_hotels()
+

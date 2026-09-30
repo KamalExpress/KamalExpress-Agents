@@ -1293,6 +1293,59 @@ How can I help you today?</div>
 
     </div>
 
+    <!-- ── FULL SYSTEM DATA BACKUP & EXPORT CARD ── -->
+    <div class="card" style="border: 1px solid rgba(0, 110, 181, 0.25); background: linear-gradient(180deg, var(--card) 0%, rgba(240, 249, 255, 0.4) 100%);">
+      <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+        <div>
+          <div class="card-title" style="color: var(--primary);">
+            <i data-lucide="download-cloud" class="icon"></i> Complete System Data Backup & Export
+          </div>
+          <div class="card-desc">
+            Export all operational data: Staff Accounts, GVC Portal Accounts & Parallel Workers, Residential Proxies, CapSolver API Keys, Live OTP Messages Stream, Client Queue, and System Configuration in unified JSON format.
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="previewExportSummary()">
+            <i data-lucide="eye" class="icon"></i> Inspect Data
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="downloadSystemExport()" id="btn-download-export">
+            <i data-lucide="download" class="icon"></i> Export All Data (.JSON)
+          </button>
+        </div>
+      </div>
+      
+      <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-top: 4px;">
+        <div class="stat-box">
+          <div class="stat-header">
+            <span class="stat-lbl">Staff Accounts</span>
+            <i data-lucide="users" class="icon" style="width:14px; height:14px; color:var(--primary)"></i>
+          </div>
+          <div class="stat-val" id="export-stat-staff">...</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-header">
+            <span class="stat-lbl">GVC Accounts</span>
+            <i data-lucide="shield-check" class="icon" style="width:14px; height:14px; color:#0284c7"></i>
+          </div>
+          <div class="stat-val" id="export-stat-gvc">...</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-header">
+            <span class="stat-lbl">Proxy Pool</span>
+            <i data-lucide="globe-2" class="icon" style="width:14px; height:14px; color:var(--success)"></i>
+          </div>
+          <div class="stat-val" id="export-stat-proxies">...</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-header">
+            <span class="stat-lbl">OTP Messages</span>
+            <i data-lucide="smartphone" class="icon" style="width:14px; height:14px; color:var(--accent)"></i>
+          </div>
+          <div class="stat-val" id="export-stat-otp">...</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -2555,8 +2608,104 @@ How can I help you today?</div>
         tbody.appendChild(tr);
       });
       renderIcons();
+      loadExportStats();
     } catch (err) {
       console.error("Users load error:", err);
+    }
+  }
+
+  async function loadExportStats() {
+    try {
+      const resp = await fetch('/api/admin/export-data?download=false');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const counts = data.metadata?.summary_counts || {};
+
+      const elStaff = document.getElementById('export-stat-staff');
+      const elGvc = document.getElementById('export-stat-gvc');
+      const elProxies = document.getElementById('export-stat-proxies');
+      const elOtp = document.getElementById('export-stat-otp');
+
+      if (elStaff) elStaff.textContent = counts.staff_accounts || 0;
+      if (elGvc) elGvc.textContent = counts.gvc_portal_accounts || 0;
+      if (elProxies) elProxies.textContent = counts.proxies || 0;
+      if (elOtp) elOtp.textContent = counts.otp_messages || 0;
+    } catch (e) {
+      console.warn("Could not load export stats:", e);
+    }
+  }
+
+  async function downloadSystemExport() {
+    const btn = document.getElementById('btn-download-export');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="icon" style="animation:spin 1s linear infinite;"></i> Preparing JSON Backup...`;
+      renderIcons();
+    }
+    try {
+      const resp = await fetch('/api/admin/export-data?download=true');
+      if (!resp.ok) {
+        let errMsg = resp.statusText;
+        try {
+          const errData = await resp.json();
+          errMsg = errData.detail || errMsg;
+        } catch (_) {}
+        alert('Export failed: ' + errMsg);
+        return;
+      }
+      const blob = await resp.blob();
+      const contentDisposition = resp.headers.get('Content-Disposition') || '';
+      let filename = `kamal_express_data_export_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
+      const match = contentDisposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) filename = match[1];
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Error downloading system backup: ' + e.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        renderIcons();
+      }
+    }
+  }
+
+  async function previewExportSummary() {
+    try {
+      const resp = await fetch('/api/admin/export-data?download=false');
+      if (!resp.ok) throw new Error('Failed to fetch summary');
+      const data = await resp.json();
+      const meta = data.metadata || {};
+      const counts = meta.summary_counts || {};
+
+      const summaryText = `📦 KAMAL EXPRESS PLATFORM — DATA EXPORT SUMMARY\n` +
+        `═══════════════════════════════════════════════════\n` +
+        `• Generated At: ${meta.export_timestamp || 'Now'}\n` +
+        `• Exported By: Admin (${meta.exported_by || 'admin'})\n` +
+        `• Schema Version: ${meta.schema_version || '1.0'}\n\n` +
+        `📊 INCLUDED ENTITIES:\n` +
+        `───────────────────────────────────────────────────\n` +
+        `• Staff / Admin Accounts: ${counts.staff_accounts || 0}\n` +
+        `• GVC Portal Accounts: ${counts.gvc_portal_accounts || 0}\n` +
+        `• Residential Proxies: ${counts.proxies || 0}\n` +
+        `• Ingested OTP Messages: ${counts.otp_messages || 0}\n` +
+        `• Client Queue / Applicants: ${counts.client_queue || 0}\n` +
+        `• GVC Authentication Sessions: ${counts.gvc_sessions || 0}\n` +
+        `• CapSolver Solver Key: ${data.capsolver_keys?.api_key ? 'Configured (' + (data.capsolver_keys.provider || 'capsolver') + ')' : 'Not Configured'}\n` +
+        `• GVC Saved Master Creds: ${data.gvc_credentials?.email ? data.gvc_credentials.email : 'None'}\n\n` +
+        `Click 'Export All Data (.JSON)' to download the complete backup file.`;
+      alert(summaryText);
+    } catch (e) {
+      alert('Error loading export preview: ' + e.message);
     }
   }
 
@@ -2595,7 +2744,7 @@ How can I help you today?</div>
 
   async function toggleUserStatus(id, isActive) {
     await fetch(`/api/users/${id}/status`, {
-      method: 'PUT',
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: isActive }),
     });

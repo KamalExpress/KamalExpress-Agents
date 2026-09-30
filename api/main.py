@@ -82,6 +82,7 @@ from agents.appointments.db import (
     delete_gvc_portal_account,
     update_gvc_account_session,
     toggle_gvc_account_worker,
+    export_all_system_data,
 )
 from agents.appointments.fleet_manager import fleet_manager
 from agents.appointments.monitor import slot_monitor
@@ -324,6 +325,36 @@ async def update_user_status_endpoint(user_id: int, req: UserStatusRequest, admi
     if not updated:
         raise HTTPException(status_code=404, detail="User not found.")
     return {"success": True, "message": f"User #{user_id} status updated."}
+
+
+@app.get("/api/admin/export-data")
+async def export_admin_data_endpoint(
+    download: bool = Query(True, description="Download as JSON file attachment"),
+    admin: dict = Depends(require_admin),
+):
+    """
+    Export all system data (Admin only).
+    Includes staff accounts, GVC portal accounts, residential proxies, CapSolver keys,
+    OTP logs, client queue, GVC sessions, and system settings.
+    """
+    data = export_all_system_data()
+    data["metadata"]["exported_by"] = admin.get("username", "admin")
+
+    json_str = json.dumps(data, indent=2, ensure_ascii=False)
+
+    if download:
+        from datetime import datetime as dt_now
+        timestamp_str = dt_now.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"kamal_express_backup_{timestamp_str}.json"
+        return Response(
+            content=json_str,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/json; charset=utf-8",
+            },
+        )
+    return data
 
 
 # ── Streaming helper ──────────────────────────────────────────────────────────
