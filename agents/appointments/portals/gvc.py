@@ -676,9 +676,10 @@ class GVCPortalDriver:
         Submit HAR-compliant final booking payload to GVC World with automatic proxy failover.
         """
         self._load_active_session_from_db()
-        vac_key = str(vac_id or applicant.vac_id)
-        vac_meta = GVC_VACS.get(vac_key.lower(), GVC_VACS["138"])
-        app_type = str(visa_type or applicant.visa_type or "26")
+        # Applicant profile is the primary source of truth for VAC center and Visa Category
+        vac_key = str(applicant.vac_id or vac_id or "138")
+        vac_meta = GVC_VACS.get(vac_key.lower(), GVC_VACS.get("138", {"id": 138, "name": "Islamabad", "city": "Islamabad"}))
+        app_type = str(applicant.visa_type or visa_type or "26")
         
         phone_clean = applicant.phone_number.lstrip("0")
         sub_payload = {

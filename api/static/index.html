@@ -1453,6 +1453,103 @@ How can I help you today?</div>
   </div>
 </div>
 
+<!-- ── EDIT CLIENT MODAL ── -->
+<div class="modal" id="edit-client-modal">
+  <div class="modal-content" style="width: 620px; max-width: 95%;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="edit-3" class="icon"></i> Edit Client Profile (<span style="color:var(--primary)">#<span id="edit-client-id-badge"></span></span>)
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeEditClientModal()" style="padding:2px 8px;">✕</button>
+    </div>
+    
+    <input type="hidden" id="edit-client-id">
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>First Name (as on Passport) *</label>
+        <input type="text" id="edit-client-first-name" required placeholder="e.g. Ali">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Surname (as on Passport) *</label>
+        <input type="text" id="edit-client-last-name" required placeholder="e.g. Ahmed">
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Passport Number *</label>
+        <input type="text" id="edit-client-passport" required placeholder="e.g. PK1234567">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Date of Birth (DD/MM/YYYY) *</label>
+        <input type="text" id="edit-client-dob" required placeholder="15/08/1992">
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Passport Expiry (DD/MM/YYYY) *</label>
+        <input type="text" id="edit-client-expiry" required placeholder="10/05/2032">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Phone Number (without 0) *</label>
+        <input type="text" id="edit-client-phone" required placeholder="3001234567">
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Email Address *</label>
+        <input type="email" id="edit-client-email" required placeholder="applicant@example.com">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Queue Status</label>
+        <select id="edit-client-status">
+          <option value="QUEUED">QUEUED (Ready for Booking)</option>
+          <option value="PAUSED">PAUSED (Hold Processing)</option>
+          <option value="IN_PROGRESS">IN_PROGRESS (Locked by Worker)</option>
+          <option value="BOOKED">BOOKED (Appointment Confirmed)</option>
+          <option value="FAILED">FAILED (Retry Needed)</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Destination & Visa Type</label>
+        <select id="edit-client-type">
+          <option value="26">Greece — 26: Long-Term Type D (Seasonal / Dependent)</option>
+          <option value="0">Greece — 0: Submission Schengen Visa (Type C)</option>
+          <option value="2">Greece — 2: National visa (Long term – Type D)</option>
+          <option value="5">Greece — 5: Premium Lounge (Optional Service)</option>
+          <option value="6">Greece — 6: Prime Time (Optional Service)</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Target VAC</label>
+        <select id="edit-client-vac">
+          <option value="138">Islamabad (138)</option>
+          <option value="137">Karachi (137)</option>
+          <option value="139">Lahore (139)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:0;">
+      <label>Notes / Booking Reference / Comments</label>
+      <input type="text" id="edit-client-notes" placeholder="Optional notes, ARN reference, or special requests">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeEditClientModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditClient()">
+        <i data-lucide="check" class="icon"></i> Save Changes
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ── OTP DETAILS MODAL ── -->
 <div class="modal" id="otp-detail-modal">
   <div class="modal-content" style="width: 580px; max-width: 95%;">
@@ -2455,8 +2552,6 @@ How can I help you today?</div>
         return;
       }
 
-      const isAdmin = currentUser && currentUser.role === 'admin';
-
       data.clients.forEach(c => {
         const tr = document.createElement('tr');
         const badgeClass = `badge-${c.status.toLowerCase()}`;
@@ -2468,7 +2563,16 @@ How can I help you today?</div>
           <td>${c.vac_city}</td>
           <td><span class="badge ${badgeClass}">${c.status}</span></td>
           <td>${c.booking_reference ? `<b>${c.booking_reference}</b><br><small>${c.booked_date || ''} ${c.booked_time || ''}</small>` : '<span style="color:var(--muted-foreground)">—</span>'}</td>
-          <td>${isAdmin ? `<button class="btn btn-destructive btn-sm" onclick="deleteClient(${c.id})"><i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i> Delete</button>` : '<span style="color:var(--muted-foreground); font-size:11px;">Staff View</span>'}</td>
+          <td>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button class="btn btn-outline btn-sm" onclick="openEditClientModal(${c.id})" title="Edit Client Profile">
+                <i data-lucide="edit-3" class="icon" style="width:12px; height:12px;"></i> Edit
+              </button>
+              <button class="btn btn-destructive btn-sm" onclick="deleteClient(${c.id})" title="Delete Client from Queue" style="padding:4px 8px;">
+                <i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i>
+              </button>
+            </div>
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -2478,8 +2582,90 @@ How can I help you today?</div>
     }
   }
 
+  async function openEditClientModal(id) {
+    try {
+      const resp = await fetch(`/api/clients/${id}`);
+      if (resp.status === 401) { showLogin(); return; }
+      if (!resp.ok) {
+        alert("Failed to retrieve client details.");
+        return;
+      }
+      const c = await resp.json();
+
+      document.getElementById('edit-client-id').value = c.id;
+      document.getElementById('edit-client-id-badge').innerText = c.id;
+      document.getElementById('edit-client-first-name').value = c.first_name || '';
+      document.getElementById('edit-client-last-name').value = c.last_name || '';
+      document.getElementById('edit-client-passport').value = c.passport_number || '';
+      document.getElementById('edit-client-dob').value = c.dob || '';
+      document.getElementById('edit-client-expiry').value = c.passport_expiry || '';
+      document.getElementById('edit-client-phone').value = c.phone_number || '';
+      document.getElementById('edit-client-email').value = c.email || '';
+      document.getElementById('edit-client-status').value = c.status || 'QUEUED';
+      document.getElementById('edit-client-type').value = c.visa_type || '26';
+      document.getElementById('edit-client-vac').value = c.vac_id || '138';
+      document.getElementById('edit-client-notes').value = c.notes || '';
+
+      document.getElementById('edit-client-modal').classList.add('active');
+      renderIcons();
+    } catch (err) {
+      console.error("Error opening edit client modal:", err);
+      alert("Error loading client: " + err.message);
+    }
+  }
+
+  function closeEditClientModal() {
+    document.getElementById('edit-client-modal').classList.remove('active');
+  }
+
+  async function submitEditClient() {
+    const id = document.getElementById('edit-client-id').value;
+    if (!id) return;
+
+    const payload = {
+      id: parseInt(id),
+      first_name: document.getElementById('edit-client-first-name').value.trim(),
+      last_name: document.getElementById('edit-client-last-name').value.trim(),
+      passport_number: document.getElementById('edit-client-passport').value.trim(),
+      dob: document.getElementById('edit-client-dob').value.trim(),
+      passport_expiry: document.getElementById('edit-client-expiry').value.trim(),
+      phone_number: document.getElementById('edit-client-phone').value.trim(),
+      email: document.getElementById('edit-client-email').value.trim(),
+      status: document.getElementById('edit-client-status').value,
+      destination: "Greece",
+      visa_type: document.getElementById('edit-client-type').value,
+      vac_id: document.getElementById('edit-client-vac').value,
+      vac_city: document.getElementById('edit-client-vac').options[document.getElementById('edit-client-vac').selectedIndex].text.split(' ')[0],
+      notes: document.getElementById('edit-client-notes').value.trim(),
+    };
+
+    if (!payload.first_name || !payload.last_name || !payload.passport_number || !payload.phone_number || !payload.email) {
+      alert("Please fill all required fields (First Name, Surname, Passport, DOB, Expiry, Phone, and Email).");
+      return;
+    }
+
+    try {
+      const resp = await fetch(`/api/clients/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (resp.status === 401) { showLogin(); return; }
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert("Failed to update client: " + (err.detail || "Server error"));
+        return;
+      }
+      closeEditClientModal();
+      refreshQueue();
+    } catch (err) {
+      console.error("Client update error:", err);
+      alert("Network error updating client: " + err.message);
+    }
+  }
+
   async function deleteClient(id) {
-    if (!confirm(`Are you sure you want to remove client #${id}?`)) return;
+    if (!confirm(`Are you sure you want to remove client #${id} from the queue?`)) return;
     const resp = await fetch(`/api/clients/${id}`, { method: 'DELETE' });
     if (resp.status === 401) { showLogin(); return; }
     refreshQueue();
@@ -2512,11 +2698,12 @@ How can I help you today?</div>
       return;
     }
 
-    await fetch('/api/clients', {
+    const resp = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    if (resp.status === 401) { showLogin(); return; }
 
     closeAddModal();
     refreshQueue();

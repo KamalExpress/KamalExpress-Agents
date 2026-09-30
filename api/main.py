@@ -44,6 +44,7 @@ from agents.umrah.agent import umrah_agent
 from agents.hotels.agent import hotel_agent
 from agents.appointments.db import (
     add_client,
+    update_client,
     delete_client,
     get_all_clients,
     get_client_by_id,
@@ -546,9 +547,28 @@ async def get_client(client_id: int, user: dict = Depends(get_current_user)):
     return client.model_dump()
 
 
+@app.put("/api/clients/{client_id}")
+async def update_client_endpoint(client_id: int, client: ClientProfile, user: dict = Depends(get_current_user)):
+    """Update an existing client profile in the queue (Staff and Admin)."""
+    existing = get_client_by_id(client_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    # If client.id not passed in body or differs, force path client_id
+    client.id = client_id
+    updated = update_client(client_id, client)
+    if not updated:
+        raise HTTPException(status_code=400, detail="Failed to update client")
+    return {
+        "success": True,
+        "client_id": client_id,
+        "message": f"Client #{client_id} ({client.first_name} {client.last_name}) updated successfully.",
+    }
+
+
 @app.delete("/api/clients/{client_id}")
-async def remove_client(client_id: int, admin: dict = Depends(require_admin)):
-    """Remove a client from the queue database (Admin only)."""
+async def remove_client(client_id: int, user: dict = Depends(get_current_user)):
+    """Remove a client from the queue database (Staff and Admin)."""
     deleted = delete_client(client_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Client not found")

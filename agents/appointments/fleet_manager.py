@@ -218,15 +218,15 @@ class AccountWorkerInstance:
                             )
                             continue
 
-                        # Submit final booking
+                        # Submit final booking using applicant's profile VAC & Visa Type
                         result = await self._driver.submit_booking(
                             applicant=client,
                             slot_id=slot.slot_id,
                             target_date=slot.date,
                             target_time=slot.time,
                             otp_code=otp_code,
-                            vac_id=vac_id,
-                            visa_type=visa_type
+                            vac_id=client.vac_id,
+                            visa_type=client.visa_type
                         )
 
                         if result.success:
