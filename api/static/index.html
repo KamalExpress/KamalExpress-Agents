@@ -1217,25 +1217,31 @@ How can I help you today?</div>
           </div>
           <div class="card-desc">Recent SMS/WhatsApp OTPs ingested by the event bus. Automatically resolves in-flight booking tasks.</div>
         </div>
-        <button class="btn btn-outline btn-sm" onclick="loadOtpStream()">
-          <i data-lucide="rotate-cw" class="icon"></i> Refresh Stream
-        </button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="loadOtpStream()">
+            <i data-lucide="rotate-cw" class="icon"></i> Refresh Stream
+          </button>
+          <button class="btn btn-destructive btn-sm" onclick="clearAllOtps()">
+            <i data-lucide="trash-2" class="icon"></i> Clear All
+          </button>
+        </div>
       </div>
 
-      <div class="queue-table-wrap" style="max-height:360px;">
+      <div class="queue-table-wrap" style="max-height:380px;">
         <table>
           <thead>
             <tr>
-              <th>Timestamp</th>
-              <th>Phone Number</th>
-              <th>Extracted OTP</th>
-              <th>Source / Sender</th>
-              <th>Age</th>
-              <th>Raw Message / Note</th>
+              <th style="min-width:130px;">Timestamp</th>
+              <th style="min-width:115px;">Phone Number</th>
+              <th style="min-width:105px;">Extracted OTP</th>
+              <th style="min-width:100px;">Sender</th>
+              <th style="min-width:80px;">Age</th>
+              <th>Message Preview</th>
+              <th style="text-align:right; min-width:125px;">Actions</th>
             </tr>
           </thead>
           <tbody id="otp-stream-tbody">
-            <tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:20px;">No OTPs received yet. Use the simulator above or configure your Android app to send a test ping.</td></tr>
+            <tr><td colspan="7" style="text-align:center; color:var(--muted-foreground); padding:20px;">No OTPs received yet. Use the simulator above or configure your Android app to send a test ping.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1415,6 +1421,69 @@ How can I help you today?</div>
       <button class="btn btn-outline" onclick="closeAddModal()">Cancel</button>
       <button class="btn btn-primary" onclick="submitAddClient()">
         <i data-lucide="check" class="icon"></i> Save to Queue
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── OTP DETAILS MODAL ── -->
+<div class="modal" id="otp-detail-modal">
+  <div class="modal-content" style="width: 580px; max-width: 95%;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title">
+        <i data-lucide="smartphone" class="icon"></i> Ingested SMS / OTP Payload Inspection
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeOtpModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Extracted OTP Code</label>
+        <div id="otp-modal-code" style="font-family:monospace; font-size:16px; font-weight:700; color:var(--primary); padding:6px 10px; background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius); display:flex; align-items:center;">—</div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Phone Number (Normalized)</label>
+        <div id="otp-modal-phone" style="font-family:monospace; font-size:13px; font-weight:600; padding:6px 10px; background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius);">—</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Sender / Source</label>
+        <div id="otp-modal-sender" style="font-size:12px; padding:6px 10px; background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">—</div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Ingested Timestamp & Age</label>
+        <div id="otp-modal-time" style="font-size:12px; padding:6px 10px; background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius);">—</div>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:0;">
+      <label>Device IP Address</label>
+      <div id="otp-modal-ip" style="font-family:monospace; font-size:12px; padding:6px 10px; background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius);">—</div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:0;">
+      <label>Extracted Message Text</label>
+      <div id="otp-modal-text" style="font-size:12px; line-height:1.4; padding:8px 10px; background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius); max-height:80px; overflow-y:auto; word-break:break-word;">—</div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:0;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <label>Raw Payload / JSON</label>
+        <button class="btn btn-outline btn-sm" onclick="copyOtpModalPayload()" style="padding:2px 6px; font-size:11px;">
+          <i data-lucide="copy" class="icon" style="width:11px; height:11px;"></i> Copy JSON
+        </button>
+      </div>
+      <pre id="otp-modal-payload" style="background:#090d16; color:#38bdf8; font-family:monospace; font-size:11.5px; padding:10px; border-radius:var(--radius); border:1px solid #1e293b; max-height:140px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;"></pre>
+    </div>
+
+    <div class="modal-actions" style="justify-content:space-between; align-items:center;">
+      <button class="btn btn-destructive btn-sm" id="btn-otp-modal-delete" onclick="deleteCurrentModalOtp()">
+        <i data-lucide="trash-2" class="icon"></i> Delete Record
+      </button>
+      <button class="btn btn-primary btn-sm" onclick="closeOtpModal()">
+        Close
       </button>
     </div>
   </div>
@@ -2469,6 +2538,7 @@ How can I help you today?</div>
   }
 
   let latestOtpList = [];
+  let activeModalOtpId = null;
 
   async function loadOtpStream() {
     try {
@@ -2486,16 +2556,12 @@ How can I help you today?</div>
       latestOtpList = data.recent_otps || [];
 
       if (!latestOtpList || latestOtpList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:20px;">No OTPs in cache. Incoming SMS OTPs will appear here in real-time.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--muted-foreground); padding:20px;">No OTPs in cache. Incoming SMS OTPs will appear here in real-time.</td></tr>`;
         return;
       }
 
       latestOtpList.forEach((item, idx) => {
         const tr = document.createElement('tr');
-        tr.style.cursor = 'pointer';
-        tr.title = 'Click to inspect raw JSON payload from mobile device';
-        tr.onclick = () => showOtpDetails(idx);
-
         const isFresh = item.age_seconds <= 180;
         const isOtp = item.is_otp !== false && item.code !== 'TEST_MSG';
         const badgeClass = isOtp ? (isFresh ? 'badge-booked' : 'badge-disabled') : 'badge-in_progress';
@@ -2507,7 +2573,15 @@ How can I help you today?</div>
           <td><span class="badge ${badgeClass}" style="font-size:${isOtp ? '13px' : '11px'}; font-weight:700; letter-spacing:1px; font-family:monospace;">${codeDisplay}</span></td>
           <td><span class="badge badge-active">${escapeHtml(item.sender || 'SMS_FORWARDER')}</span></td>
           <td><span style="font-size:11.5px; color:${isFresh ? 'var(--success)' : 'var(--muted-foreground)'};">${item.age_seconds}s ago</span></td>
-          <td style="font-size:11px; color:var(--muted-foreground); max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(item.raw_message || '')}">${escapeHtml(item.raw_message || '—')}</td>
+          <td style="font-size:11.5px; color:var(--muted-foreground); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(item.raw_message || '')}">${escapeHtml(item.raw_message || '—')}</td>
+          <td style="text-align:right; white-space:nowrap;">
+            <button class="btn btn-outline btn-sm" onclick="showOtpDetailsModal(${idx})" title="Inspect Full Payload" style="padding:3px 8px; font-size:11.5px;">
+              <i data-lucide="eye" class="icon" style="width:12px; height:12px;"></i> View
+            </button>
+            <button class="btn btn-destructive btn-sm" onclick="deleteOtpItem('${item.id}')" title="Delete Record" style="padding:3px 7px; font-size:11.5px; margin-left:4px;">
+              <i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i>
+            </button>
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -2517,18 +2591,87 @@ How can I help you today?</div>
     }
   }
 
-  function showOtpDetails(idx) {
+  function showOtpDetailsModal(idx) {
     const item = latestOtpList[idx];
     if (!item) return;
-    const details = `📱 Ingested SMS Inspection:\n\n` +
-      `• Timestamp: ${item.created_at}\n` +
-      `• Extracted Code: ${item.code} (Is OTP: ${item.is_otp})\n` +
-      `• Normalized Phone: +92-${item.phone}\n` +
-      `• Raw Sender / From: ${item.raw_phone || item.sender}\n` +
-      `• Client Device IP: ${item.client_ip || 'unknown'}\n` +
-      `• Raw Message Text:\n"${item.raw_message}"\n\n` +
-      `• Full Raw JSON / Payload:\n${item.raw_payload || item.raw_message}`;
-    alert(details);
+    activeModalOtpId = item.id;
+
+    const isOtp = item.is_otp !== false && item.code !== 'TEST_MSG';
+    document.getElementById('otp-modal-code').innerHTML = isOtp 
+      ? `<span style="color:var(--success); font-size:18px;">${escapeHtml(item.code)}</span> <span class="badge badge-booked" style="margin-left:8px;">VALID OTP</span>`
+      : `<span style="color:var(--muted-foreground); font-size:13px;">(No OTP code detected)</span> <span class="badge badge-in_progress" style="margin-left:8px;">TEST SMS</span>`;
+    
+    document.getElementById('otp-modal-phone').textContent = `+92-${item.phone || 'UNKNOWN'}`;
+    document.getElementById('otp-modal-sender').textContent = `${item.sender || 'SMS_FORWARDER'} ${item.raw_phone ? `(From: ${item.raw_phone})` : ''}`;
+    document.getElementById('otp-modal-time').textContent = `${item.created_at || 'Just now'} (${item.age_seconds}s ago)`;
+    document.getElementById('otp-modal-ip').textContent = item.client_ip || 'Internal / Forwarded Proxy';
+    document.getElementById('otp-modal-text').textContent = item.raw_message || '—';
+
+    let formattedPayload = item.raw_payload || item.raw_message || '';
+    try {
+      if (formattedPayload.startsWith('{') || formattedPayload.startsWith('[')) {
+        formattedPayload = JSON.stringify(JSON.parse(formattedPayload), null, 2);
+      }
+    } catch {}
+    document.getElementById('otp-modal-payload').textContent = formattedPayload;
+
+    document.getElementById('otp-detail-modal').classList.add('active');
+    renderIcons();
+  }
+
+  function closeOtpModal() {
+    document.getElementById('otp-detail-modal').classList.remove('active');
+    activeModalOtpId = null;
+  }
+
+  function copyOtpModalPayload() {
+    const text = document.getElementById('otp-modal-payload').textContent;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      alert('📋 Payload JSON copied to clipboard!');
+    }).catch(() => {
+      prompt('Copy Payload:', text);
+    });
+  }
+
+  async function deleteCurrentModalOtp() {
+    if (!activeModalOtpId) return;
+    const idToDelete = activeModalOtpId;
+    closeOtpModal();
+    await deleteOtpItem(idToDelete);
+  }
+
+  async function deleteOtpItem(id) {
+    if (!id) return;
+    if (!confirm(`Delete OTP record '${id}'?`)) return;
+    try {
+      const resp = await fetch(`/api/otp/${id}`, { method: 'DELETE' });
+      if (resp.status === 401) { showLogin(); return; }
+      const data = await resp.json();
+      if (resp.ok) {
+        loadOtpStream();
+      } else {
+        alert(`❌ Could not delete record: ${data.detail || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Delete error: ${e.message}`);
+    }
+  }
+
+  async function clearAllOtps() {
+    if (!confirm('Are you sure you want to clear all intercepted SMS and OTP records from the stream?')) return;
+    try {
+      const resp = await fetch('/api/otp/clear-all', { method: 'DELETE' });
+      if (resp.status === 401) { showLogin(); return; }
+      const data = await resp.json();
+      if (resp.ok) {
+        loadOtpStream();
+      } else {
+        alert(`❌ Could not clear stream: ${data.detail || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Clear error: ${e.message}`);
+    }
   }
 
   async function simulateOtpTest() {

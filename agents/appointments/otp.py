@@ -95,7 +95,11 @@ def record_incoming_otp(
     display_code = clean_code if has_valid_otp else "TEST_MSG"
 
     clean_phone = normalize_phone(phone) or (phone or "UNKNOWN").strip()
+    import secrets
+    record_id = f"otp_{int(time.time()*1000)}_{secrets.token_hex(2)}"
+
     record = {
+        "id": record_id,
         "code": display_code,
         "is_otp": has_valid_otp,
         "phone": clean_phone,
@@ -132,7 +136,7 @@ def record_incoming_otp(
                 OTP_WAITERS[key] = []
 
     logger.info(
-        f"[otp] ✓ Intercepted SMS: code='{display_code}', is_otp={has_valid_otp}, "
+        f"[otp] ✓ Intercepted SMS: id='{record_id}', code='{display_code}', is_otp={has_valid_otp}, "
         f"phone=+92-{clean_phone}, sender='{sender}', ip='{client_ip or 'unknown'}', "
         f"raw_text='{raw_message[:120] if raw_message else ''}'. (Woke up {notified_count} tasks)"
     )
@@ -202,3 +206,27 @@ def get_all_cached_otps() -> List[dict]:
         age = time.time() - item.get("timestamp", 0)
         results.append({**item, "age_seconds": round(age, 1)})
     return results
+
+
+def delete_otp_record(record_id: str) -> bool:
+    """Delete an individual OTP record by its unique ID."""
+    global RECENT_SMS_STREAM
+    found = False
+    for i, item in enumerate(list(RECENT_SMS_STREAM)):
+        if item.get("id") == record_id:
+            RECENT_SMS_STREAM.remove(item)
+            found = True
+            break
+    for phone, rec in list(OTP_STORE.items()):
+        if rec.get("id") == record_id:
+            del OTP_STORE[phone]
+    return found
+
+
+def clear_all_otp_records() -> int:
+    """Clear all rolling stream and cached OTP records."""
+    global RECENT_SMS_STREAM
+    count = len(RECENT_SMS_STREAM)
+    RECENT_SMS_STREAM.clear()
+    OTP_STORE.clear()
+    return count

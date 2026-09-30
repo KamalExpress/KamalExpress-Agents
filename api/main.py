@@ -867,7 +867,7 @@ async def get_otp_system_status(user: dict = Depends(get_current_user)):
         "webhook_url": "/api/otp/webhook",
         "webhook_secret_configured": bool(auth_cfg.webhook_secret),
         "total_cached": len(get_all_cached_otps()),
-        "recent_otps": get_all_cached_otps()[:10],
+        "recent_otps": get_all_cached_otps()[:50],
     }
 
 
@@ -887,6 +887,24 @@ async def simulate_test_otp(phone: Optional[str] = Query("3001234567"), code: Op
         "message": f"Test OTP {sim_code} simulated successfully for +92-{record['phone']}.",
         "record": record,
     }
+
+
+@app.delete("/api/otp/clear-all")
+async def clear_all_otps_endpoint(user: dict = Depends(get_current_user)):
+    """Clear all rolling stream and cached OTP records."""
+    from agents.appointments.otp import clear_all_otp_records
+    count = clear_all_otp_records()
+    return {"success": True, "message": f"Cleared {count} OTP records.", "cleared_count": count}
+
+
+@app.delete("/api/otp/{record_id}")
+async def delete_otp_endpoint(record_id: str, user: dict = Depends(get_current_user)):
+    """Delete an individual OTP record by its ID."""
+    from agents.appointments.otp import delete_otp_record
+    found = delete_otp_record(record_id)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"OTP record '{record_id}' not found.")
+    return {"success": True, "message": f"OTP record '{record_id}' deleted."}
 
 
 # ── Proxy Management REST Endpoints ──────────────────────────────────────────
