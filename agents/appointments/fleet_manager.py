@@ -183,12 +183,13 @@ class AccountWorkerInstance:
                         if slot.available_capacity <= 0:
                             continue
 
-                        # Atomically claim next client
+                        # Atomically claim next client matching destination, visa type, VAC, and date range
                         client = claim_next_client(
                             destination="Greece",
                             visa_type=visa_type,
                             vac_id=vac_id,
-                            worker_id=f"fleet-worker-{self.account_id}"
+                            worker_id=f"fleet-worker-{self.account_id}",
+                            slot_date=slot.date
                         )
                         if not client:
                             break

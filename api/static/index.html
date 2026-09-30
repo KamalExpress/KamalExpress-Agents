@@ -1444,6 +1444,17 @@ How can I help you today?</div>
       </div>
     </div>
 
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Earliest Slot Date (DD/MM/YYYY)</label>
+        <input type="text" id="m-preferred-start" placeholder="e.g. 07/10/2026 (Optional)">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Notes / Comments</label>
+        <input type="text" id="m-notes" placeholder="Optional notes or ARN">
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeAddModal()">Cancel</button>
       <button class="btn btn-primary" onclick="submitAddClient()">
@@ -1533,6 +1544,17 @@ How can I help you today?</div>
           <option value="137">Karachi (137)</option>
           <option value="139">Lahore (139)</option>
         </select>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Earliest Slot Date (DD/MM/YYYY)</label>
+        <input type="text" id="edit-client-preferred-start" placeholder="e.g. 07/10/2026 (Optional)">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Latest Slot Date (DD/MM/YYYY)</label>
+        <input type="text" id="edit-client-preferred-end" placeholder="e.g. 30/10/2026 (Optional)">
       </div>
     </div>
 
@@ -2604,6 +2626,8 @@ How can I help you today?</div>
       document.getElementById('edit-client-status').value = c.status || 'QUEUED';
       document.getElementById('edit-client-type').value = c.visa_type || '26';
       document.getElementById('edit-client-vac').value = c.vac_id || '138';
+      document.getElementById('edit-client-preferred-start').value = c.preferred_date_start || '';
+      document.getElementById('edit-client-preferred-end').value = c.preferred_date_end || '';
       document.getElementById('edit-client-notes').value = c.notes || '';
 
       document.getElementById('edit-client-modal').classList.add('active');
@@ -2636,6 +2660,8 @@ How can I help you today?</div>
       visa_type: document.getElementById('edit-client-type').value,
       vac_id: document.getElementById('edit-client-vac').value,
       vac_city: document.getElementById('edit-client-vac').options[document.getElementById('edit-client-vac').selectedIndex].text.split(' ')[0],
+      preferred_date_start: document.getElementById('edit-client-preferred-start').value.trim() || null,
+      preferred_date_end: document.getElementById('edit-client-preferred-end').value.trim() || null,
       notes: document.getElementById('edit-client-notes').value.trim(),
     };
 
@@ -2691,6 +2717,8 @@ How can I help you today?</div>
       visa_type: document.getElementById('m-type').value,
       vac_id: document.getElementById('m-vac').value,
       vac_city: document.getElementById('m-vac').options[document.getElementById('m-vac').selectedIndex].text.split(' ')[0],
+      preferred_date_start: document.getElementById('m-preferred-start').value.trim() || null,
+      notes: document.getElementById('m-notes').value.trim(),
     };
 
     if (!payload.first_name || !payload.last_name || !payload.passport_number || !payload.phone_number || !payload.email) {

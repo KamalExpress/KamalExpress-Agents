@@ -423,35 +423,61 @@ def get_client_by_passport(passport_number: str, db_path: Path = DB_PATH) -> Opt
         conn.close()
 
 
+def _matches_date_range(slot_date: Optional[str], start: Optional[str], end: Optional[str]) -> bool:
+    """Check if a slot date (DD/MM/YYYY) falls within [start, end]."""
+    if not slot_date or (not start and not end):
+        return True
+    try:
+        from datetime import datetime
+        slot_dt = datetime.strptime(slot_date.strip(), "%d/%m/%Y")
+        if start and start.strip():
+            start_dt = datetime.strptime(start.strip(), "%d/%m/%Y")
+            if slot_dt < start_dt:
+                return False
+        if end and end.strip():
+            end_dt = datetime.strptime(end.strip(), "%d/%m/%Y")
+            if slot_dt > end_dt:
+                return False
+        return True
+    except Exception:
+        return True
+
+
 def claim_next_client(
     destination: str = "Greece",
     visa_type: str = "26",
     vac_id: str = "138",
     worker_id: str = "worker-1",
+    slot_date: Optional[str] = None,
     db_path: Path = DB_PATH
 ) -> Optional[ClientProfile]:
     """
-    Atomically claim the next eligible QUEUED client for a given destination/visa type/VAC.
+    Atomically claim the next eligible QUEUED client for a given destination/visa type/VAC/date.
     Sets status to 'IN_PROGRESS' with a lock to prevent concurrent double-booking.
     """
     with _lock:
         conn = get_connection(db_path)
         try:
             with conn:
-                row = conn.execute("""
+                rows = conn.execute("""
                     SELECT * FROM client_queue
                     WHERE status = 'QUEUED'
                       AND destination = ?
                       AND visa_type = ?
                       AND (vac_id = ? OR vac_id IS NULL OR vac_id = '')
                     ORDER BY id ASC
-                    LIMIT 1
-                """, (destination, visa_type, vac_id)).fetchone()
+                """, (destination, visa_type, vac_id)).fetchall()
 
-                if not row:
+                matching_row = None
+                for r in rows:
+                    if _matches_date_range(slot_date, r["preferred_date_start"], r["preferred_date_end"]):
+                        matching_row = r
+                        break
+
+                if not matching_row:
                     return None
 
-                client_id = row["id"]
+                client_id = matching_row["id"]
                 now_str = datetime.utcnow().isoformat()
                 conn.execute("""
                     UPDATE client_queue
@@ -459,9 +485,9 @@ def claim_next_client(
                     WHERE id = ?
                 """, (worker_id, now_str, client_id))
 
-                client = row_to_client(row)
+                client = row_to_client(matching_row)
                 client.status = "IN_PROGRESS"
-                logger.info(f"[db] Worker '{worker_id}' atomically claimed client #{client_id}: {client.first_name} {client.last_name}")
+                logger.info(f"[db] Worker '{worker_id}' atomically claimed client #{client_id}: {client.first_name} {client.last_name} for slot date {slot_date or 'ANY'}")
                 return client
         finally:
             conn.close()
