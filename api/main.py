@@ -903,6 +903,15 @@ async def search_slots(
         visa_type=visa_type,
         date_from=date_from,
     )
+    if slots and any(s.available_capacity > 0 for s in slots):
+        from agents.appointments.fleet_manager import slot_cache
+        slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=300)
+        log_system_event(
+            level="SUCCESS",
+            category="SLOT_DISCOVERY",
+            message=f"Live search discovered {len(slots)} open slot(s) for VAC {vac_id} (Type {visa_type}). Populated shared discovery cache for active fleet workers.",
+            details={"vac_id": vac_id, "visa_type": visa_type, "slots_count": len(slots)},
+        )
     status_info = getattr(gvc_driver, "last_search_status", {})
     return {
         "vac_id": vac_id,

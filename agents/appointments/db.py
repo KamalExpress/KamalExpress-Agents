@@ -487,21 +487,32 @@ def get_client_by_passport(passport_number: str, db_path: Path = DB_PATH) -> Opt
         conn.close()
 
 
+def _parse_flexible_date(d_str: Optional[str]) -> Optional[datetime]:
+    if not d_str or not d_str.strip():
+        return None
+    cleaned = d_str.strip().split("T")[0]
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+    return None
+
+
 def _matches_date_range(slot_date: Optional[str], start: Optional[str], end: Optional[str]) -> bool:
-    """Check if a slot date (DD/MM/YYYY) falls within [start, end]."""
+    """Check if a slot date falls within [start, end], supporting ISO and DD/MM/YYYY formats."""
     if not slot_date or (not start and not end):
         return True
     try:
-        from datetime import datetime
-        slot_dt = datetime.strptime(slot_date.strip(), "%d/%m/%Y")
-        if start and start.strip():
-            start_dt = datetime.strptime(start.strip(), "%d/%m/%Y")
-            if slot_dt < start_dt:
-                return False
-        if end and end.strip():
-            end_dt = datetime.strptime(end.strip(), "%d/%m/%Y")
-            if slot_dt > end_dt:
-                return False
+        slot_dt = _parse_flexible_date(slot_date)
+        if not slot_dt:
+            return True
+        start_dt = _parse_flexible_date(start)
+        if start_dt and slot_dt < start_dt:
+            return False
+        end_dt = _parse_flexible_date(end)
+        if end_dt and slot_dt > end_dt:
+            return False
         return True
     except Exception:
         return True

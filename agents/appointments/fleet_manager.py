@@ -251,24 +251,19 @@ class AccountWorkerInstance:
                 visa_type = acc.get("target_visa_type", "26")
                 vac_meta = GVC_VACS.get(str(vac_id), GVC_VACS.get("138", {"name": f"VAC {vac_id}"}))
 
-                # 2. Check if this is a dedicated BOOKER
-                if role == "BOOKER":
-                    self._last_status = "HOT_STANDBY (Pre-Staged Booker)"
-                    cached_slots = slot_cache.get(vac_id=vac_id, visa_type=visa_type)
-                    if not cached_slots:
-                        await asyncio.sleep(3)
-                        continue
-                    slots = cached_slots
-                else:
-                    # SLOT_CHECKER or HYBRID
-                    if slot_cache.is_center_halted(vac_id, visa_type):
-                        self._last_status = "SCAN_HALTED (Slots Open - Awaiting Bookings / Reschedule)"
-                        await asyncio.sleep(10)
-                        continue
+                # 2. Check Shared Cache for Discovered Open Slots First
+                cached_slots = slot_cache.get(vac_id=vac_id, visa_type=visa_type)
+                slots = []
 
-                    # Check shared cache first (3-5m TTL) to prevent redundant scanning
-                    cached = slot_cache.get(vac_id=vac_id, visa_type=visa_type)
-                    if cached is not None and len(cached) == 0:
+                if cached_slots and any(s.available_capacity > 0 for s in cached_slots):
+                    slots = cached_slots
+                elif role == "BOOKER":
+                    self._last_status = "HOT_STANDBY (Pre-Staged Booker)"
+                    await asyncio.sleep(3)
+                    continue
+                else:
+                    # SLOT_CHECKER or HYBRID scanning
+                    if cached_slots is not None and len(cached_slots) == 0:
                         self._last_status = "IDLE (Shared Cache Active)"
                         await asyncio.sleep(15)
                         continue
@@ -349,13 +344,16 @@ class AccountWorkerInstance:
                         worker_name=persona,
                     )
 
-                    # If this is purely a SLOT_CHECKER, it halts scanning and leaves booking to BOOKER accounts
+                    # If this is purely a SLOT_CHECKER, it leaves booking to BOOKER and HYBRID accounts
                     if role == "SLOT_CHECKER":
                         self._last_status = "SLOTS_DISCOVERED (Notified Booker Fleet)"
                         await asyncio.sleep(10)
                         continue
 
                     # Execute booking pipeline for BOOKER and HYBRID
+                    self._last_status = f"BOOKING_IN_PROGRESS ({len(slots)} open)"
+                    claimed_any = False
+
                     for slot in slots:
                         if slot.available_capacity <= 0:
                             continue
@@ -369,11 +367,12 @@ class AccountWorkerInstance:
                             slot_date=slot.date
                         )
                         if not client:
-                            break
+                            continue
 
+                        claimed_any = True
                         masked_sim = mask_phone_pii(acc.get("otp_phone_number") or client.phone_number)
                         fleet_manager.log_event(
-                            f"⚡ Operator '{persona}' claimed Client #{client.id} ({client.first_name} {client.last_name}). Triggering verification code to SIM {masked_sim}...",
+                            f"⚡ Operator '{persona}' claimed Client #{client.id} ({client.first_name} {client.last_name}). Triggering verification code to SIM {masked_sim} for {vac_meta.get('name', 'VAC')} on {slot.date} {slot.time}...",
                             level="INFO",
                             category="BOOKING",
                             account_id=self.account_id,
@@ -472,6 +471,17 @@ class AccountWorkerInstance:
                                 account_id=self.account_id,
                                 worker_name=persona,
                             )
+
+                    if not claimed_any:
+                        self._last_status = f"SLOTS_OPEN (Awaiting Matching Queued Applicants for {vac_meta.get('name', 'VAC')})"
+                        fleet_manager.log_event(
+                            f"Operator '{persona}' detected {len(slots)} open slot(s) for {vac_meta.get('name', 'VAC')} (Type {visa_type}), but no matching QUEUED applicant was found in intake queue.",
+                            level="WARNING",
+                            category="QUEUE",
+                            account_id=self.account_id,
+                            worker_name=persona,
+                            details={"vac_id": vac_id, "visa_type": visa_type, "slots_open": len(slots)},
+                        )
                 else:
                     self._last_status = "IDLE (No Open Slots Detected)"
 
