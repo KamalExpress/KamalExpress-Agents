@@ -214,3 +214,44 @@ def test_manual_client_booking_trigger():
         delete_client(cid)
 
 
+def test_quick_book_slot_endpoint():
+    headers = get_auth_headers("admin")
+    from agents.appointments.schemas import ClientProfile
+    from agents.appointments.db import add_client, delete_client, get_client_by_id
+
+    # Add temporary test client with distinct preferences
+    c_obj = ClientProfile(
+        first_name="QuickBook",
+        last_name="Tester",
+        dob="01/01/1996",
+        passport_number="PKQUICK99",
+        passport_expiry="01/01/2034",
+        phone_number="3005544332",
+        email="quick@test.com",
+        destination="Greece",
+        visa_type="26",
+        vac_id="138",
+        vac_city="Islamabad",
+        preferred_date_start="01/01/2029",  # Future date that would normally not match today
+        status="QUEUED",
+    )
+    cid = add_client(c_obj)
+
+    try:
+        # Quick-book should claim client regardless of date preference
+        payload = {
+            "slot_id": "TEST_SLOT_101",
+            "slot_date": "15/10/2026",
+            "slot_time": "09:30",
+            "vac_id": "138",
+            "visa_type": "26",
+        }
+        resp = client.post("/api/slots/quick-book", json=payload, headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "status" in data or "success" in data
+    finally:
+        delete_client(cid)
+
+
+

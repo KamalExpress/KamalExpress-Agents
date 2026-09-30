@@ -21,6 +21,7 @@ from typing import Dict, List, Optional, Set
 
 from .db import (
     claim_next_client,
+    claim_next_client_any_date,
     get_client_by_id,
     _matches_date_range,
     get_gvc_portal_accounts,
@@ -887,6 +888,217 @@ class GVCFleetManager:
             )
             self.log_event(
                 f"❌ [MANUAL TRIGGER] Booking submission failed for {client.passport_number}: {result.message}",
+                level="WARNING",
+                category="BOOKING",
+                account_id=account_id,
+                worker_name=persona,
+            )
+            return {
+                "success": False,
+                "status": "FAILED",
+                "error": f"GVC Portal Booking Error: {result.message}",
+            }
+
+    async def quick_book_slot(
+        self,
+        slot_id: str,
+        slot_date: str,
+        slot_time: str,
+        vac_id: str = "138",
+        visa_type: str = "26",
+        client_id: Optional[int] = None,
+        triggered_by: str = "staff",
+    ) -> dict:
+        """
+        Immediately claim a slot and book either a specific client or the next available QUEUED applicant,
+        bypassing all date preferences.
+        """
+        vac_id = str(vac_id)
+        visa_type = str(visa_type)
+        vac_meta = GVC_VACS.get(vac_id, GVC_VACS.get("138", {"name": f"VAC {vac_id}"}))
+
+        # 1. Select / Claim Client
+        client: Optional[ClientProfile] = None
+        if client_id:
+            client = get_client_by_id(client_id)
+            if not client:
+                return {"success": False, "status": "NOT_FOUND", "error": f"Client #{client_id} not found."}
+            update_client_status(client.id, status="IN_PROGRESS", notes=f"Quick-booked by {triggered_by} for slot {slot_date} {slot_time}.")
+        else:
+            client = claim_next_client_any_date(
+                destination="Greece",
+                visa_type=visa_type,
+                vac_id=vac_id,
+                worker_id=f"quick-book-{triggered_by}",
+            )
+            if not client:
+                msg = f"No eligible QUEUED applicants found for {vac_meta.get('name', 'VAC')} (Visa Type {visa_type}). Please add applicants to the queue first."
+                self.log_event(msg, level="WARNING", category="QUEUE")
+                return {"success": False, "status": "NO_CLIENTS", "error": msg}
+
+        # 2. Select authenticated worker/driver
+        self.refresh_workers()
+        selected_worker: Optional[AccountWorkerInstance] = None
+        selected_account: Optional[dict] = None
+
+        for worker in self._workers.values():
+            if worker.is_authenticated:
+                acc = get_gvc_portal_account_by_id(worker.account_id)
+                if acc and str(acc.get("target_vac_id")) == vac_id and str(acc.get("target_visa_type")) == visa_type:
+                    selected_worker = worker
+                    selected_account = acc
+                    break
+
+        if not selected_worker:
+            for worker in self._workers.values():
+                if worker.is_authenticated:
+                    selected_worker = worker
+                    selected_account = get_gvc_portal_account_by_id(worker.account_id)
+                    break
+
+        driver: Optional[GVCPortalDriver] = None
+        persona = "Quick Booker"
+        account_id: Optional[int] = None
+        target_phone = client.phone_number
+
+        if selected_worker and selected_account:
+            driver = selected_worker._driver
+            account_id = selected_worker.account_id
+            persona = selected_account.get("worker_persona_name") or get_next_persona_name(account_id)
+            target_phone = selected_account.get("otp_phone_number") or client.phone_number
+
+            token = selected_account.get("bearer_token") or selected_account.get("auth_token")
+            if token:
+                driver._bearer_token = token
+                try:
+                    cj = selected_account.get("cookies_json")
+                    cookies = json.loads(cj) if isinstance(cj, str) else (cj or {})
+                    driver._session_cookies.update(cookies)
+                except Exception:
+                    pass
+            if selected_account.get("assigned_proxy_url"):
+                driver._session_proxy = selected_account.get("assigned_proxy_url")
+        else:
+            try:
+                from .agent import gvc_driver
+                if gvc_driver._load_active_session_from_db():
+                    driver = gvc_driver
+                    persona = "Global GVC Operator"
+            except Exception:
+                pass
+
+        if not driver:
+            # Revert client back to QUEUED if no driver available
+            update_client_status(client.id, status="QUEUED", notes="Quick-book reverted: No authenticated operator available.")
+            msg = "No authenticated GVC operator available to execute booking."
+            self.log_event(msg, level="WARNING", category="AUTH")
+            return {"success": False, "status": "UNAUTHENTICATED", "error": msg}
+
+        # 3. Trigger OTP
+        masked_sim = mask_phone_pii(target_phone)
+        self.log_event(
+            f"⚡ [QUICK BOOK] Operator '{persona}' triggered instant booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')} on {slot_date} {slot_time}. Triggering OTP to SIM {masked_sim}...",
+            level="INFO",
+            category="BOOKING",
+            account_id=account_id,
+            worker_name=persona,
+        )
+
+        await driver.trigger_booking_otp(phone_number=target_phone)
+
+        # 4. Wait for OTP
+        otp_code = await wait_for_otp(phone=target_phone, timeout=75.0)
+        if not otp_code:
+            update_client_status(
+                client_id=client.id,
+                status="FAILED",
+                notes=f"Quick-book failed: OTP verification timed out on SIM {masked_sim}."
+            )
+            self.log_event(
+                f"❌ [QUICK BOOK] OTP timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim}.",
+                level="WARNING",
+                category="OTP",
+                account_id=account_id,
+                worker_name=persona,
+            )
+            return {"success": False, "status": "OTP_TIMEOUT", "error": f"OTP timed out after 75s for SIM {masked_sim}."}
+
+        # 5. Record task & Submit
+        if account_id:
+            record_worker_task(account_id)
+
+        result = await driver.submit_booking(
+            applicant=client,
+            slot_id=slot_id,
+            target_date=slot_date,
+            target_time=slot_time,
+            otp_code=otp_code,
+            vac_id=vac_id,
+            visa_type=visa_type,
+        )
+
+        if result.success:
+            conf_path = save_raw_confirmation(
+                client_id=client.id,
+                booking_reference=result.reference_number or "CONFIRMED",
+                payload_data=result.raw_payload or {"booking_reference": result.reference_number, "status": "CONFIRMED"},
+                worker_name=persona,
+                account_id=account_id,
+            )
+            rate_booking = int(get_system_setting("worker_rate_per_booking_pkr", "5000") or "5000")
+            acc_email = selected_account.get("email", "") if selected_account else ""
+
+            update_client_status(
+                client_id=client.id,
+                status="BOOKED",
+                booking_reference=result.reference_number,
+                booked_date=slot_date,
+                booked_time=slot_time,
+                notes=f"Quick-booked by {triggered_by}. Booked by {persona} ({acc_email}).",
+                raw_confirmation_path=conf_path,
+                booked_by_account_id=account_id,
+                booked_by_worker_name=persona,
+                booking_cost_pkr=rate_booking,
+            )
+            self.log_event(
+                f"🎉 [QUICK BOOK] BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {slot_date} {slot_time}!",
+                level="SUCCESS",
+                category="BOOKING",
+                account_id=account_id,
+                worker_name=persona,
+                details={"arn": result.reference_number, "client_id": client.id, "slot": slot_date, "cost_pkr": rate_booking},
+            )
+            return {
+                "success": True,
+                "status": "BOOKED",
+                "client_id": client.id,
+                "client_name": f"{client.first_name} {client.last_name}",
+                "reference_number": result.reference_number,
+                "slot_date": slot_date,
+                "slot_time": slot_time,
+                "worker_name": persona,
+                "message": f"Successfully booked {client.first_name} {client.last_name} (Ref: {result.reference_number}) on {slot_date} {slot_time}!",
+            }
+        else:
+            if account_id:
+                record_worker_error(account_id)
+            conf_path = save_raw_confirmation(
+                client_id=client.id,
+                booking_reference="FAILED",
+                payload_data=result.raw_payload or {"error": result.message, "status": "FAILED"},
+                worker_name=persona,
+                account_id=account_id,
+            )
+            update_client_status(
+                client_id=client.id,
+                status="FAILED",
+                notes=f"Quick-book submission error on {persona}: {result.message}",
+                raw_confirmation_path=conf_path,
+                booked_by_account_id=account_id,
+                booked_by_worker_name=persona,
+            )
+            self.log_event(
+                f"❌ [QUICK BOOK] Booking submission failed for {client.passport_number}: {result.message}",
                 level="WARNING",
                 category="BOOKING",
                 account_id=account_id,

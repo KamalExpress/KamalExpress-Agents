@@ -949,6 +949,41 @@ async def search_slots(
     }
 
 
+class QuickBookSlotRequest(BaseModel):
+    slot_id: str
+    slot_date: str
+    slot_time: str
+    vac_id: Optional[str] = "138"
+    visa_type: Optional[str] = "26"
+    client_id: Optional[int] = None
+
+
+@app.post("/api/slots/quick-book")
+async def quick_book_slot_endpoint(
+    req: QuickBookSlotRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Instantly claim a discovered slot and book an applicant, bypassing date filters."""
+    try:
+        username = user.get("username", "staff")
+        res = await fleet_manager.quick_book_slot(
+            slot_id=req.slot_id,
+            slot_date=req.slot_date,
+            slot_time=req.slot_time,
+            vac_id=req.vac_id or "138",
+            visa_type=req.visa_type or "26",
+            client_id=req.client_id,
+            triggered_by=username,
+        )
+        return JSONResponse(status_code=200, content=res)
+    except Exception as e:
+        logger.error(f"[api] Error executing quick_book_slot: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "status": "ERROR", "error": f"Quick-book failed: {str(e)}"},
+        )
+
+
 # ── GVC Session & Dual-Mode Auth Endpoints ─────────────────────────────────────
 
 @app.post("/api/gvc/session/sync")

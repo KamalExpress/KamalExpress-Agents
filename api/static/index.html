@@ -888,10 +888,11 @@ How can I help you today?</div>
               <th>VAC Center</th>
               <th>Category</th>
               <th>Available Capacity</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody id="slot-results-body">
-            <tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:24px;">Select VAC and click 'Query Live Slots' to inspect open appointments.</td></tr>
+            <tr><td colspan="7" style="text-align:center; color:var(--muted-foreground); padding:24px;">Select VAC and click 'Query Live Slots' to inspect open appointments.</td></tr>
           </tbody>
         </table>
       </div>
@@ -2326,6 +2327,7 @@ How can I help you today?</div>
     loadOtpStream();
     loadActivityLogsStream();
     startLogStreamTimer();
+    setInterval(refreshQueue, 5000);
     setInterval(loadGvcAccounts, 8000);
     setInterval(loadGVCAuthStatus, 10000);
     setInterval(loadOtpStream, 10000);
@@ -3702,7 +3704,7 @@ How can I help you today?</div>
     const date_from = document.getElementById('slot-date').value.trim();
     const tbody = document.getElementById('slot-results-body');
 
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--primary); padding:18px;">Querying Greece GVC World via Pakistan Residential Proxy...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--primary); padding:18px;">Querying Greece GVC World via Pakistan Residential Proxy...</td></tr>`;
 
     try {
       let url = `/api/slots/search?vac_id=${vac_id}&visa_type=${visa_type}`;
@@ -3713,7 +3715,7 @@ How can I help you today?</div>
 
       tbody.innerHTML = '';
       if (data.status === "UNAUTHENTICATED") {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px;">
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px;">
           <div style="max-width:550px; margin:0 auto; background:var(--accent-light); border:1px solid #fed7aa; border-radius:var(--radius); padding:16px;">
             <div style="font-weight:600; color:#c2410c; font-size:13.5px; margin-bottom:6px; display:flex; align-items:center; justify-content:center; gap:6px;">
               <i data-lucide="alert-triangle" class="icon" style="width:16px; height:16px;"></i> GVC Portal Session Unauthenticated
@@ -3734,7 +3736,7 @@ How can I help you today?</div>
       }
 
       if (data.status === "WAF_CHALLENGE") {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px;">
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px;">
           <div style="max-width:550px; margin:0 auto; background:var(--accent-light); border:1px solid #fed7aa; border-radius:var(--radius); padding:16px;">
             <div style="font-weight:600; color:#c2410c; font-size:13.5px; margin-bottom:6px; display:flex; align-items:center; justify-content:center; gap:6px;">
               <i data-lucide="shield-alert" class="icon" style="width:16px; height:16px;"></i> Imperva WAF Protection Active
@@ -3755,12 +3757,12 @@ How can I help you today?</div>
       }
 
       if (data.status === "ERROR") {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--destructive); padding:20px;">Search error: ${escapeHtml(data.error || 'Network error')}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--destructive); padding:20px;">Search error: ${escapeHtml(data.error || 'Network error')}</td></tr>`;
         return;
       }
 
       if (!data.slots || data.slots.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--muted-foreground); padding:20px;">No open appointment slots currently available on GVC for VAC ${vac_id} (Type ${visa_type}).</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--muted-foreground); padding:20px;">No open appointment slots currently available on GVC for VAC ${vac_id} (Type ${visa_type}).</td></tr>`;
         return;
       }
 
@@ -3773,12 +3775,72 @@ How can I help you today?</div>
           <td>${s.vac_name}</td>
           <td>Type ${s.visa_type}</td>
           <td><span class="badge badge-booked"><i data-lucide="check" class="icon"></i> Available (${s.available_capacity})</span></td>
+          <td>
+            <button class="btn btn-primary btn-sm" onclick="quickBookSlot('${s.slot_id}', '${s.date}', '${s.time}', '${s.vac_id || vac_id}', '${s.visa_type || visa_type}', '${escapeHtml(s.vac_name || '')}')" title="Instantly book the next queued applicant on this slot (bypasses date settings)" style="padding:3px 8px; background:#0284c7; border-color:#0284c7; font-size:11.5px; font-weight:600;">
+              <i data-lucide="zap" class="icon" style="width:11px; height:11px;"></i> Quick Book
+            </button>
+          </td>
         `;
         tbody.appendChild(tr);
       });
       renderIcons();
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--destructive);">Search error: ${err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--destructive);">Search error: ${err.message}</td></tr>`;
+    }
+  }
+
+  async function quickBookSlot(slotId, slotDate, slotTime, vacId, visaType, vacName) {
+    const centerTitle = vacName || `VAC ${vacId}`;
+    if (!confirm(`⚡ Immediately book the next QUEUED applicant on this open slot?\n\nCenter: ${centerTitle} (Type ${visaType})\nDate & Time: ${slotDate} at ${slotTime}\n\n(Note: This bypasses client date preferences and claims the next queued applicant immediately.)`)) {
+      return;
+    }
+
+    const toast = document.createElement('div');
+    toast.id = `qb-toast-${slotId}`;
+    toast.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#0f172a; color:#f8fafc; padding:12px 18px; border-radius:8px; border:1px solid #38bdf8; box-shadow:0 10px 25px rgba(0,0,0,0.5); z-index:99999; display:flex; align-items:center; gap:10px; font-size:13px;';
+    toast.innerHTML = `<i data-lucide="loader" class="icon" style="animation:spin 1s linear infinite; width:16px; height:16px; color:#38bdf8;"></i> <span>Quick-booking applicant for <b>${escapeHtml(slotDate)} ${escapeHtml(slotTime)}</b>...</span>`;
+    document.body.appendChild(toast);
+    renderIcons();
+
+    try {
+      const resp = await fetch('/api/slots/quick-book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slot_id: String(slotId),
+          slot_date: slotDate,
+          slot_time: slotTime,
+          vac_id: String(vacId),
+          visa_type: String(visaType),
+        }),
+      });
+      if (resp.status === 401) { showLogin(); return; }
+
+      let data = {};
+      const rawText = await resp.text();
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        data = { success: false, error: rawText || `HTTP ${resp.status} Server Error` };
+      }
+
+      if (resp.ok && data.success) {
+        alert(`🎉 QUICK BOOKING SUCCESSFUL!\n\nApplicant: ${data.client_name} (#${data.client_id})\nReference: ${data.reference_number || 'CONFIRMED'}\nSlot: ${data.slot_date} ${data.slot_time}\nOperator: ${data.worker_name || 'Fleet Operator'}\n\nClient queue record has been updated with full booking confirmation proof.`);
+      } else if (data.status === 'NO_CLIENTS') {
+        alert(`ℹ️ NO QUEUED APPLICANTS FOUND\n\n${data.error || 'No queued applicants found matching this VAC and visa type.'}\n\nPlease add applicants to the queue to book them.`);
+      } else if (data.status === 'OTP_TIMEOUT') {
+        alert(`⚠️ OTP VERIFICATION TIMED OUT\n\n${data.error || 'SMS verification code was not received within 75 seconds.'}\n\nPlease check the operator SIM and try again.`);
+      } else {
+        alert(`❌ Quick Booking Result:\n\n${data.error || data.detail || data.message || 'Operation failed.'}`);
+      }
+    } catch (err) {
+      alert(`Network error during quick-booking: ${err.message}`);
+    } finally {
+      const t = document.getElementById(`qb-toast-${slotId}`);
+      if (t) t.remove();
+      refreshQueue();
+      loadActivityLogsStream();
+      renderIcons();
     }
   }
 

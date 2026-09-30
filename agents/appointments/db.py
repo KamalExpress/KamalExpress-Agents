@@ -568,6 +568,50 @@ def claim_next_client(
             conn.close()
 
 
+def claim_next_client_any_date(
+    destination: str = "Greece",
+    visa_type: str = "26",
+    vac_id: str = "138",
+    worker_id: str = "quick-book-worker",
+    db_path: Path = DB_PATH
+) -> Optional[ClientProfile]:
+    """
+    Atomically claim the next eligible QUEUED client for a given destination/visa type/VAC,
+    bypassing all date preferences for instant slot claim.
+    """
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                row = conn.execute("""
+                    SELECT * FROM client_queue
+                    WHERE status = 'QUEUED'
+                      AND destination = ?
+                      AND visa_type = ?
+                      AND (vac_id = ? OR vac_id IS NULL OR vac_id = '')
+                    ORDER BY id ASC
+                    LIMIT 1
+                """, (destination, str(visa_type), str(vac_id))).fetchone()
+
+                if not row:
+                    return None
+
+                client_id = row["id"]
+                now_str = datetime.utcnow().isoformat()
+                conn.execute("""
+                    UPDATE client_queue
+                    SET status = 'IN_PROGRESS', locked_by_worker = ?, locked_at = ?
+                    WHERE id = ?
+                """, (worker_id, now_str, client_id))
+
+                client = row_to_client(row)
+                client.status = "IN_PROGRESS"
+                logger.info(f"[db] Worker '{worker_id}' claimed next client #{client_id}: {client.first_name} {client.last_name} for instant slot assignment (ignoring date constraints).")
+                return client
+        finally:
+            conn.close()
+
+
 def update_client_status(
     client_id: int,
     status: str,
