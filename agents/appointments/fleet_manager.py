@@ -847,30 +847,35 @@ class GVCFleetManager:
 
             # Filter available slots
             available_slots = [s for s in (slots or []) if s.available_capacity > 0]
-            target_slot: Optional[AvailableSlot] = None
-
-            if available_slots:
-                for s in available_slots:
-                    if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
-                        target_slot = s
-                        break
-                if not target_slot:
-                    target_slot = available_slots[0]
-                target_date = target_slot.date
-                target_time = target_slot.time
-                target_slot_id = target_slot.slot_id
-            else:
-                # DIRECT BLIND STRIKE: No search slots found, but we proceed with direct booking on or after preferred_date_start
-                target_date = client.preferred_date_start or (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
-                target_time = "09:30"
-                target_slot_id = "0"
+            if not available_slots:
+                visa_label = GVC_VISA_TYPES.get(str(client.visa_type or visa_type), f"Type {client.visa_type or visa_type}")
+                vac_name = vac_meta.get("name", f"VAC {vac_id}")
+                msg = f"No open appointment slots found at {vac_name} ({visa_label}) for Client #{client.id} ({client.first_name} {client.last_name}). Booking halted; applicant remains QUEUED."
                 self.log_event(
-                    f"⚡ [DIRECT BLIND STRIKE] No prior slots in cache for {vac_meta.get('name', 'VAC')} (Type {visa_type}). Executing direct booking strike on target date {target_date} {target_time} for Client #{client.id} ({client.first_name} {client.last_name})...",
-                    level="INFO",
-                    category="BOOKING",
+                    f"⚠️ {msg}",
+                    level="WARNING",
+                    category="SLOT_DISCOVERY",
                     account_id=account_id,
                     worker_name=persona,
                 )
+                return {
+                    "success": False,
+                    "status": "NO_SLOTS_AVAILABLE",
+                    "error": msg,
+                    "vac_id": vac_id,
+                    "visa_type": visa_type,
+                }
+
+            target_slot: Optional[AvailableSlot] = None
+            for s in available_slots:
+                if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
+                    target_slot = s
+                    break
+            if not target_slot:
+                target_slot = available_slots[0]
+            target_date = target_slot.date
+            target_time = target_slot.time
+            target_slot_id = target_slot.slot_id
 
             # 3. Mark client in progress
             update_client_status(
