@@ -842,6 +842,32 @@ async def login_account_endpoint(account_id: int, user: dict = Depends(get_curre
         return {"success": False, "error": res.get("error", "Login failed")}
 
 
+@app.post("/api/gvc/accounts/{account_id}/logout")
+async def logout_account_endpoint(account_id: int, user: dict = Depends(get_current_user)):
+    """Log out a specific GVC portal account and clear its authenticated tokens."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    acc = get_gvc_portal_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="GVC Account not found.")
+    if not is_admin and acc["owner_username"] != username:
+        raise HTTPException(status_code=403, detail="You can only log out your own portal accounts.")
+
+    update_gvc_account_session(
+        account_id=account_id,
+        auth_token="",
+        bearer_token="",
+        cookies_json="{}",
+        is_authenticated=False,
+        last_error=None,
+    )
+    worker = fleet_manager.get_worker(account_id)
+    if worker:
+        worker._last_status = "LOGGED_OUT"
+    fleet_manager.refresh_workers()
+    return {"success": True, "message": f"Account #{account_id} ({acc['email']}) logged out successfully."}
+
+
 @app.post("/api/gvc/accounts/{account_id}/sync-token")
 async def sync_account_token_endpoint(account_id: int, req: GVCAccountSyncTokenRequest, user: dict = Depends(get_current_user)):
     """Manually sync token / cookies for a specific GVC account."""

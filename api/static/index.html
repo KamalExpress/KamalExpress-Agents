@@ -1906,9 +1906,15 @@ How can I help you today?</div>
           <td><span class="badge ${authBadgeClass}">${authBadgeText}</span></td>
           <td><span class="badge ${workerBadgeClass}">${workerBadgeText}</span></td>
           <td style="text-align:right; white-space:nowrap;">
-            <button class="btn btn-outline btn-sm" onclick="loginGvcAccount(${acc.id})" title="Auto-Login with CapSolver" style="padding:3px 7px; font-size:11.5px;">
-              <i data-lucide="zap" class="icon" style="width:12px; height:12px; color:var(--accent);"></i> Login
-            </button>
+            ${isAuth ? `
+              <button class="btn btn-outline btn-sm" onclick="logoutGvcAccount(${acc.id})" title="Log Out Session" style="padding:3px 7px; font-size:11.5px; color:#b91c1c; border-color:#fecaca;">
+                <i data-lucide="log-out" class="icon" style="width:12px; height:12px; color:#b91c1c;"></i> Logout
+              </button>
+            ` : `
+              <button class="btn btn-outline btn-sm" onclick="loginGvcAccount(${acc.id})" title="Auto-Login with CapSolver" style="padding:3px 7px; font-size:11.5px;">
+                <i data-lucide="zap" class="icon" style="width:12px; height:12px; color:var(--accent);"></i> Login
+              </button>
+            `}
             <button class="btn btn-outline btn-sm" onclick="toggleGvcAccountWorker(${acc.id})" title="${isWorkerActive ? 'Pause Worker' : 'Start Worker'}" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
               <i data-lucide="${isWorkerActive ? 'pause' : 'play'}" class="icon" style="width:12px; height:12px;"></i>
             </button>
@@ -2046,6 +2052,22 @@ How can I help you today?</div>
       }
     } catch (e) {
       alert(`Login error: ${e.message}`);
+    }
+  }
+
+  async function logoutGvcAccount(id) {
+    if (!confirm(`Are you sure you want to log out and clear the active session for GVC Account #${id}?`)) return;
+    try {
+      const resp = await fetch(`/api/gvc/accounts/${id}/logout`, { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`🔒 ${data.message}`);
+        loadGvcAccounts();
+      } else {
+        alert(`❌ Logout failed: ${data.detail || data.error || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Logout error: ${e.message}`);
     }
   }
 
