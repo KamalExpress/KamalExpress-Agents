@@ -24,6 +24,9 @@ from .db import (
     claim_next_client_any_date,
     get_client_by_id,
     _matches_date_range,
+    record_discovered_hot_slots,
+    get_active_hot_slots,
+    mark_hot_slot_consumed,
     get_gvc_portal_accounts,
     get_gvc_portal_account_by_id,
     update_gvc_account_session,
@@ -349,6 +352,13 @@ class AccountWorkerInstance:
                 # 3. Process Detected Slots
                 if slots and any(s.available_capacity > 0 for s in slots):
                     self._last_status = f"SLOTS_DETECTED ({len(slots)} open)"
+                    record_discovered_hot_slots(
+                        vac_id=vac_id,
+                        visa_type=visa_type,
+                        slots=slots,
+                        discovered_by=persona,
+                        ttl_seconds=90
+                    )
                     fleet_manager.log_event(
                         f"🚨 Found {len(slots)} open slots at {vac_meta.get('name', 'VAC')} (Type {visa_type})!",
                         level="SUCCESS",
@@ -371,7 +381,7 @@ class AccountWorkerInstance:
                         if slot.available_capacity <= 0:
                             continue
 
-                        # Atomically claim next client matching destination, visa type, VAC, and date range
+                        # Atomically claim next client matching destination, visa type, VAC (fallback to any date)
                         client = claim_next_client(
                             destination="Greece",
                             visa_type=visa_type,
@@ -379,6 +389,13 @@ class AccountWorkerInstance:
                             worker_id=f"fleet-worker-{self.account_id}",
                             slot_date=slot.date
                         )
+                        if not client:
+                            client = claim_next_client_any_date(
+                                destination="Greece",
+                                visa_type=visa_type,
+                                vac_id=vac_id,
+                                worker_id=f"fleet-worker-{self.account_id}"
+                            )
                         if not client:
                             continue
 
@@ -429,6 +446,7 @@ class AccountWorkerInstance:
 
                         if result.success:
                             self._total_booked += 1
+                            mark_hot_slot_consumed(slot.slot_id)
                             # Save raw confirmation payload to disk
                             conf_path = save_raw_confirmation(
                                 client_id=client.id,
@@ -1110,6 +1128,56 @@ class GVCFleetManager:
                 "error": f"GVC Portal Booking Error: {result.message}",
             }
 
+    async def process_discovered_slots(
+        self,
+        vac_id: str,
+        visa_type: str,
+        slots: list,
+        triggered_by: str = "slot-search"
+    ) -> List[dict]:
+        """
+        Takes a list of open slots (e.g. from live search or monitor), records them to hot_slots
+        with short TTL (90s), and immediately attempts automated bookings for all eligible queued clients.
+        """
+        if not slots or not any(getattr(s, "available_capacity", 0) > 0 for s in slots):
+            return []
+
+        # 1. Record to DB hot_slots with 90s short lifespan
+        record_discovered_hot_slots(
+            vac_id=vac_id,
+            visa_type=visa_type,
+            slots=slots,
+            discovered_by=triggered_by,
+            ttl_seconds=90
+        )
+
+        results = []
+        for slot in slots:
+            cap = getattr(slot, "available_capacity", 1)
+            slot_id = getattr(slot, "slot_id", "")
+            slot_date = getattr(slot, "date", "")
+            slot_time = getattr(slot, "time", "")
+
+            if cap <= 0:
+                continue
+
+            res = await self.quick_book_slot(
+                slot_id=slot_id,
+                slot_date=slot_date,
+                slot_time=slot_time,
+                vac_id=vac_id,
+                visa_type=visa_type,
+                triggered_by=triggered_by
+            )
+            results.append(res)
+            if res.get("success"):
+                mark_hot_slot_consumed(slot_id)
+            elif res.get("status") in ("NO_CLIENTS", "UNAUTHENTICATED"):
+                break
+
+        return results
+
 
 # Global Fleet Manager Singleton
 fleet_manager = GVCFleetManager()
+

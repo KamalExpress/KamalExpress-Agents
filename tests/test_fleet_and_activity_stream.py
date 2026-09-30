@@ -299,5 +299,42 @@ def test_export_and_import_admin_data():
     delete_client(999988)
 
 
+def test_hot_slots_lifecycle_and_auto_purge():
+    headers = get_auth_headers("admin")
+    from agents.appointments.db import record_discovered_hot_slots, get_active_hot_slots, mark_hot_slot_consumed
+    from agents.appointments.schemas import AvailableSlot
+
+    mock_slots = [
+        AvailableSlot(slot_id="HOT_SLOT_01", vac_id="138", vac_name="Islamabad", visa_type="26", date="20/10/2026", time="10:00", available_capacity=1, is_available=True),
+        AvailableSlot(slot_id="HOT_SLOT_02", vac_id="138", vac_name="Islamabad", visa_type="26", date="21/10/2026", time="11:30", available_capacity=2, is_available=True),
+    ]
+
+    # 1. Record hot slots with short TTL (2 seconds for testing)
+    count = record_discovered_hot_slots(vac_id="138", visa_type="26", slots=mock_slots, discovered_by="test_runner", ttl_seconds=2)
+    assert count == 2
+
+    # 2. Query via DB
+    active = get_active_hot_slots(vac_id="138", visa_type="26")
+    assert len(active) >= 2
+
+    # 3. Query via REST endpoint
+    resp = client.get("/api/slots/hot?vac_id=138&visa_type=26", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 2
+
+    # 4. Mark one consumed
+    mark_hot_slot_consumed("HOT_SLOT_01")
+    active_after = get_active_hot_slots(vac_id="138", visa_type="26")
+    assert not any(s["slot_id"] == "HOT_SLOT_01" for s in active_after)
+
+    # 5. Fast forward / check auto-purge after TTL elapses
+    import time
+    time.sleep(2.1)
+    purged = get_active_hot_slots(vac_id="138", visa_type="26")
+    assert not any(s["slot_id"] in ("HOT_SLOT_01", "HOT_SLOT_02") for s in purged)
+
+
+
 
 

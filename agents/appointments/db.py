@@ -16,6 +16,7 @@ import re
 import secrets
 import sqlite3
 import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
@@ -295,6 +296,23 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_ts ON system_logs(timestamp DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_cat ON system_logs(category, level);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS hot_slots (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        vac_id TEXT NOT NULL,
+                        visa_type TEXT NOT NULL,
+                        slot_id TEXT NOT NULL,
+                        slot_date TEXT NOT NULL,
+                        slot_time TEXT NOT NULL,
+                        capacity INTEGER NOT NULL DEFAULT 1,
+                        status TEXT NOT NULL DEFAULT 'HOT_AVAILABLE',
+                        discovered_by TEXT DEFAULT '',
+                        discovered_at TEXT NOT NULL,
+                        expires_at REAL NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_hot_slots_exp ON hot_slots(vac_id, visa_type, status, expires_at);")
 
                 # ── Schema Migrations (Ensure columns exist on existing databases) ────
                 def _ensure_cols(table: str, col_defs: dict[str, str]):
@@ -608,6 +626,91 @@ def claim_next_client_any_date(
                 client.status = "IN_PROGRESS"
                 logger.info(f"[db] Worker '{worker_id}' claimed next client #{client_id}: {client.first_name} {client.last_name} for instant slot assignment (ignoring date constraints).")
                 return client
+        finally:
+            conn.close()
+
+
+# ── Hot Slot Ephemeral Persistence (Short TTL & Fast Auto-Purge) ──────────────
+
+def record_discovered_hot_slots(
+    vac_id: str,
+    visa_type: str,
+    slots: list,
+    discovered_by: str = "",
+    ttl_seconds: int = 90,
+    db_path: Path = DB_PATH
+) -> int:
+    """
+    Persist newly discovered hot slots with a short expiration TTL (default: 90s).
+    Auto-purges stale/expired hot slots to prevent ghost booking attempts.
+    """
+    now_ts = time.time()
+    expires_ts = now_ts + ttl_seconds
+    now_str = datetime.utcnow().isoformat()
+    inserted = 0
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                # Purge expired slots first
+                conn.execute("DELETE FROM hot_slots WHERE expires_at <= ? OR status != 'HOT_AVAILABLE'", (now_ts,))
+
+                for s in slots:
+                    cap = getattr(s, "available_capacity", 1)
+                    if cap <= 0:
+                        continue
+                    slot_id = getattr(s, "slot_id", "") or f"{vac_id}_{visa_type}_{getattr(s, 'date', '')}_{getattr(s, 'time', '')}"
+                    slot_date = getattr(s, "date", "")
+                    slot_time = getattr(s, "time", "")
+
+                    conn.execute("""
+                        INSERT INTO hot_slots (vac_id, visa_type, slot_id, slot_date, slot_time, capacity, status, discovered_by, discovered_at, expires_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'HOT_AVAILABLE', ?, ?, ?)
+                    """, (str(vac_id), str(visa_type), slot_id, slot_date, slot_time, cap, discovered_by, now_str, expires_ts))
+                    inserted += 1
+            return inserted
+        finally:
+            conn.close()
+
+
+def get_active_hot_slots(
+    vac_id: Optional[str] = None,
+    visa_type: Optional[str] = None,
+    db_path: Path = DB_PATH
+) -> List[dict]:
+    """Retrieve unexpired hot slots from DB."""
+    now_ts = time.time()
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                conn.execute("DELETE FROM hot_slots WHERE expires_at <= ?", (now_ts,))
+                query = "SELECT * FROM hot_slots WHERE status = 'HOT_AVAILABLE' AND expires_at > ?"
+                params = [now_ts]
+                if vac_id:
+                    query += " AND vac_id = ?"
+                    params.append(str(vac_id))
+                if visa_type:
+                    query += " AND visa_type = ?"
+                    params.append(str(visa_type))
+                query += " ORDER BY slot_date ASC, slot_time ASC"
+                rows = conn.execute(query, params).fetchall()
+                return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def mark_hot_slot_consumed(slot_id: str, db_path: Path = DB_PATH) -> bool:
+    """Mark a hot slot as consumed / booked and remove it from active table."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("""
+                    DELETE FROM hot_slots WHERE slot_id = ?
+                """, (slot_id,))
+                return cursor.rowcount > 0
         finally:
             conn.close()
 

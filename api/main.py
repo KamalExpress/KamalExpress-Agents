@@ -981,13 +981,22 @@ async def search_slots(
     )
     if slots and any(s.available_capacity > 0 for s in slots):
         from agents.appointments.fleet_manager import slot_cache
-        slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=300)
+        slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=90)
+        username = user.get("username", "staff")
         log_system_event(
             level="SUCCESS",
             category="SLOT_DISCOVERY",
-            message=f"Live search discovered {len(slots)} open slot(s) for VAC {vac_id} (Type {visa_type}). Populated shared discovery cache for active fleet workers.",
+            message=f"Live search discovered {len(slots)} open slot(s) for VAC {vac_id} (Type {visa_type}). Persisted hot slots (90s TTL) and dispatched auto-booking pipeline.",
             details={"vac_id": vac_id, "visa_type": visa_type, "slots_count": len(slots)},
         )
+        # Immediately trigger auto-booking for queued applicants regardless of date setting
+        asyncio.create_task(fleet_manager.process_discovered_slots(
+            vac_id=vac_id,
+            visa_type=visa_type,
+            slots=slots,
+            triggered_by=username
+        ))
+
     status_info = getattr(gvc_driver, "last_search_status", {})
     return {
         "vac_id": vac_id,
@@ -998,6 +1007,18 @@ async def search_slots(
         "total_slots": len(slots),
         "slots": [s.model_dump() for s in slots],
     }
+
+
+@app.get("/api/slots/hot")
+async def get_hot_slots_endpoint(
+    vac_id: Optional[str] = Query(None),
+    visa_type: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """Retrieve active unexpired hot slots from database."""
+    from agents.appointments.db import get_active_hot_slots
+    hot = get_active_hot_slots(vac_id=vac_id, visa_type=visa_type)
+    return {"total": len(hot), "slots": hot}
 
 
 class QuickBookSlotRequest(BaseModel):
