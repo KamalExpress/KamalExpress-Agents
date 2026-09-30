@@ -219,6 +219,24 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     VALUES ('gvc_auth_mode', 'manual', datetime('now'))
                 """)
 
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS otp_records (
+                        id TEXT PRIMARY KEY,
+                        code TEXT NOT NULL,
+                        is_otp INTEGER DEFAULT 1,
+                        phone TEXT NOT NULL,
+                        raw_phone TEXT DEFAULT '',
+                        raw_message TEXT DEFAULT '',
+                        raw_payload TEXT DEFAULT '',
+                        client_ip TEXT DEFAULT '',
+                        sender TEXT DEFAULT 'SMS_FORWARDER',
+                        timestamp REAL NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_otp_phone_ts ON otp_records(phone, timestamp DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_otp_ts ON otp_records(timestamp DESC);")
+
                 # ── Schema Migrations (Ensure columns exist on existing databases) ────
                 def _ensure_cols(table: str, col_defs: dict[str, str]):
                     try:
@@ -1520,6 +1538,110 @@ def invalidate_gvc_session(session_id: Optional[int] = None, db_path: Path = DB_
                     conn.execute("UPDATE gvc_sessions SET is_valid = 0 WHERE id = ?", (session_id,))
                 else:
                     conn.execute("UPDATE gvc_sessions SET is_valid = 0 WHERE is_valid = 1")
+        finally:
+            conn.close()
+
+
+# ── Persistent OTP Record Database Functions ─────────────────────────────────
+
+def save_persisted_otp(record: dict, db_path: Path = DB_PATH) -> None:
+    """Save an incoming OTP record to SQLite database."""
+    import time
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO otp_records (
+                        id, code, is_otp, phone, raw_phone, raw_message, raw_payload,
+                        client_ip, sender, timestamp, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.get("id"),
+                        record.get("code", ""),
+                        1 if record.get("is_otp") else 0,
+                        record.get("phone", ""),
+                        record.get("raw_phone", ""),
+                        record.get("raw_message", ""),
+                        record.get("raw_payload", ""),
+                        record.get("client_ip", ""),
+                        record.get("sender", "SMS_FORWARDER"),
+                        float(record.get("timestamp", time.time())),
+                        record.get("created_at", dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                    ),
+                )
+        except Exception as e:
+            logger.error(f"[db] Failed to persist OTP record {record.get('id')}: {e}", exc_info=True)
+        finally:
+            conn.close()
+
+
+def get_persisted_otps(limit: int = 100, db_path: Path = DB_PATH) -> List[dict]:
+    """Retrieve persisted OTP records from SQLite ordered by timestamp DESC."""
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute(
+            """
+            SELECT id, code, is_otp, phone, raw_phone, raw_message, raw_payload,
+                   client_ip, sender, timestamp, created_at
+            FROM otp_records
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cur.fetchall()
+        results = []
+        for r in rows:
+            results.append({
+                "id": r["id"],
+                "code": r["code"],
+                "is_otp": bool(r["is_otp"]),
+                "phone": r["phone"],
+                "raw_phone": r["raw_phone"] or "",
+                "raw_message": r["raw_message"] or "",
+                "raw_payload": r["raw_payload"] or "",
+                "client_ip": r["client_ip"] or "",
+                "sender": r["sender"] or "SMS_FORWARDER",
+                "timestamp": float(r["timestamp"]),
+                "created_at": r["created_at"],
+            })
+        return results
+    except Exception as e:
+        logger.error(f"[db] Failed to load persisted OTP records: {e}", exc_info=True)
+        return []
+    finally:
+        conn.close()
+
+
+def delete_persisted_otp(record_id: str, db_path: Path = DB_PATH) -> bool:
+    """Delete an individual OTP record from SQLite."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cur = conn.execute("DELETE FROM otp_records WHERE id = ?", (record_id,))
+                return cur.rowcount > 0
+        except Exception as e:
+            logger.error(f"[db] Failed to delete OTP record {record_id}: {e}", exc_info=True)
+            return False
+        finally:
+            conn.close()
+
+
+def clear_all_persisted_otps(db_path: Path = DB_PATH) -> int:
+    """Clear all persisted OTP records from SQLite."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cur = conn.execute("DELETE FROM otp_records")
+                return cur.rowcount
+        except Exception as e:
+            logger.error(f"[db] Failed to clear all OTP records: {e}", exc_info=True)
+            return 0
         finally:
             conn.close()
 

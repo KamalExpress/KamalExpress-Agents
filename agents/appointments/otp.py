@@ -15,6 +15,13 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
+from .db import (
+    save_persisted_otp,
+    get_persisted_otps,
+    delete_persisted_otp,
+    clear_all_persisted_otps,
+)
+
 logger = logging.getLogger(__name__)
 
 # In-memory OTP store: normalized_phone -> record dict
@@ -25,6 +32,27 @@ RECENT_SMS_STREAM: List[dict] = []
 
 # Active waiting futures: normalized_phone -> list of asyncio.Future
 OTP_WAITERS: Dict[str, List[asyncio.Future]] = {}
+
+
+def _init_from_persistence() -> None:
+    """Load persistent OTP records from SQLite into active in-memory cache on startup."""
+    global RECENT_SMS_STREAM, OTP_STORE
+    try:
+        persisted = get_persisted_otps(limit=100)
+        RECENT_SMS_STREAM.clear()
+        RECENT_SMS_STREAM.extend(persisted)
+        for rec in reversed(persisted):
+            if rec.get("is_otp") and rec.get("phone"):
+                OTP_STORE[rec["phone"]] = rec
+                OTP_STORE["latest"] = rec
+        if persisted:
+            logger.info(f"[otp] ✓ Restored {len(persisted)} persistent OTP records from SQLite database.")
+    except Exception as e:
+        logger.warning(f"[otp] Could not load persisted OTPs from SQLite: {e}")
+
+
+# Initialize in-memory cache from persistent SQLite on startup
+_init_from_persistence()
 
 
 def normalize_phone(phone: Optional[str]) -> str:
@@ -122,6 +150,12 @@ def record_incoming_otp(
     if len(RECENT_SMS_STREAM) > 100:
         RECENT_SMS_STREAM.pop()
 
+    # Persist to SQLite database
+    try:
+        save_persisted_otp(record)
+    except Exception as err:
+        logger.error(f"[otp] Failed to persist record to SQLite: {err}")
+
     # Wake up any waiting coroutines only if a real numeric OTP exists
     notified_count = 0
     if has_valid_otp:
@@ -209,7 +243,7 @@ def get_all_cached_otps() -> List[dict]:
 
 
 def delete_otp_record(record_id: str) -> bool:
-    """Delete an individual OTP record by its unique ID."""
+    """Delete an individual OTP record by its unique ID (both in-memory and SQLite)."""
     global RECENT_SMS_STREAM
     found = False
     for i, item in enumerate(list(RECENT_SMS_STREAM)):
@@ -220,13 +254,28 @@ def delete_otp_record(record_id: str) -> bool:
     for phone, rec in list(OTP_STORE.items()):
         if rec.get("id") == record_id:
             del OTP_STORE[phone]
-    return found
+
+    # Delete from persistent SQLite database
+    db_deleted = False
+    try:
+        db_deleted = delete_persisted_otp(record_id)
+    except Exception as err:
+        logger.error(f"[otp] Failed to delete OTP record from SQLite: {err}")
+
+    return found or db_deleted
 
 
 def clear_all_otp_records() -> int:
-    """Clear all rolling stream and cached OTP records."""
+    """Clear all rolling stream and cached OTP records (both in-memory and SQLite)."""
     global RECENT_SMS_STREAM
     count = len(RECENT_SMS_STREAM)
     RECENT_SMS_STREAM.clear()
     OTP_STORE.clear()
+
+    # Clear persistent SQLite database
+    try:
+        clear_all_persisted_otps()
+    except Exception as err:
+        logger.error(f"[otp] Failed to clear OTP records from SQLite: {err}")
+
     return count
