@@ -555,11 +555,11 @@ def claim_next_client(
                 rows = conn.execute("""
                     SELECT * FROM client_queue
                     WHERE status = 'QUEUED'
-                      AND destination = ?
-                      AND visa_type = ?
+                      AND (LOWER(COALESCE(destination, '')) = LOWER(?) OR destination IS NULL OR destination = '')
+                      AND (visa_type = ? OR visa_type IS NULL OR visa_type = '')
                       AND (vac_id = ? OR vac_id IS NULL OR vac_id = '')
                     ORDER BY id ASC
-                """, (destination, visa_type, vac_id)).fetchall()
+                """, (destination, str(visa_type), str(vac_id))).fetchall()
 
                 matching_row = None
                 for r in rows:
@@ -604,8 +604,8 @@ def claim_next_client_any_date(
                 row = conn.execute("""
                     SELECT * FROM client_queue
                     WHERE status = 'QUEUED'
-                      AND destination = ?
-                      AND visa_type = ?
+                      AND (LOWER(COALESCE(destination, '')) = LOWER(?) OR destination IS NULL OR destination = '')
+                      AND (visa_type = ? OR visa_type IS NULL OR visa_type = '')
                       AND (vac_id = ? OR vac_id IS NULL OR vac_id = '')
                     ORDER BY id ASC
                     LIMIT 1
