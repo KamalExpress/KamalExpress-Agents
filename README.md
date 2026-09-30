@@ -1,6 +1,6 @@
 # 🌍 Kamal Express AI Platform
 
-**Autonomous Multi-Agent Travel & Visa Appointment Booking Platform** powered by LangGraph, FastAPI, SQLite WAL, and Dual-Mode GVC Automation.
+**Autonomous Multi-Agent Travel & Visa Appointment Booking Platform** powered by LangGraph, FastAPI, SQLite WAL, Multi-Account GVC Portal Fleet, and Universal OTP Event Bus.
 
 Deployed live on Hetzner VPS with Portainer & Cloudflare Tunnel (`https://keportal.alamiaconnect.com`).
 
@@ -13,12 +13,24 @@ flowchart TD
     Staff([👤 Staff / Admin Workstation]) <--> WebUI[💻 shadcn/ui Dashboard + Lucide Icons]
     WebUI <--> API[⚡ FastAPI Control Plane]
 
-    subgraph AuthEngine ["🔐 Dual-Mode GVC Authentication"]
-        API <--> ModeMgr{Auth Mode?}
-        ModeMgr -->|Option 1: Free / Normal Load| BM[⚡ 1-Click JS Bookmarklet & Token Sync]
-        ModeMgr -->|Option 3: Slot Drop Mode| CapSolver[🤖 Autonomous CapSolver Login & Keepalive]
-        BM --> SessDB[(🗄️ SQLite gvc_sessions)]
-        CapSolver --> SessDB
+    subgraph FleetEngine ["🛡️ Multi-Account GVC Fleet & Parallel Booker Workers"]
+        API <--> FleetMgr[Fleet Manager Singleton]
+        FleetMgr <--> W1[🤖 Booker Worker #1: ISB Type 26]
+        FleetMgr <--> W2[🤖 Booker Worker #2: KHI Type 26]
+        FleetMgr <--> WN[🤖 Booker Worker #N: LHE Type 0]
+    end
+
+    subgraph OTPEventBus ["⚡ Universal Mobile OTP Ingestion & Event Bus"]
+        AndroidForwarder[📱 Android SMS/WhatsApp Forwarder Apps] -->|HTTP POST JSON/Form| OTPWebhook[/api/otp/webhook]
+        OTPWebhook --> OTPSanitizer[Resilient JSON & Code Extractor]
+        OTPSanitizer --> OTPStore[(🗄️ SQLite otp_records + In-Memory Waiters)]
+        OTPStore --> FleetEngine
+    end
+
+    subgraph ProxyEngine ["🇵🇰 Pakistan Residential Proxy Engine"]
+        ProxyMgr[Proxy Pool Manager] <--> ProxyDB[(🗄️ SQLite proxies)]
+        ProxyDB --> AutoExpire[Auto-Expire Quarantine Helper]
+        ProxyMgr --> DirectREST[Direct Authenticated curl_cffi Queries]
     end
 
     subgraph MultiAgents ["🧠 Multi-Agent Operations"]
@@ -30,41 +42,37 @@ flowchart TD
         ApptAgent <--> ClientDB[(🗄️ Multi-Client Persistent Queue)]
     end
 
-    subgraph ExecutionPlane ["🚀 Execution Plane (Direct REST + Proxies)"]
-        SessDB --> DirectREST[Direct Authenticated REST Queries]
-        DirectREST <--> Proxies[🇵🇰 Pakistan Residential Proxies]
+    subgraph DirectExecution ["🚀 Direct Execution Plane"]
         DirectREST --> GVC[🇬🇷 Greece GVC World Portal]
     end
 ```
 
 ---
 
-## 🌟 Key Modules & Features
+## 🌟 Key Modules & Capabilities
 
-### 1. 🔐 Dual-Mode GVC Authentication
-- **Option 1: Manual 1-Click Browser Sync (Zero Cost / Normal Hours)**
-  - Staff logs into GVC on their physical workstation.
-  - With 1 click on the drag-and-drop JavaScript bookmarklet, the active session token is synced to the VPS backend.
-  - Option 3 auto-solver is **PAUSED** to save captcha solving costs.
-- **Option 3: Autonomous Auto-Solver (Slot Drop / High Load Hours)**
-  - Background worker (`solver_worker.py`) uses CapSolver/2Captcha to solve reCAPTCHA v2/v3 autonomously, logs in with saved credentials, and maintains fresh session tokens 24/7.
-  - Automatic recovery upon HTTP 401/403 session expiration.
+### 1. 🛡️ Multi-Account GVC Portal Fleet & Parallel Workers
+- **Multi-Tenant Staff Accounts:** Each staff member registers and manages their own GVC portal accounts with dedicated SIM phone numbers.
+- **Parallel Autonomous Workers (`fleet_manager.py`):** Independent worker threads monitor designated Greek VAC centers (Islamabad, Karachi, Lahore) and visa categories (Type 26 Seasonal/Work, Type 0 Schengen C, Type 2 National D).
+- **Session Controls:** 1-Click CapSolver auto-login, worker pause/resume, bookmarklet manual token sync, and instant session logout.
 
-### 2. 🎨 Modern shadcn/ui Dashboard (`api/static/index.html`)
-- Built following **shadcn/ui design tokens** with typography set to `Inter`.
-- 100% vector **Lucide SVG Icons** (`bot`, `calendar`, `file-text`, `sparkles`, `building-2`, `shield-check`, `globe-2`, `users`, `search`).
-- Segmented control navigation, Radix-style modals with backdrop blur, and live telemetry badges.
+### 2. ⚡ Universal OTP Event Bus & Webhook (`/api/otp/webhook`)
+- **Universal SMS Ingestion:** Supports any Android forwarding application (SMS Forwarder, MacroDroid, Tasker, SMS Gateway) via HTTP POST.
+- **Resilient JSON Pre-Sanitizer:** Automatically repairs unquoted leading-zero phone numbers (`"to": 03345112969`).
+- **Regex Extraction:** Automatically captures 4-8 digit verification codes from Gerrys/GVC appointment messages.
+- **Persistent SQLite Audit Table (`otp_records`):** Maintains full timestamped message history, payload inspection, and deletion controls across container restarts.
 
-### 3. 🧠 Multi-Agent Travel Specialist Operations
-- **🤖 Orchestrator Agent (`agents/orchestrator/`):** Triage router delegating user intent to specialized sub-agents.
-- **📅 Appointments Specialist (`agents/appointments/`):** Intake applicants into queue, search live slots, trigger OTPs, and book appointments.
-- **🛂 Visa Specialist (`agents/visa/`):** Greece Type 26 (Seasonal Work), Schengen Type C, National Type D, KSA, UAE, and UK document requirements & embassy fees.
-- **🕋 Hajj & Umrah Specialist (`agents/umrah/`):** Package cost calculator (Economy, 4-star, 5-star VIP), Nusuk Rawdah permit timings, Tasheer biometrics, and Ziyarat guides.
-- **🏨 Hotel Booking Specialist (`agents/hotels/`):** Instant hotel discovery and confirmed provisional reservation vouchers in Makkah, Madinah, Athens, and Dubai.
+### 3. 🇵🇰 Pakistan Residential Proxy Engine & Auto-Quarantine Recovery
+- **Health Tracking & Failover:** Automatic round-robin rotation across residential proxy IP pools.
+- **Auto-Expiring Quarantines:** Proxies encountering Imperva WAF challenges are placed in quarantine for 300 seconds and automatically restored to `ACTIVE` upon expiration.
 
-### 4. 🗄️ Thread-Safe SQLite Persistence (`agents/appointments/db.py`)
-- Configured with Write-Ahead Logging (`WAL`) mode for concurrent multi-staff reads/writes.
-- Tables: `client_queue`, `proxies`, `users`, `sessions`, `visa_rules`, `hotels`, `hotel_bookings`, `gvc_sessions`, `system_settings`.
+### 4. 📦 Full Administrative Data Backup & Export (`/api/admin/export-data`)
+- **Complete System Snapshot:** One-click JSON backup exporting all staff accounts, GVC portal accounts, proxy catalogs, CapSolver keys, OTP message logs, client queue profiles, and system settings.
+- **UI Inspection Modal & Attachment Download:** Interactive preview summary and timestamped file download.
+
+### 5. 🎨 Modern shadcn/ui Dashboard (`api/static/index.html`)
+- Built with **shadcn/ui design tokens**, `Inter` typography, and 100% vector **Lucide SVG Icons**.
+- Multi-client queue management, live slot availability inspector, OTP rolling stream, and role-based access control.
 
 ---
 
