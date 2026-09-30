@@ -499,9 +499,12 @@ def _parse_flexible_date(d_str: Optional[str]) -> Optional[datetime]:
     return None
 
 
-def _matches_date_range(slot_date: Optional[str], start: Optional[str], end: Optional[str]) -> bool:
-    """Check if a slot date falls within [start, end], supporting ISO and DD/MM/YYYY formats."""
-    if not slot_date or (not start and not end):
+def _matches_date_range(slot_date: Optional[str], start: Optional[str], end: Optional[str] = None) -> bool:
+    """
+    Check if a slot date is acceptable.
+    Follows operational rule: No need to exact match; can book any available slot on or after preferred start date.
+    """
+    if not slot_date or not start or not start.strip():
         return True
     try:
         slot_dt = _parse_flexible_date(slot_date)
@@ -509,9 +512,6 @@ def _matches_date_range(slot_date: Optional[str], start: Optional[str], end: Opt
             return True
         start_dt = _parse_flexible_date(start)
         if start_dt and slot_dt < start_dt:
-            return False
-        end_dt = _parse_flexible_date(end)
-        if end_dt and slot_dt > end_dt:
             return False
         return True
     except Exception:

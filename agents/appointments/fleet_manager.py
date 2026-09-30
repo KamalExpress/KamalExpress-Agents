@@ -20,6 +20,8 @@ from typing import Dict, List, Optional, Set
 
 from .db import (
     claim_next_client,
+    get_client_by_id,
+    _matches_date_range,
     get_gvc_portal_accounts,
     get_gvc_portal_account_by_id,
     update_gvc_account_session,
@@ -637,6 +639,254 @@ class GVCFleetManager:
             "accounts": account_telemetries,
             "activity_logs": self.get_recent_logs(50),
         }
+
+    async def trigger_client_booking(self, client_id: int, triggered_by: str = "staff") -> dict:
+        """
+        Manually trigger the full appointment booking workflow for a specific client.
+        Uses an available authenticated worker/driver from the fleet or active GVC session.
+        """
+        client = get_client_by_id(client_id)
+        if not client:
+            return {"success": False, "status": "NOT_FOUND", "error": f"Client #{client_id} not found in database."}
+
+        vac_id = str(client.vac_id or "138")
+        visa_type = str(client.visa_type or "26")
+        vac_meta = GVC_VACS.get(vac_id, GVC_VACS.get("138", {"name": f"VAC {vac_id}"}))
+
+        # 1. Select best authenticated worker / driver
+        self.refresh_workers()
+        selected_worker: Optional[AccountWorkerInstance] = None
+        selected_account: Optional[dict] = None
+
+        # Prioritize worker matching client's target VAC and visa type
+        for worker in self._workers.values():
+            if worker._is_authenticated:
+                acc = get_gvc_portal_account_by_id(worker.account_id)
+                if acc and str(acc.get("target_vac_id")) == vac_id and str(acc.get("target_visa_type")) == visa_type:
+                    selected_worker = worker
+                    selected_account = acc
+                    break
+
+        # Fallback to any authenticated fleet worker
+        if not selected_worker:
+            for worker in self._workers.values():
+                if worker._is_authenticated:
+                    selected_worker = worker
+                    selected_account = get_gvc_portal_account_by_id(worker.account_id)
+                    break
+
+        driver: Optional[GVCPortalDriver] = None
+        persona = "Manual Staff Trigger"
+        account_id: Optional[int] = None
+        target_phone = client.phone_number
+
+        if selected_worker and selected_account:
+            driver = selected_worker._driver
+            account_id = selected_worker.account_id
+            persona = selected_account.get("worker_persona_name") or get_next_persona_name(account_id)
+            target_phone = selected_account.get("otp_phone_number") or client.phone_number
+        else:
+            # Fallback to global gvc_driver
+            try:
+                from .agent import gvc_driver
+                if gvc_driver._load_active_session_from_db():
+                    driver = gvc_driver
+                    persona = "Global GVC Operator"
+            except Exception:
+                pass
+
+            if not driver:
+                # Try auto-login on first registered account if auto_solver mode
+                accounts = get_gvc_portal_accounts(is_admin=True)
+                for acc in accounts:
+                    if acc.get("auth_mode") == "auto_solver" and acc.get("email") and acc.get("password"):
+                        self.log_event(
+                            f"Manual booking trigger: Attempting auto-login for Operator '{acc.get('account_label')}'...",
+                            level="INFO",
+                            category="AUTH",
+                        )
+                        login_res = await gvc_auth_solver.login_with_credentials(email=acc["email"], password=acc["password"])
+                        if login_res.get("success"):
+                            self.refresh_workers()
+                            worker = self._workers.get(acc["id"])
+                            if worker and worker._is_authenticated:
+                                selected_worker = worker
+                                selected_account = acc
+                                driver = worker._driver
+                                account_id = worker.account_id
+                                persona = acc.get("worker_persona_name") or get_next_persona_name(acc["id"])
+                                target_phone = acc.get("otp_phone_number") or client.phone_number
+                                break
+
+        if not driver:
+            msg = "No authenticated GVC operator found. Please log in or sync a session token in GVC Auth Center or Fleet Manager."
+            self.log_event(msg, level="WARNING", category="AUTH")
+            return {"success": False, "status": "UNAUTHENTICATED", "error": msg}
+
+        # 2. Check or search for open slots
+        cached_slots = slot_cache.get(vac_id=vac_id, visa_type=visa_type)
+        slots = cached_slots or []
+
+        if not slots or not any(s.available_capacity > 0 for s in slots):
+            self.log_event(
+                f"Operator '{persona}' performing live slot search for manual booking of Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')}...",
+                level="INFO",
+                category="SLOT_DISCOVERY",
+                worker_name=persona,
+            )
+            slots = await driver.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=client.preferred_date_start)
+            if slots and any(s.available_capacity > 0 for s in slots):
+                slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=300)
+
+        # Filter available slots
+        available_slots = [s for s in (slots or []) if s.available_capacity > 0]
+        if not available_slots:
+            msg = f"No open appointment slots found on GVC for {vac_meta.get('name', 'VAC')} (Visa Type {visa_type}). Applicant remains in queue."
+            self.log_event(
+                f"Manual booking trigger for Client #{client.id} ({client.first_name} {client.last_name}): {msg}",
+                level="WARNING",
+                category="BOOKING",
+                worker_name=persona,
+            )
+            return {"success": False, "status": "NO_SLOTS", "error": msg}
+
+        # Match date range if specified
+        target_slot: Optional[AvailableSlot] = None
+        for s in available_slots:
+            if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
+                target_slot = s
+                break
+
+        if not target_slot:
+            target_slot = available_slots[0]
+
+        # 3. Mark client in progress
+        update_client_status(
+            client_id=client.id,
+            status="IN_PROGRESS",
+            notes=f"Manual booking triggered by {triggered_by} via Operator '{persona}'."
+        )
+
+        masked_sim = mask_phone_pii(target_phone)
+        self.log_event(
+            f"⚡ [MANUAL TRIGGER] Operator '{persona}' initiated booking for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_meta.get('name', 'VAC')} on {target_slot.date} {target_slot.time}. Triggering OTP to SIM {masked_sim}...",
+            level="INFO",
+            category="BOOKING",
+            account_id=account_id,
+            worker_name=persona,
+        )
+
+        # 4. Trigger OTP
+        await driver.trigger_booking_otp(phone_number=target_phone)
+
+        # 5. Wait for OTP
+        otp_code = await wait_for_otp(phone=target_phone, timeout=75.0)
+
+        if not otp_code:
+            update_client_status(
+                client_id=client.id,
+                status="FAILED",
+                notes=f"Manual trigger: OTP verification timed out after 75s on Operator '{persona}'."
+            )
+            self.log_event(
+                f"❌ [MANUAL TRIGGER] OTP verification timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim}.",
+                level="WARNING",
+                category="OTP",
+                account_id=account_id,
+                worker_name=persona,
+            )
+            return {
+                "success": False,
+                "status": "OTP_TIMEOUT",
+                "error": f"OTP verification timed out after 75s for SIM {masked_sim}. Please verify SIM connection or SMS forwarder.",
+            }
+
+        # 6. Record worker task
+        if account_id:
+            record_worker_task(account_id)
+
+        # 7. Submit booking
+        result = await driver.submit_booking(
+            applicant=client,
+            slot_id=target_slot.slot_id,
+            target_date=target_slot.date,
+            target_time=target_slot.time,
+            otp_code=otp_code,
+            vac_id=client.vac_id,
+            visa_type=client.visa_type,
+        )
+
+        if result.success:
+            conf_path = save_raw_confirmation(
+                client_id=client.id,
+                booking_reference=result.reference_number or "CONFIRMED",
+                payload_data=result.raw_payload or {"booking_reference": result.reference_number, "status": "CONFIRMED"},
+                worker_name=persona,
+                account_id=account_id,
+            )
+            rate_booking = int(get_system_setting("worker_rate_per_booking_pkr", "5000") or "5000")
+            acc_email = selected_account.get("email", "") if selected_account else ""
+
+            update_client_status(
+                client_id=client.id,
+                status="BOOKED",
+                booking_reference=result.reference_number,
+                booked_date=target_slot.date,
+                booked_time=target_slot.time,
+                notes=f"Manually triggered by {triggered_by}. Booked by {persona} ({acc_email}).",
+                raw_confirmation_path=conf_path,
+                booked_by_account_id=account_id,
+                booked_by_worker_name=persona,
+                booking_cost_pkr=rate_booking,
+            )
+            self.log_event(
+                f"🎉 [MANUAL TRIGGER] BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {target_slot.date} {target_slot.time}!",
+                level="SUCCESS",
+                category="BOOKING",
+                account_id=account_id,
+                worker_name=persona,
+                details={"arn": result.reference_number, "client_id": client.id, "slot": target_slot.date, "cost_pkr": rate_booking},
+            )
+            target_slot.available_capacity -= 1
+            return {
+                "success": True,
+                "status": "BOOKED",
+                "reference_number": result.reference_number,
+                "slot_date": target_slot.date,
+                "slot_time": target_slot.time,
+                "worker_name": persona,
+                "message": f"Appointment booked successfully (Ref: {result.reference_number}) on {target_slot.date} {target_slot.time}!",
+            }
+        else:
+            if account_id:
+                record_worker_error(account_id)
+            conf_path = save_raw_confirmation(
+                client_id=client.id,
+                booking_reference="FAILED",
+                payload_data=result.raw_payload or {"error": result.message, "status": "FAILED"},
+                worker_name=persona,
+                account_id=account_id,
+            )
+            update_client_status(
+                client_id=client.id,
+                status="FAILED",
+                notes=f"Manual trigger submission error on {persona}: {result.message}",
+                raw_confirmation_path=conf_path,
+                booked_by_account_id=account_id,
+                booked_by_worker_name=persona,
+            )
+            self.log_event(
+                f"❌ [MANUAL TRIGGER] Booking submission failed for {client.passport_number}: {result.message}",
+                level="WARNING",
+                category="BOOKING",
+                account_id=account_id,
+                worker_name=persona,
+            )
+            return {
+                "success": False,
+                "status": "FAILED",
+                "error": f"GVC Portal Booking Error: {result.message}",
+            }
 
 
 # Global Fleet Manager Singleton

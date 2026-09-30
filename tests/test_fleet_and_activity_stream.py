@@ -172,3 +172,45 @@ def test_fleet_pre_stage_and_reschedule_endpoints():
     assert resp_resched.status_code == 200
     assert resp_resched.json()["success"] is True
 
+
+def test_manual_client_booking_trigger():
+    headers = get_auth_headers("admin")
+    from agents.appointments.schemas import ClientProfile, AvailableSlot
+    from agents.appointments.db import add_client, delete_client, get_client_by_id
+    from agents.appointments.fleet_manager import slot_cache
+
+    # 1. 404 for non-existent client
+    resp_404 = client.post("/api/clients/999999/trigger-booking", headers=headers)
+    assert resp_404.status_code == 404
+
+    # 2. Add temporary test client
+    c_obj = ClientProfile(
+        first_name="ManualTrigger",
+        last_name="Tester",
+        dob="01/01/1995",
+        passport_number="PKMANUAL99",
+        passport_expiry="01/01/2032",
+        phone_number="3009988776",
+        email="manual@test.com",
+        destination="Greece",
+        visa_type="26",
+        vac_id="138",
+        vac_city="Islamabad",
+        status="QUEUED",
+    )
+    cid = add_client(c_obj)
+
+    try:
+        # Clear slot cache for VAC 138 / Type 26 to test NO_SLOTS scenario
+        slot_cache._cache.pop("138:26", None)
+
+        # Trigger booking without slots in cache (it will search or report NO_SLOTS/UNAUTHENTICATED)
+        resp_trigger = client.post(f"/api/clients/{cid}/trigger-booking", headers=headers)
+        assert resp_trigger.status_code == 200
+        data = resp_trigger.json()
+        assert "status" in data or "success" in data
+
+    finally:
+        delete_client(cid)
+
+

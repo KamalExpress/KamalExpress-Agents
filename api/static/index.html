@@ -3464,6 +3464,9 @@ How can I help you today?</div>
           </td>
           <td>
             <div style="display:flex; gap:6px; align-items:center;">
+              <button class="btn btn-sm ${isBooked ? 'btn-outline' : 'btn-primary'}" onclick="triggerClientBooking(${c.id}, '${escapeHtml(fullName || c.passport_number)}', ${isBooked})" title="${isBooked ? 'Re-trigger Booking Workflow' : 'Manually Trigger Booking Workflow for this Applicant'}" style="padding:4px 8px; ${!isBooked ? 'background:#0284c7; border-color:#0284c7;' : 'color:var(--primary);'}">
+                <i data-lucide="zap" class="icon" style="width:12px; height:12px;"></i> ${isBooked ? 'Re-Book' : 'Book Now'}
+              </button>
               ${isBooked ? `
                 <button class="btn btn-outline btn-sm" onclick="openRawConfirmationModal(${c.id})" title="View Raw GVC Confirmation Response" style="padding:4px 8px; color:var(--success); border-color:#bbf7d0;">
                   <i data-lucide="file-check-2" class="icon" style="width:12px; height:12px;"></i> Proof
@@ -3582,6 +3585,49 @@ How can I help you today?</div>
     } catch (err) {
       console.error("Client update error:", err);
       alert("Network error updating client: " + err.message);
+    }
+  }
+
+  async function triggerClientBooking(id, name, isRebook) {
+    const promptMsg = isRebook
+      ? `Applicant ${name} (#${id}) is already marked as BOOKED.\n\nDo you want to manually re-trigger the booking workflow?`
+      : `⚡ Trigger immediate appointment booking workflow for ${name} (#${id})?\n\nThis will scan live slots on GVC, claim the slot, and request OTP verification.`;
+
+    if (!confirm(promptMsg)) return;
+
+    // Visual toast notification
+    const toast = document.createElement('div');
+    toast.id = `booking-toast-${id}`;
+    toast.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#0f172a; color:#f8fafc; padding:12px 18px; border-radius:8px; border:1px solid #38bdf8; box-shadow:0 10px 25px rgba(0,0,0,0.5); z-index:99999; display:flex; align-items:center; gap:10px; font-size:13px;';
+    toast.innerHTML = `<i data-lucide="loader" class="icon" style="animation:spin 1s linear infinite; width:16px; height:16px; color:#38bdf8;"></i> <span>Booking in progress for <b>${escapeHtml(name)}</b>...</span>`;
+    document.body.appendChild(toast);
+    renderIcons();
+
+    try {
+      const resp = await fetch(`/api/clients/${id}/trigger-booking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (resp.status === 401) { showLogin(); return; }
+      const data = await resp.json();
+
+      if (resp.ok && data.success) {
+        alert(`🎉 BOOKING SUCCESSFUL!\n\nApplicant: ${name} (#${id})\nReference: ${data.reference_number || 'CONFIRMED'}\nSlot: ${data.slot_date || ''} ${data.slot_time || ''}\nOperator: ${data.worker_name || 'Fleet Operator'}\n\nClient queue record has been updated with full booking proof.`);
+      } else if (data.status === 'NO_SLOTS') {
+        alert(`ℹ️ NO OPEN SLOTS FOUND\n\n${data.error || 'No appointment slots are currently available on GVC for this center and visa category.'}\n\nThe applicant remains in the queue and will be booked automatically as soon as slots open.`);
+      } else if (data.status === 'OTP_TIMEOUT') {
+        alert(`⚠️ OTP VERIFICATION TIMED OUT\n\n${data.error || 'SMS verification code was not received within 75 seconds.'}\n\nPlease check the SIM or phone forwarder and try again.`);
+      } else {
+        alert(`❌ Booking Workflow Notice:\n\n${data.error || data.detail || data.message || 'Operation failed.'}`);
+      }
+    } catch (err) {
+      alert(`Network error triggering booking: ${err.message}`);
+    } finally {
+      const t = document.getElementById(`booking-toast-${id}`);
+      if (t) t.remove();
+      refreshQueue();
+      loadActivityLogsStream();
+      renderIcons();
     }
   }
 
