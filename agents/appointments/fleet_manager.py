@@ -703,28 +703,21 @@ class GVCFleetManager:
         if not selected_worker:
             auth_workers = [w for w in self._workers.values() if w._is_authenticated]
 
-            # A. First choice: Authenticated worker matching VAC/VisaType that is IDLE (not in-flight)
-            for w in auth_workers:
-                if w.account_id not in self._in_flight_manual_workers:
+            if auth_workers:
+                # 1. Filter authenticated workers not currently in-flight
+                idle_workers = [w for w in auth_workers if w.account_id not in self._in_flight_manual_workers]
+                
+                # Check for idle workers matching target VAC and visa type
+                matching_idle = []
+                for w in idle_workers:
                     acc = get_gvc_portal_account_by_id(w.account_id)
                     if acc and str(acc.get("target_vac_id")) == vac_id and str(acc.get("target_visa_type")) == visa_type:
-                        selected_worker = w
-                        selected_account = acc
-                        break
-
-            # B. Second choice: Any authenticated worker that is IDLE (not in-flight) via round-robin
-            if not selected_worker:
-                idle_workers = [w for w in auth_workers if w.account_id not in self._in_flight_manual_workers]
-                if idle_workers:
-                    with self._lock:
-                        selected_worker = idle_workers[self._manual_worker_rr_index % len(idle_workers)]
-                        self._manual_worker_rr_index += 1
-                    selected_account = get_gvc_portal_account_by_id(selected_worker.account_id)
-
-            # C. Third choice: If all workers are currently in-flight, round-robin among all authenticated workers
-            if not selected_worker and auth_workers:
+                        matching_idle.append(w)
+                
+                # Round-robin pool: matching idle -> any idle -> all authenticated
+                pool_to_pick = matching_idle if matching_idle else (idle_workers if idle_workers else auth_workers)
                 with self._lock:
-                    selected_worker = auth_workers[self._manual_worker_rr_index % len(auth_workers)]
+                    selected_worker = pool_to_pick[self._manual_worker_rr_index % len(pool_to_pick)]
                     self._manual_worker_rr_index += 1
                 selected_account = get_gvc_portal_account_by_id(selected_worker.account_id)
 
