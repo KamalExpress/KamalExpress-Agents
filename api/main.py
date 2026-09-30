@@ -700,7 +700,7 @@ async def receive_otp_webhook(request: Request):
     raw_body_bytes = await request.body()
     raw_body_str = raw_body_bytes.decode("utf-8", errors="ignore").strip()
 
-    # 1. Parse payload across JSON, Form, or Query Params
+    # 1. Parse payload across JSON, Form, Query Params, or Regex Fallbacks
     data: dict = {}
     if request.headers.get("content-type", "").startswith("application/json") or (raw_body_str.startswith("{") or raw_body_str.startswith("[")):
         try:
@@ -710,7 +710,17 @@ async def receive_otp_webhook(request: Request):
             elif isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict):
                 data = parsed[0]
         except Exception:
-            pass
+            # Resilient JSON fallback: handle unquoted leading-zero phone numbers (e.g. "to": 03345112969)
+            try:
+                import re as _re
+                sanitized_json = _re.sub(r':\s*(0\d+)', r': "\1"', raw_body_str)
+                parsed = json.loads(sanitized_json)
+                if isinstance(parsed, dict):
+                    data = parsed
+                elif isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict):
+                    data = parsed[0]
+            except Exception:
+                pass
 
     if not data and raw_body_str and "=" in raw_body_str:
         try:
@@ -718,6 +728,19 @@ async def receive_otp_webhook(request: Request):
             data = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in qs.items()}
         except Exception:
             pass
+
+    # Direct fallback regex scanning if JSON parsing failed completely
+    if not data and raw_body_str:
+        import re as _re
+        to_m = _re.search(r'["\']?(?:to|recipient|target_phone|sim_number|phone)["\']?\s*[:=]\s*["\']?([+0-9]{8,15})["\']?', raw_body_str, _re.IGNORECASE)
+        if to_m:
+            data["to"] = to_m.group(1)
+        from_m = _re.search(r'["\']?(?:from|sender)["\']?\s*[:=]\s*["\']?([^",}\n\r]+)["\']?', raw_body_str, _re.IGNORECASE)
+        if from_m:
+            data["from"] = from_m.group(1).strip()
+        text_m = _re.search(r'["\']?(?:text|message|body|content|sms)["\']?\s*[:=]\s*["\']?([^",}\n\r]+)["\']?', raw_body_str, _re.IGNORECASE)
+        if text_m:
+            data["text"] = text_m.group(1).strip()
 
     for qk, qv in request.query_params.items():
         if qk not in data or not data[qk]:
