@@ -26,8 +26,11 @@ This document specifies the enterprise architecture for the Kamal Express appoin
    * Embassy slot openings are often pre-scheduled or notified in advance (e.g. 19:00 PKT).
    * Operators can schedule a release window timer or click **"Pre-Stage Active Booking Fleet"**, which pre-heats session tokens, tests proxies, and loads applicant profiles into hot memory cache.
 
-4. **PII Data Privacy & Phone Masking Standards:**
-   * In compliance with PII privacy guidelines, all applicant and SIM phone numbers displayed in the UI, activity streams, and operational briefing cards are strictly masked (e.g. `+92-334-***-2969` or `SIM #1 (+92-334-***)`).
+4. **PII Data Privacy, Phone Masking & Click-to-Reveal Standard:**
+   * **Default Masking:** In strict compliance with PII data privacy guidelines, all applicant phone numbers, passport numbers, and SIM numbers displayed across the UI tables, activity streams, and operational cards are masked by default (e.g. `+92-334-***-2969` or `PK-****567`).
+   * **Click-to-Reveal with Confirmation Dialog:** When an operator clicks on a masked number or the reveal icon (`👁`), a concise confirmation dialog appears:
+     > *"⚠️ Confirm PII Access: You are about to reveal sensitive client contact data. This action will be recorded in system audit logs under Kamal Express Data Privacy Policy. Proceed?"*
+   * **In-Place Temporary Unmasking:** Upon operator confirmation, the number is unmasked in-place for that session, and an `INFO` audit event is logged to `system_logs` (`[AUTH/PII] Operator 'ali' unmasked phone for Client #12`).
 
 5. **Bulk CSV / TXT Queue Intake with Downloadable Sample Template:**
    * Staff upload batches of 10, 50, 100 applicants via CSV or formatted TXT.

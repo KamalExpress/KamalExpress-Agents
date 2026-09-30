@@ -488,8 +488,15 @@
       line-height: 1.6;
       border: 1px solid #1e293b;
     }
-    .log-item { margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px; }
+    .log-item { margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px; word-break: break-word; }
+    .log-item.log-auth { color: #f87171; background: rgba(239, 68, 68, 0.12); border-left: 3px solid #ef4444; padding: 4px 8px; border-radius: 4px; }
+    .log-item.log-booked { color: #34d399; background: rgba(16, 185, 129, 0.12); border-left: 3px solid #10b981; padding: 4px 8px; border-radius: 4px; }
+    .log-item.log-slots { color: #38bdf8; background: rgba(56, 189, 248, 0.12); border-left: 3px solid #0284c7; padding: 4px 8px; border-radius: 4px; }
+    .log-item.log-otp { color: #fbbf24; background: rgba(245, 158, 11, 0.12); border-left: 3px solid #f59e0b; padding: 4px 8px; border-radius: 4px; }
+    .log-item.log-fleet { color: #a78bfa; background: rgba(139, 92, 246, 0.12); border-left: 3px solid #8b5cf6; padding: 4px 8px; border-radius: 4px; }
     .log-time { color: #38bdf8; margin-right: 6px; }
+    .pii-masked { cursor: pointer; text-decoration: underline dotted; color: var(--primary); transition: color 0.15s ease; }
+    .pii-masked:hover { color: var(--primary-hover); }
 
     /* ── shadcn Form Controls ── */
     .form-group { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
@@ -693,9 +700,12 @@ How can I help you today?</div>
           </div>
           <div class="card-desc">Persistent SQLite client queue with parallel worker locking.</div>
         </div>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <button class="btn btn-outline btn-sm" onclick="refreshQueue()">
             <i data-lucide="rotate-cw" class="icon"></i> Refresh
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="openBulkUploadModal()">
+            <i data-lucide="upload-cloud" class="icon"></i> Bulk CSV / TXT
           </button>
           <button class="btn btn-primary btn-sm" onclick="openAddModal()">
             <i data-lucide="user-plus" class="icon"></i> + Add Client
@@ -710,6 +720,7 @@ How can I help you today?</div>
               <th>ID</th>
               <th>Applicant</th>
               <th>Passport</th>
+              <th>Phone (PII)</th>
               <th>Destination</th>
               <th>Center</th>
               <th>Status</th>
@@ -718,7 +729,7 @@ How can I help you today?</div>
             </tr>
           </thead>
           <tbody id="queue-table-body">
-            <tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading queue...</td></tr>
+            <tr><td colspan="9" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading queue...</td></tr>
           </tbody>
         </table>
       </div>
@@ -772,14 +783,33 @@ How can I help you today?</div>
 
       <!-- Live Activity Feed -->
       <div class="card">
-        <div class="card-header">
+        <div class="card-header" style="flex-wrap:wrap; gap:8px;">
           <div class="card-title">
             <i data-lucide="terminal" class="icon"></i> Activity Stream
           </div>
-          <span class="badge badge-in_progress" id="log-speed-badge">Auto (45s)</span>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <select id="log-speed-select" onchange="changeLogStreamSpeed(this.value)" style="padding:3px 6px; font-size:11px; border-radius:var(--radius); border:1px solid var(--border); background:var(--card);">
+              <option value="3000">Speed: 3s</option>
+              <option value="5000" selected>Speed: 5s (Default)</option>
+              <option value="15000">Speed: 15s</option>
+              <option value="30000">Speed: 30s</option>
+              <option value="60000">Speed: 1m</option>
+              <option value="300000">Speed: 5m</option>
+              <option value="0">Paused</option>
+            </select>
+            <button class="btn btn-outline btn-sm" id="btn-pause-logs" onclick="togglePauseLogStream()" style="padding:3px 8px; font-size:11px;">
+              <i data-lucide="pause" class="icon" style="width:11px; height:11px;"></i> <span id="btn-pause-logs-text">Pause</span>
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="exportActivityLogs('txt')" title="Export as TXT file" style="padding:3px 8px; font-size:11px;">
+              <i data-lucide="download" class="icon" style="width:11px; height:11px;"></i> Export
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="clearActivityLogs()" title="Clear Activity Stream" style="padding:3px 6px; font-size:11px; color:#b91c1c;">
+              <i data-lucide="trash-2" class="icon" style="width:11px; height:11px;"></i>
+            </button>
+          </div>
         </div>
         <div class="log-feed" id="log-feed">
-          <div class="log-item"><span class="log-time">[Init]</span> System loaded and ready.</div>
+          <div class="log-item"><span class="log-time">[Init]</span> Activity stream loaded and monitoring events.</div>
         </div>
       </div>
 
@@ -903,6 +933,84 @@ How can I help you today?</div>
       </div>
     </div>
 
+    <!-- ── High-Demand Booking Operations Coordinator & Pre-Staging Card ── -->
+    <div class="card" style="border: 1px solid rgba(0, 110, 181, 0.3); background: linear-gradient(180deg, var(--card) 0%, rgba(240, 249, 255, 0.45) 100%);">
+      <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+        <div>
+          <div class="card-title" style="color:var(--primary); font-size:15px;">
+            <i data-lucide="crosshair" class="icon"></i> High-Demand Booking Operations Coordinator
+          </div>
+          <div class="card-desc">
+            Coordinate pre-staged multi-worker fleet readiness for high-demand embassy slot drops and synchronized multi-wave applicant dispatch.
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" id="btn-pre-stage-fleet" onclick="preStageFleetAction()" style="background:#0284c7;">
+            <i data-lucide="zap" class="icon"></i> ⚡ Pre-Stage Active Booking Fleet
+          </button>
+          <button class="btn btn-outline btn-sm" id="btn-reschedule-checks" onclick="rescheduleSlotChecksAction()">
+            <i data-lucide="rotate-cw" class="icon"></i> Reschedule Slot Discovery Checks
+          </button>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:16px; margin-top:4px;">
+        <!-- Left: Target Release Window Countdown & Wave Planner -->
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:12px;">
+            <div style="font-weight:600; font-size:12.5px; color:var(--foreground); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+              <span>Target Release Window:</span>
+              <span id="drop-countdown-badge" class="badge badge-booked" style="font-family:monospace; font-size:11.5px;">Scheduled Window</span>
+            </div>
+            <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:8px; align-items:center;">
+              <input type="datetime-local" id="drop-target-time" onchange="updateDropCountdown()" style="font-size:12px; padding:6px 8px; border:1px solid var(--border); border-radius:var(--radius); background:var(--secondary);" />
+              <div id="drop-countdown-display" style="font-family:monospace; font-weight:700; font-size:13.5px; color:var(--primary); text-align:center; padding:6px; background:var(--secondary); border-radius:var(--radius); border:1px solid var(--border);">
+                --:--:--
+              </div>
+            </div>
+          </div>
+
+          <!-- Multi-Wave Operations Breakdown -->
+          <div style="background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:12px;">
+            <div style="font-weight:600; font-size:12.5px; color:var(--foreground); margin-bottom:6px;">
+              📋 Multi-Wave Dispatch Plan:
+            </div>
+            <div id="wave-plan-summary" style="font-size:12px; color:var(--muted-foreground); line-height:1.5;">
+              Calculating active queue and booker wave breakdown...
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Operational Readiness Briefing Card -->
+        <div style="background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:12px; display:flex; flex-direction:column; gap:8px;">
+          <div style="font-weight:600; font-size:12.5px; color:var(--foreground); display:flex; align-items:center; gap:6px;">
+            <i data-lucide="clipboard-check" class="icon" style="width:14px; height:14px; color:var(--success);"></i> Operations Readiness Checklist:
+          </div>
+          <div style="font-size:12px; display:flex; flex-direction:column; gap:6px; color:var(--muted-foreground);">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <span>• Pakistan Residential Proxies:</span>
+              <span id="chk-proxy-status" class="badge badge-active">Active</span>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <span>• Autonomous CapSolver Balance:</span>
+              <span id="chk-capsolver-status" class="badge badge-active">Active</span>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <span>• Android SMS Forwarder Webhook:</span>
+              <span id="chk-otp-status" class="badge badge-active">Online</span>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <span>• Authenticated Booker Fleet:</span>
+              <span id="chk-fleet-auth-status" class="badge badge-in_progress">Ready</span>
+            </div>
+          </div>
+          <div style="margin-top:4px; font-size:11.5px; color:var(--muted-foreground); line-height:1.4; border-top:1px solid var(--border); padding-top:6px;">
+            ℹ️ When open slots are discovered, active bookers immediately claim applicants in parallel waves. Checkers automatically halt to prevent redundant requests.
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Main Card: Multi-Account Fleet Table -->
     <div class="card">
       <div class="card-header">
@@ -910,7 +1018,7 @@ How can I help you today?</div>
           <div class="card-title">
             <i data-lucide="shield-check" class="icon"></i> GVC Portal Account Fleet & Parallel Booker Workers
           </div>
-          <div class="card-desc">Staff can register multiple GVC portal accounts with dedicated SIM numbers for parallel multi-applicant booking.</div>
+          <div class="card-desc">Staff can register multiple GVC portal accounts with dedicated roles (Booker vs Slot Checker) and SIM numbers.</div>
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn btn-outline btn-sm" onclick="loadGvcAccounts()">
@@ -926,10 +1034,11 @@ How can I help you today?</div>
         <table>
           <thead>
             <tr>
-              <th>ID / Account</th>
+              <th>Operator / Account</th>
+              <th>Role</th>
               <th>Owner</th>
               <th>Login Email</th>
-              <th>OTP SIM Number</th>
+              <th>OTP SIM (PII)</th>
               <th>Target Center & Visa</th>
               <th>Session Auth</th>
               <th>Worker Status</th>
@@ -937,7 +1046,7 @@ How can I help you today?</div>
             </tr>
           </thead>
           <tbody id="gvc-accounts-table-body">
-            <tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading GVC portal accounts...</td></tr>
+            <tr><td colspan="9" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading GVC portal accounts...</td></tr>
           </tbody>
         </table>
       </div>
@@ -1646,9 +1755,15 @@ How can I help you today?</div>
     </div>
 
     <form onsubmit="event.preventDefault(); submitAddGvcAccount();" style="display:flex; flex-direction:column; gap:10px;">
-      <div class="form-group" style="margin-bottom:0;">
-        <label>Account Label / Friendly Name *</label>
-        <input type="text" id="gvc-new-label" required placeholder="e.g. Zeeshan - Islamabad Account #1">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Account Label / Friendly Name *</label>
+          <input type="text" id="gvc-new-label" required placeholder="e.g. Zeeshan - Islamabad Account #1">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Worker Persona Name</label>
+          <input type="text" id="gvc-new-persona" placeholder="e.g. Tariq Mehmood, Yaqoob Masih (Auto if blank)">
+        </div>
       </div>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
@@ -1662,10 +1777,18 @@ How can I help you today?</div>
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
         <div class="form-group" style="margin-bottom:0;">
           <label>OTP Phone SIM (without 0) *</label>
           <input type="text" id="gvc-new-phone" required placeholder="3342502270">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Fleet Role *</label>
+          <select id="gvc-new-role">
+            <option value="HYBRID">Hybrid Worker (Scan & Book)</option>
+            <option value="BOOKER">Dedicated Booker (Hot Standby)</option>
+            <option value="SLOT_CHECKER">Dedicated Slot Checker (Scanner)</option>
+          </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label>Auth Mode</label>
@@ -1676,7 +1799,7 @@ How can I help you today?</div>
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:1fr 1.2fr 1fr; gap:10px;">
         <div class="form-group" style="margin-bottom:0;">
           <label>Target VAC Center *</label>
           <select id="gvc-new-vac">
@@ -1695,6 +1818,10 @@ How can I help you today?</div>
             <option value="6">6: Prime Time (Optional Service)</option>
           </select>
         </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Earliest Slot Date</label>
+          <input type="text" id="gvc-new-datefrom" placeholder="DD/MM/YYYY (Optional)">
+        </div>
       </div>
 
       <div class="modal-actions" style="margin-top:8px;">
@@ -1709,7 +1836,7 @@ How can I help you today?</div>
 
 <!-- ── EDIT GVC PORTAL ACCOUNT MODAL ── -->
 <div class="modal" id="edit-gvc-account-modal">
-  <div class="modal-content" style="width: 620px; max-width: 95%;">
+  <div class="modal-content" style="width: 640px; max-width: 95%;">
     <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
       <div class="card-title">
         <i data-lucide="edit-3" class="icon"></i> Edit GVC Portal Account Settings
@@ -1720,9 +1847,15 @@ How can I help you today?</div>
     <form onsubmit="event.preventDefault(); submitEditGvcAccount();" style="display:flex; flex-direction:column; gap:10px;">
       <input type="hidden" id="gvc-edit-id">
 
-      <div class="form-group" style="margin-bottom:0;">
-        <label>Account Label / Friendly Name *</label>
-        <input type="text" id="gvc-edit-label" required placeholder="e.g. Zeeshan - Islamabad Account #1">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Account Label / Friendly Name *</label>
+          <input type="text" id="gvc-edit-label" required placeholder="e.g. Zeeshan - Islamabad Account #1">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Worker Persona Name</label>
+          <input type="text" id="gvc-edit-persona" placeholder="e.g. Tariq Mehmood, Yaqoob Masih">
+        </div>
       </div>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
@@ -1736,10 +1869,18 @@ How can I help you today?</div>
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
         <div class="form-group" style="margin-bottom:0;">
           <label>OTP Phone SIM (without 0) *</label>
           <input type="text" id="gvc-edit-phone" required placeholder="3342502270">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Fleet Role *</label>
+          <select id="gvc-edit-role">
+            <option value="HYBRID">Hybrid Worker (Scan & Book)</option>
+            <option value="BOOKER">Dedicated Booker (Hot Standby)</option>
+            <option value="SLOT_CHECKER">Dedicated Slot Checker (Scanner)</option>
+          </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label>Auth Mode</label>
@@ -1750,7 +1891,7 @@ How can I help you today?</div>
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:1fr 1.2fr 1fr; gap:10px;">
         <div class="form-group" style="margin-bottom:0;">
           <label>Target VAC Center *</label>
           <select id="gvc-edit-vac">
@@ -1769,6 +1910,10 @@ How can I help you today?</div>
             <option value="6">6: Prime Time (Optional Service)</option>
           </select>
         </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Earliest Slot Date</label>
+          <input type="text" id="gvc-edit-datefrom" placeholder="DD/MM/YYYY (Optional)">
+        </div>
       </div>
 
       <div class="modal-actions" style="margin-top:8px;">
@@ -1778,6 +1923,92 @@ How can I help you today?</div>
         </button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ── BULK CLIENT QUEUE INTAKE MODAL ── -->
+<div class="modal" id="bulk-upload-modal">
+  <div class="modal-content" style="width: 640px; max-width: 95%;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div>
+        <div class="card-title">
+          <i data-lucide="upload-cloud" class="icon"></i> Bulk Client Applicant Queue Intake
+        </div>
+        <div class="card-desc">Upload a CSV/TXT file or paste raw rows to bulk-enroll applicants into the auto-booking queue.</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeBulkUploadModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--secondary); padding:10px 14px; border-radius:var(--radius); border:1px solid var(--border);">
+      <div style="font-size:12px; color:var(--foreground);">
+        <b>Standard CSV Format:</b> Includes first_name, last_name, dob, passport_number, expiry, phone, email, VAC, etc.
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="downloadClientTemplate()" style="padding:4px 10px; font-size:11.5px; background:var(--card);">
+        <i data-lucide="download" class="icon" style="width:12px; height:12px;"></i> Download Template (.CSV)
+      </button>
+    </div>
+
+    <div class="form-group" style="margin-bottom:0;">
+      <label>Choose CSV/TXT File</label>
+      <input type="file" id="bulk-file-input" accept=".csv,.txt" onchange="handleBulkFileSelect(event)" style="font-size:12px; padding:6px 8px;">
+    </div>
+
+    <div class="form-group" style="margin-bottom:0;">
+      <label>Or Paste CSV / Tab-Delimited Rows Directly</label>
+      <textarea id="bulk-text-input" rows="6" placeholder="first_name,last_name,dob,passport_number,passport_expiry,phone_number,email,vac_id,preferred_date_start&#10;Muhammad,Ahmed,15/08/1992,AB1234567,10/10/2030,3001234567,ahmed@example.com,138,07/10/2026&#10;Fatima,Khan,22/03/1995,CD7654321,15/05/2031,3345112969,fatima@example.com,139,07/10/2026" style="font-family:monospace; font-size:11.5px;"></textarea>
+    </div>
+
+    <div id="bulk-upload-result" style="display:none; padding:8px 12px; border-radius:var(--radius); font-size:12px;"></div>
+
+    <div class="modal-actions" style="justify-content:space-between; align-items:center;">
+      <button class="btn btn-outline" onclick="closeBulkUploadModal()">Cancel</button>
+      <button class="btn btn-primary" id="btn-submit-bulk" onclick="submitBulkClientUpload()">
+        <i data-lucide="upload" class="icon"></i> Process & Ingest Applicants
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── PII DATA PRIVACY VERIFICATION MODAL ── -->
+<div class="modal" id="pii-confirm-modal">
+  <div class="modal-content" style="width: 460px; max-width: 95%;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div class="card-title" style="color:var(--primary);">
+        <i data-lucide="shield" class="icon"></i> Applicant PII Data Privacy Verification
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closePiiModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <div style="background:var(--secondary); padding:10px 12px; border-radius:var(--radius); border:1px solid var(--border); font-size:12px; color:var(--muted-foreground); line-height:1.5;">
+      🔒 <b>Kamal Express Privacy Standard:</b> In accordance with client confidentiality and applicant protection standards, full personal contact numbers are masked. Viewing unmasked contact data is recorded in the activity stream.
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:2px;">
+      <div style="display:flex; justify-content:space-between; font-size:12.5px;">
+        <span style="color:var(--muted-foreground);">Applicant / Account:</span>
+        <span id="pii-modal-target-name" style="font-weight:600; color:var(--foreground);">—</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:12.5px;">
+        <span style="color:var(--muted-foreground);">Passport / ID:</span>
+        <span id="pii-modal-target-id" style="font-family:monospace; font-weight:600;">—</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:13px; align-items:center;">
+        <span style="color:var(--muted-foreground);">Contact Phone:</span>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span id="pii-modal-phone-display" style="font-family:monospace; font-weight:700; color:var(--primary); font-size:14px;">+92-334-***-2969</span>
+          <button class="btn btn-outline btn-sm" id="btn-copy-pii-phone" onclick="copyPiiPhone()" style="display:none; padding:2px 6px; font-size:11px;">
+            <i data-lucide="copy" class="icon" style="width:11px; height:11px;"></i> Copy
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="justify-content:space-between; align-items:center; margin-top:6px;">
+      <button class="btn btn-outline" onclick="closePiiModal()">Close</button>
+      <button class="btn btn-primary btn-sm" id="btn-reveal-pii" onclick="confirmRevealPii()">
+        <i data-lucide="eye" class="icon"></i> Confirm & Reveal Contact
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1830,9 +2061,12 @@ How can I help you today?</div>
     checkAuth();
     loadGvcAccounts();
     loadOtpStream();
+    loadActivityLogsStream();
+    startLogStreamTimer();
     setInterval(loadGvcAccounts, 8000);
     setInterval(loadGVCAuthStatus, 10000);
     setInterval(loadOtpStream, 10000);
+    setInterval(updateDropCountdown, 1000);
     renderIcons();
   });
 
@@ -1874,6 +2108,7 @@ How can I help you today?</div>
     refreshTelemetry();
     loadProxies();
     loadGVCAuthStatus();
+    loadActivityLogsStream();
     renderIcons();
   }
 
@@ -2040,7 +2275,7 @@ How can I help you today?</div>
     if (tab) tab.click();
   }
 
-  // ── Multi-Account GVC Fleet Management ───────────────────────
+  // ── Multi-Account GVC Fleet Management & Operations Coordinator ──
   let cachedGvcAccounts = [];
 
   async function loadGvcAccounts() {
@@ -2075,12 +2310,15 @@ How can I help you today?</div>
         hdrText.textContent = `Fleet: ${fleetData.active_workers_count || 0} Workers (${hasAuth ? 'Auth OK' : 'Standby'})`;
       }
 
+      // Update Operations Coordinator Readiness Checklist & Wave Plan
+      updateOperationsPlan(fleetData);
+
       const tbody = document.getElementById('gvc-accounts-table-body');
       if (!tbody) return;
       tbody.innerHTML = '';
 
       if (!data.accounts || data.accounts.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:24px;">No GVC portal accounts registered yet. Click '+ Add GVC Account' to register your first portal account and launch a worker.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted-foreground); padding:24px;">No GVC portal accounts registered yet. Click '+ Add GVC Account' to register your first portal account and launch a worker.</td></tr>`;
         return;
       }
 
@@ -2090,9 +2328,20 @@ How can I help you today?</div>
         const authBadgeClass = isAuth ? 'badge-booked' : (acc.last_error ? 'badge-failed' : 'badge-disabled');
         const authBadgeText = isAuth ? 'AUTHENTICATED' : (acc.last_error ? 'LOGIN_FAILED' : 'UNAUTHENTICATED');
 
+        const role = (acc.account_role || 'HYBRID').toUpperCase();
+        let roleBadgeClass = 'badge-in_progress';
+        let roleBadgeText = 'Hybrid Worker';
+        if (role === 'BOOKER') {
+          roleBadgeClass = 'badge-active';
+          roleBadgeText = 'Dedicated Booker';
+        } else if (role === 'SLOT_CHECKER') {
+          roleBadgeClass = 'badge-warn';
+          roleBadgeText = 'Slot Checker';
+        }
+
         const isWorkerActive = acc.is_worker_active;
-        const workerBadgeClass = isWorkerActive ? 'badge-active' : 'badge-disabled';
-        const workerBadgeText = isWorkerActive ? 'ACTIVE (Monitoring)' : 'PAUSED';
+        const workerBadgeClass = isWorkerActive ? (acc.last_status && acc.last_status.includes('PRE_STAGED') ? 'badge-booked' : 'badge-active') : 'badge-disabled';
+        const workerBadgeText = isWorkerActive ? (acc.last_status || 'ACTIVE (Monitoring)') : 'PAUSED';
 
         const vacName = acc.target_vac_id === '138' ? 'ISB (138)' : (acc.target_vac_id === '137' ? 'KHI (137)' : 'LHE (139)');
         const visaTypeLabels = {
@@ -2103,14 +2352,23 @@ How can I help you today?</div>
           '6': 'Type 6 (Prime Time)',
         };
         const visaTypeName = visaTypeLabels[String(acc.target_visa_type)] || `Type ${acc.target_visa_type}`;
+        const personaName = acc.worker_persona_name || `Operator #${acc.id}`;
         const isOwner = currentUser && (currentUser.username === acc.owner_username || currentUser.role === 'admin');
 
         tr.innerHTML = `
-          <td><b>#${acc.id} ${escapeHtml(acc.account_label)}</b></td>
+          <td>
+            <b>${escapeHtml(personaName)}</b><br>
+            <small style="color:var(--muted-foreground); font-size:11px;">#${acc.id} ${escapeHtml(acc.account_label)}</small>
+          </td>
+          <td><span class="badge ${roleBadgeClass}">${roleBadgeText}</span></td>
           <td><span class="badge badge-in_progress" style="font-size:11px;">${escapeHtml(acc.owner_username)}</span></td>
           <td><code>${escapeHtml(acc.email)}</code></td>
-          <td><b>+92-${escapeHtml(acc.otp_phone_number)}</b></td>
-          <td><b>${vacName}</b><br><small style="color:var(--muted-foreground); font-size:11px;">${visaTypeName}</small></td>
+          <td>
+            <span class="pii-masked" onclick="openPiiModal('${escapeHtml(personaName)}', 'GVC Acc #${acc.id}', '${escapeHtml(acc.otp_phone_number)}', 'GVC Account SIM')">
+              +92-${escapeHtml(maskPhonePii(acc.otp_phone_number))} <i data-lucide="lock" class="icon" style="width:11px; height:11px; display:inline-block; vertical-align:middle;"></i>
+            </span>
+          </td>
+          <td><b>${vacName}</b><br><small style="color:var(--muted-foreground); font-size:11px;">${visaTypeName}${acc.target_date_from ? ` | &gt;=${acc.target_date_from}` : ''}</small></td>
           <td><span class="badge ${authBadgeClass}">${authBadgeText}</span></td>
           <td><span class="badge ${workerBadgeClass}">${workerBadgeText}</span></td>
           <td style="text-align:right; white-space:nowrap;">
@@ -2127,7 +2385,7 @@ How can I help you today?</div>
               <i data-lucide="${isWorkerActive ? 'pause' : 'play'}" class="icon" style="width:12px; height:12px;"></i>
             </button>
             ${isOwner ? `
-              <button class="btn btn-outline btn-sm" onclick="openEditGvcAccountModal(${acc.id})" title="Edit Account Settings & VAC/Visa Target" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
+              <button class="btn btn-outline btn-sm" onclick="openEditGvcAccountModal(${acc.id})" title="Edit Account Settings & Role" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
                 <i data-lucide="edit-3" class="icon" style="width:12px; height:12px;"></i>
               </button>
             ` : ''}
@@ -2149,17 +2407,348 @@ How can I help you today?</div>
     }
   }
 
+  function updateOperationsPlan(fleetData) {
+    const queuedCount = parseInt(document.getElementById('stat-queued')?.textContent || '0');
+    const accounts = cachedGvcAccounts || [];
+    const bookers = accounts.filter(a => (a.account_role || 'HYBRID') !== 'SLOT_CHECKER' && a.is_authenticated);
+    const bookerCount = bookers.length || accounts.filter(a => a.is_authenticated).length || 1;
+
+    const summaryEl = document.getElementById('wave-plan-summary');
+    if (summaryEl) {
+      if (queuedCount === 0) {
+        summaryEl.innerHTML = `No pending applicants queued. Total registered operators: <b>${accounts.length}</b>. All bookers in hot standby readiness.`;
+      } else {
+        const waves = Math.ceil(queuedCount / bookerCount);
+        const wave1Count = Math.min(queuedCount, bookerCount);
+        const wave2Count = Math.max(0, queuedCount - wave1Count);
+        const assignedPersonas = (bookers.length > 0 ? bookers : accounts).slice(0, 5).map(a => a.worker_persona_name || a.account_label).join(', ');
+
+        summaryEl.innerHTML = `
+          <b>Queue Status:</b> ${queuedCount} queued applicant(s) across ${bookerCount} active booking operator(s).<br>
+          • <b>Wave 1 (${wave1Count} applicants):</b> Dispatched instantly on slot drop across operators: <i>${escapeHtml(assignedPersonas)}</i>.<br>
+          ${waves > 1 ? `• <b>Wave 2+ (${wave2Count} applicants):</b> Automatically claimed upon completion of Wave 1.` : `• <b>Single Wave:</b> All applicants will be claimed concurrently in 1 cycle.`}
+        `;
+      }
+    }
+
+    // Update Checklist status badges
+    const chkFleet = document.getElementById('chk-fleet-auth-status');
+    if (chkFleet) {
+      const authCount = (fleetData.authenticated_accounts_count || 0);
+      if (authCount > 0) {
+        chkFleet.className = 'badge badge-active';
+        chkFleet.textContent = `Active (${authCount} Authenticated)`;
+      } else {
+        chkFleet.className = 'badge badge-warn';
+        chkFleet.textContent = 'Standby (Login Required)';
+      }
+    }
+  }
+
+  async function preStageFleetAction() {
+    const btn = document.getElementById('btn-pre-stage-fleet');
+    btn.disabled = true;
+    try {
+      const resp = await fetch('/api/gvc/fleet/pre-stage', { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`⚡ SUCCESS!\n${data.message || `Pre-staged ${data.pre_staged_count} booking operator(s) in Hot Standby readiness.`}`);
+        loadGvcAccounts();
+        loadActivityLogsStream();
+      } else {
+        alert(`❌ Pre-stage error: ${data.detail || 'Failed'}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      renderIcons();
+    }
+  }
+
+  async function rescheduleSlotChecksAction() {
+    const btn = document.getElementById('btn-reschedule-checks');
+    btn.disabled = true;
+    try {
+      const resp = await fetch('/api/gvc/fleet/reschedule-checks', { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(`🔄 ${data.message || 'Slot discovery checks rescheduled across all centers.'}`);
+        loadGvcAccounts();
+        loadActivityLogsStream();
+      } else {
+        alert(`❌ Error: ${data.detail || 'Failed'}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      renderIcons();
+    }
+  }
+
+  function updateDropCountdown() {
+    const inputVal = document.getElementById('drop-target-time')?.value;
+    const display = document.getElementById('drop-countdown-display');
+    const badge = document.getElementById('drop-countdown-badge');
+    if (!display || !badge) return;
+
+    if (!inputVal) {
+      display.textContent = '--:--:--';
+      badge.textContent = 'Scheduled Window';
+      badge.className = 'badge badge-in_progress';
+      return;
+    }
+
+    const targetDate = new Date(inputVal).getTime();
+    const now = new Date().getTime();
+    const diff = targetDate - now;
+
+    if (diff <= 0) {
+      display.textContent = 'RELEASE WINDOW ACTIVE';
+      display.style.color = 'var(--destructive)';
+      badge.textContent = 'WINDOW OPEN';
+      badge.className = 'badge badge-failed';
+      return;
+    }
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    const pad = (n) => String(n).padStart(2, '0');
+    display.textContent = `T-${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    display.style.color = 'var(--primary)';
+    badge.textContent = `${hours}h ${minutes}m remaining`;
+    badge.className = 'badge badge-booked';
+  }
+
+  // ── PII Data Privacy Modal & Masking ──
+  let activePiiPhone = '';
+  function maskPhonePii(p) {
+    if (!p) return '***-****';
+    const clean = String(p).replace(/\D/g, '').replace(/^92/, '').replace(/^0/, '');
+    if (clean.length < 7) return '***-***';
+    return clean.slice(0, 3) + '-***-' + clean.slice(-4);
+  }
+
+  function openPiiModal(name, id, fullPhone, type) {
+    activePiiPhone = fullPhone;
+    document.getElementById('pii-modal-target-name').textContent = name;
+    document.getElementById('pii-modal-target-id').textContent = id;
+    document.getElementById('pii-modal-phone-display').textContent = `+92-${maskPhonePii(fullPhone)}`;
+    document.getElementById('btn-copy-pii-phone').style.display = 'none';
+    document.getElementById('btn-reveal-pii').style.display = 'inline-flex';
+    document.getElementById('pii-confirm-modal').classList.add('active');
+    renderIcons();
+  }
+
+  function closePiiModal() {
+    document.getElementById('pii-confirm-modal').classList.remove('active');
+  }
+
+  function confirmRevealPii() {
+    document.getElementById('pii-modal-phone-display').textContent = `+92-${activePiiPhone}`;
+    document.getElementById('btn-copy-pii-phone').style.display = 'inline-flex';
+    document.getElementById('btn-reveal-pii').style.display = 'none';
+    renderIcons();
+  }
+
+  function copyPiiPhone() {
+    navigator.clipboard.writeText(`+92-${activePiiPhone}`).then(() => {
+      alert('📋 Phone number copied to clipboard: +92-' + activePiiPhone);
+    }).catch(() => {
+      prompt('Copy Phone Number:', `+92-${activePiiPhone}`);
+    });
+  }
+
+  // ── Bulk Client Upload Handlers ──
+  function openBulkUploadModal() {
+    document.getElementById('bulk-text-input').value = '';
+    document.getElementById('bulk-file-input').value = '';
+    document.getElementById('bulk-upload-result').style.display = 'none';
+    document.getElementById('bulk-upload-modal').classList.add('active');
+    renderIcons();
+  }
+
+  function closeBulkUploadModal() {
+    document.getElementById('bulk-upload-modal').classList.remove('active');
+  }
+
+  function downloadClientTemplate() {
+    window.open('/api/clients/template', '_blank');
+  }
+
+  function handleBulkFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      document.getElementById('bulk-text-input').value = evt.target.result;
+    };
+    reader.readAsText(file);
+  }
+
+  async function submitBulkClientUpload() {
+    const text = document.getElementById('bulk-text-input').value.trim();
+    if (!text) {
+      alert('Please choose a CSV file or paste applicant rows.');
+      return;
+    }
+    const btn = document.getElementById('btn-submit-bulk');
+    const resDiv = document.getElementById('bulk-upload-result');
+    btn.disabled = true;
+    resDiv.style.display = 'block';
+    resDiv.style.background = 'var(--secondary)';
+    resDiv.innerHTML = 'Processing applicant intake...';
+
+    try {
+      const resp = await fetch('/api/clients/bulk-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csv_text: text }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        resDiv.style.background = 'var(--success-light)';
+        resDiv.style.color = '#047857';
+        resDiv.style.border = '1px solid #a7f3d0';
+        resDiv.innerHTML = `<b>✓ Ingestion Complete:</b> ${data.added_count} applicant(s) added to queue. ${data.failed_count > 0 ? `(${data.failed_count} skipped/errors)` : ''}`;
+        refreshQueue();
+        setTimeout(() => {
+          closeBulkUploadModal();
+        }, 1800);
+      } else {
+        resDiv.style.background = 'var(--destructive-light)';
+        resDiv.style.color = '#b91c1c';
+        resDiv.style.border = '1px solid #fecaca';
+        resDiv.innerHTML = `<b>❌ Upload Failed:</b> ${data.detail || data.message || 'Error processing rows.'} ${data.errors ? `<br><small>${data.errors.join('<br>')}</small>` : ''}`;
+      }
+    } catch (err) {
+      resDiv.style.background = 'var(--destructive-light)';
+      resDiv.style.color = '#b91c1c';
+      resDiv.innerHTML = `<b>❌ Network Error:</b> ${err.message}`;
+    } finally {
+      btn.disabled = false;
+      renderIcons();
+    }
+  }
+
+  // ── Activity Stream Logging Handlers ──
+  let logStreamTimer = null;
+  let logStreamPaused = false;
+  let logStreamIntervalMs = 5000;
+
+  function changeLogStreamSpeed(val) {
+    const ms = parseInt(val);
+    logStreamIntervalMs = ms;
+    if (ms === 0) {
+      logStreamPaused = true;
+      document.getElementById('btn-pause-logs-text').textContent = 'Resume';
+      clearInterval(logStreamTimer);
+      logStreamTimer = null;
+    } else {
+      logStreamPaused = false;
+      document.getElementById('btn-pause-logs-text').textContent = 'Pause';
+      startLogStreamTimer();
+      loadActivityLogsStream();
+    }
+  }
+
+  function togglePauseLogStream() {
+    if (logStreamPaused) {
+      logStreamPaused = false;
+      document.getElementById('btn-pause-logs-text').textContent = 'Pause';
+      document.getElementById('log-speed-select').value = logStreamIntervalMs > 0 ? String(logStreamIntervalMs) : "5000";
+      if (logStreamIntervalMs === 0) logStreamIntervalMs = 5000;
+      startLogStreamTimer();
+      loadActivityLogsStream();
+    } else {
+      logStreamPaused = true;
+      document.getElementById('btn-pause-logs-text').textContent = 'Resume';
+      document.getElementById('log-speed-select').value = "0";
+      clearInterval(logStreamTimer);
+      logStreamTimer = null;
+    }
+  }
+
+  function startLogStreamTimer() {
+    if (logStreamTimer) clearInterval(logStreamTimer);
+    if (!logStreamPaused && logStreamIntervalMs > 0) {
+      logStreamTimer = setInterval(loadActivityLogsStream, logStreamIntervalMs);
+    }
+  }
+
+  async function loadActivityLogsStream() {
+    if (logStreamPaused) return;
+    try {
+      const resp = await fetch('/api/logs/stream?limit=60');
+      if (resp.status === 401) return;
+      const data = await resp.json();
+      const feed = document.getElementById('log-feed');
+      if (!feed) return;
+
+      if (!data.logs || data.logs.length === 0) {
+        feed.innerHTML = '<div class="log-item"><span class="log-time">[Init]</span> System loaded and monitoring events.</div>';
+        return;
+      }
+
+      feed.innerHTML = data.logs.map(l => {
+        const cat = (l.category || '').toUpperCase();
+        const lvl = (l.level || '').toUpperCase();
+        let catClass = '';
+        if (cat === 'AUTH' || lvl === 'ERROR' || l.message.includes('failed') || l.message.includes('AUTH') || l.message.includes('expired')) {
+          catClass = 'log-auth';
+        } else if (cat === 'BOOKING' || cat === 'SUCCESS' || l.message.includes('booked') || l.message.includes('BOOKED')) {
+          catClass = 'log-booked';
+        } else if (cat === 'SLOT_DISCOVERY' || l.message.includes('slot') || l.message.includes('SLOT')) {
+          catClass = 'log-slots';
+        } else if (cat === 'OTP') {
+          catClass = 'log-otp';
+        } else if (cat === 'FLEET') {
+          catClass = 'log-fleet';
+        }
+
+        const workerTag = l.worker_name ? `<b style="color:#e2e8f0;">[${escapeHtml(l.worker_name)}]</b> ` : '';
+        const timeStr = l.created_at ? l.created_at.split(' ')[1] || l.created_at : 'now';
+
+        return `<div class="log-item ${catClass}"><span class="log-time">[${timeStr}]</span> [${cat || 'SYS'}] ${workerTag}${escapeHtml(l.message)}</div>`;
+      }).join('');
+    } catch (err) {
+      console.error("Log stream error:", err);
+    }
+  }
+
+  function exportActivityLogs(format) {
+    window.open(`/api/logs/export?format=${format}`, '_blank');
+  }
+
+  async function clearActivityLogs() {
+    if (!confirm('Clear all persistent activity stream logs?')) return;
+    try {
+      const resp = await fetch('/api/logs/clear', { method: 'DELETE' });
+      if (resp.ok) {
+        loadActivityLogsStream();
+      }
+    } catch (err) {
+      alert('Error clearing logs: ' + err.message);
+    }
+  }
+
   function openEditGvcAccountModal(id) {
     const acc = cachedGvcAccounts.find(a => a.id === id);
     if (!acc) return;
     document.getElementById('gvc-edit-id').value = acc.id;
     document.getElementById('gvc-edit-label').value = acc.account_label || '';
+    document.getElementById('gvc-edit-persona').value = acc.worker_persona_name || '';
     document.getElementById('gvc-edit-email').value = acc.email || '';
     document.getElementById('gvc-edit-password').value = '';
     document.getElementById('gvc-edit-phone').value = acc.otp_phone_number || '';
+    document.getElementById('gvc-edit-role').value = acc.account_role || 'HYBRID';
     document.getElementById('gvc-edit-authmode').value = acc.auth_mode || 'auto_solver';
     document.getElementById('gvc-edit-vac').value = acc.target_vac_id || '138';
     document.getElementById('gvc-edit-visatype').value = acc.target_visa_type || '26';
+    document.getElementById('gvc-edit-datefrom').value = acc.target_date_from || '';
 
     document.getElementById('edit-gvc-account-modal').classList.add('active');
     renderIcons();
@@ -2173,11 +2762,14 @@ How can I help you today?</div>
     const id = document.getElementById('gvc-edit-id').value;
     const payload = {
       account_label: document.getElementById('gvc-edit-label').value.trim(),
+      worker_persona_name: document.getElementById('gvc-edit-persona').value.trim() || null,
       email: document.getElementById('gvc-edit-email').value.trim(),
       otp_phone_number: document.getElementById('gvc-edit-phone').value.trim(),
+      account_role: document.getElementById('gvc-edit-role').value,
       auth_mode: document.getElementById('gvc-edit-authmode').value,
       target_vac_id: document.getElementById('gvc-edit-vac').value,
       target_visa_type: document.getElementById('gvc-edit-visatype').value,
+      target_date_from: document.getElementById('gvc-edit-datefrom').value.trim() || null,
     };
     const newPass = document.getElementById('gvc-edit-password').value;
     if (newPass) {
@@ -2226,12 +2818,15 @@ How can I help you today?</div>
   async function submitAddGvcAccount() {
     const payload = {
       account_label: document.getElementById('gvc-new-label').value.trim(),
+      worker_persona_name: document.getElementById('gvc-new-persona').value.trim() || null,
       email: document.getElementById('gvc-new-email').value.trim(),
       password: document.getElementById('gvc-new-password').value,
       otp_phone_number: document.getElementById('gvc-new-phone').value.trim(),
+      account_role: document.getElementById('gvc-new-role').value,
       auth_mode: document.getElementById('gvc-new-authmode').value,
       target_vac_id: document.getElementById('gvc-new-vac').value,
       target_visa_type: document.getElementById('gvc-new-visatype').value,
+      target_date_from: document.getElementById('gvc-new-datefrom').value.trim() || null,
     };
 
     if (!payload.account_label || !payload.email || !payload.password || !payload.otp_phone_number) {
@@ -2253,9 +2848,11 @@ How can I help you today?</div>
         alert(`✅ ${data.message || 'Account registered!'}`);
         closeAddGvcAccountModal();
         document.getElementById('gvc-new-label').value = '';
+        document.getElementById('gvc-new-persona').value = '';
         document.getElementById('gvc-new-email').value = '';
         document.getElementById('gvc-new-password').value = '';
         document.getElementById('gvc-new-phone').value = '';
+        document.getElementById('gvc-new-datefrom').value = '';
         loadGvcAccounts();
       } else {
         alert(`❌ Error: ${data.detail || 'Could not add account.'}`);
@@ -2570,17 +3167,23 @@ How can I help you today?</div>
       tbody.innerHTML = '';
 
       if (!data.clients || data.clients.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:20px;">No clients in queue. Click '+ Add Client' or tell the agent to add applicants.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted-foreground); padding:20px;">No clients in queue. Click '+ Add Client' or 'Bulk CSV / TXT' to add applicants.</td></tr>`;
         return;
       }
 
       data.clients.forEach(c => {
         const tr = document.createElement('tr');
         const badgeClass = `badge-${c.status.toLowerCase()}`;
+        const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim();
         tr.innerHTML = `
           <td><b>#${c.id}</b></td>
           <td><b>${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</b><br><small style="color:var(--muted-foreground)">DOB: ${c.dob}</small></td>
           <td><code>${c.passport_number}</code></td>
+          <td>
+            <span class="pii-masked" onclick="openPiiModal('${escapeHtml(fullName)}', '${c.passport_number}', '${escapeHtml(c.phone_number)}', 'Applicant Contact')">
+              +92-${escapeHtml(maskPhonePii(c.phone_number))} <i data-lucide="lock" class="icon" style="width:11px; height:11px; display:inline-block; vertical-align:middle;"></i>
+            </span>
+          </td>
           <td>${c.destination} — Type ${c.visa_type}</td>
           <td>${c.vac_city}</td>
           <td><span class="badge ${badgeClass}">${c.status}</span></td>

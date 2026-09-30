@@ -84,6 +84,10 @@ from agents.appointments.db import (
     update_gvc_account_session,
     toggle_gvc_account_worker,
     export_all_system_data,
+    log_system_event,
+    get_recent_system_logs,
+    clear_system_logs,
+    mask_phone_pii,
 )
 from agents.appointments.fleet_manager import fleet_manager
 from agents.appointments.monitor import slot_monitor
@@ -538,6 +542,208 @@ async def create_client(client: ClientProfile, user: dict = Depends(get_current_
     }
 
 
+class BulkClientUploadRequest(BaseModel):
+    csv_text: Optional[str] = None
+    clients: Optional[List[dict]] = None
+
+
+@app.get("/api/clients/template")
+async def get_client_queue_template(user: dict = Depends(get_current_user)):
+    """Download standard CSV template for bulk client applicant uploads."""
+    csv_headers = (
+        "first_name,last_name,dob,passport_number,passport_expiry,passport_issue_date,"
+        "passport_issue_place,gender,nationality,phone_number,email,destination,visa_type,"
+        "vac_id,preferred_date_start,preferred_date_end,notes\n"
+    )
+    sample_rows = (
+        "Muhammad,Ahmed,15/08/1992,AB1234567,10/10/2030,10/10/2020,Islamabad,Male,Pakistani,3001234567,ahmed.pk@example.com,Greece,26,138,07/10/2026,30/10/2026,Agricultural seasonal employment\n"
+        "Fatima,Khan,22/03/1995,CD7654321,15/05/2031,15/05/2021,Lahore,Female,Pakistani,3345112969,fatima.k@example.com,Greece,26,139,07/10/2026,31/10/2026,Long-term dependent visa\n"
+        "Yaqoob,Masih,05/11/1988,EF9876543,20/12/2029,20/12/2019,Karachi,Male,Pakistani,3219876543,yaqoob.m@example.com,Greece,26,137,07/10/2026,30/10/2026,Driver seasonal employment\n"
+    )
+    content = csv_headers + sample_rows
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="client_queue_template.csv"'},
+    )
+
+
+@app.post("/api/clients/bulk-upload")
+async def bulk_upload_clients(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Bulk ingest client applicant profiles via CSV/TXT payload or structured JSON.
+    Auto-detects delimiters (comma, semicolon, tab, pipe) and normalizes fields.
+    """
+    import csv
+    import io
+    import re
+
+    raw_text = ""
+    json_clients = []
+
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                raw_text = body.get("csv_text", "")
+                json_clients = body.get("clients", [])
+            elif isinstance(body, list):
+                json_clients = body
+        except Exception:
+            pass
+    elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+        form = await request.form()
+        file_obj = form.get("file")
+        if file_obj and hasattr(file_obj, "read"):
+            content_bytes = await file_obj.read()
+            raw_text = content_bytes.decode("utf-8", errors="ignore")
+        elif form.get("csv_text"):
+            raw_text = str(form.get("csv_text"))
+    else:
+        raw_bytes = await request.body()
+        raw_text = raw_bytes.decode("utf-8", errors="ignore")
+
+    rows_to_process: List[dict] = []
+
+    if json_clients and isinstance(json_clients, list):
+        rows_to_process = json_clients
+    elif raw_text and raw_text.strip():
+        # Clean text
+        text = raw_text.strip()
+        # Sniff delimiter
+        first_line = text.splitlines()[0]
+        delimiter = ","
+        for d in ["\t", ";", "|", ","]:
+            if d in first_line:
+                delimiter = d
+                break
+
+        reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+        for row in reader:
+            if any(row.values()):
+                # Normalize keys: lowercase, strip, replace spaces/dashes with underscores
+                clean_row = {}
+                for k, v in row.items():
+                    if k:
+                        norm_k = re.sub(r"[^a-zA-Z0-9_]", "_", k.strip().lower()).strip("_")
+                        clean_row[norm_k] = (v or "").strip()
+                rows_to_process.append(clean_row)
+
+    if not rows_to_process:
+        raise HTTPException(status_code=400, detail="No valid client records or CSV content provided.")
+
+    added = []
+    errors = []
+
+    vac_map = {
+        "islamabad": "138",
+        "isb": "138",
+        "138": "138",
+        "lahore": "139",
+        "lhe": "139",
+        "139": "139",
+        "karachi": "137",
+        "khi": "137",
+        "137": "137",
+    }
+
+    for idx, row in enumerate(rows_to_process, start=1):
+        try:
+            # Handle names
+            first_name = row.get("first_name") or row.get("given_name") or row.get("fname") or ""
+            last_name = row.get("last_name") or row.get("surname") or row.get("family_name") or row.get("lname") or ""
+            if not first_name and (row.get("full_name") or row.get("name")):
+                parts = (row.get("full_name") or row.get("name", "")).split(maxsplit=1)
+                first_name = parts[0]
+                last_name = parts[1] if len(parts) > 1 else "Applicant"
+
+            passport = row.get("passport_number") or row.get("passport") or row.get("passport_no") or ""
+            dob = row.get("dob") or row.get("date_of_birth") or row.get("birth_date") or ""
+            passport_expiry = row.get("passport_expiry") or row.get("expiry_date") or row.get("passport_exp") or ""
+            phone = row.get("phone_number") or row.get("phone") or row.get("mobile") or row.get("contact") or ""
+            email = row.get("email") or row.get("email_address") or f"client.{passport.lower() or idx}@kamalexpress.com"
+
+            if not first_name or not passport:
+                errors.append(f"Row #{idx}: Missing required first_name or passport_number.")
+                continue
+
+            # Normalize dates if ISO format YYYY-MM-DD
+            def _norm_date(d_str: str) -> str:
+                if not d_str:
+                    return ""
+                m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", d_str.strip())
+                if m:
+                    return f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
+                return d_str.strip()
+
+            dob = _norm_date(dob) or "01/01/1990"
+            passport_expiry = _norm_date(passport_expiry) or "01/01/2030"
+            issue_date = _norm_date(row.get("passport_issue_date") or row.get("issue_date") or "")
+            pref_start = _norm_date(row.get("preferred_date_start") or row.get("date_start") or row.get("start_date") or "")
+            pref_end = _norm_date(row.get("preferred_date_end") or row.get("date_end") or row.get("end_date") or "")
+
+            raw_vac = str(row.get("vac_id") or row.get("vac_city") or row.get("vac") or "138").lower().strip()
+            vac_id = vac_map.get(raw_vac, "138")
+            vac_city = "Islamabad" if vac_id == "138" else ("Lahore" if vac_id == "139" else "Karachi")
+
+            visa_type = str(row.get("visa_type") or row.get("visa_category") or "26").strip()
+
+            client_obj = ClientProfile(
+                first_name=first_name,
+                last_name=last_name or "Applicant",
+                dob=dob,
+                passport_number=passport.upper().strip(),
+                passport_expiry=passport_expiry,
+                passport_issue_date=issue_date,
+                passport_issue_place=row.get("passport_issue_place") or row.get("issue_place") or "",
+                gender=row.get("gender", "Male").capitalize() if row.get("gender") in ["Female", "female", "Other", "other"] else "Male",
+                gender_id="1" if str(row.get("gender", "")).lower() == "female" else "2",
+                nationality=row.get("nationality", "Pakistani"),
+                nationality_id="197",
+                phone_number=phone,
+                email=email,
+                destination=row.get("destination", "Greece"),
+                visa_type=visa_type,
+                vac_id=vac_id,
+                vac_city=vac_city,
+                preferred_date_start=pref_start or None,
+                preferred_date_end=pref_end or None,
+                notes=row.get("notes", "Bulk uploaded via CSV/TXT"),
+            )
+
+            client_id = add_client(client_obj)
+            added.append({
+                "id": client_id,
+                "name": f"{client_obj.first_name} {client_obj.last_name}",
+                "passport": client_obj.passport_number,
+                "vac_city": client_obj.vac_city,
+            })
+        except Exception as err:
+            errors.append(f"Row #{idx}: {str(err)}")
+
+    # Log bulk ingestion event
+    log_system_event(
+        message=f"Bulk applicant intake processed: {len(added)} added, {len(errors)} failed/skipped.",
+        level="SUCCESS" if added else "WARNING",
+        category="QUEUE",
+        details={"added_count": len(added), "errors": errors[:10]},
+    )
+
+    return {
+        "success": len(added) > 0,
+        "total_rows": len(rows_to_process),
+        "added_count": len(added),
+        "failed_count": len(errors),
+        "errors": errors,
+        "added_clients": added,
+        "message": f"Successfully ingested {len(added)} applicant(s) into queue." if added else "No valid applicants were added.",
+    }
+
+
 @app.get("/api/clients/{client_id}")
 async def get_client(client_id: int, user: dict = Depends(get_current_user)):
     """Get single client by ID."""
@@ -721,6 +927,9 @@ class GVCAccountCreateRequest(BaseModel):
     otp_phone_number: str
     target_vac_id: Optional[str] = "138"
     target_visa_type: Optional[str] = "26"
+    target_date_from: Optional[str] = None
+    account_role: Optional[str] = "HYBRID"
+    worker_persona_name: Optional[str] = None
     assigned_proxy_url: Optional[str] = None
     auth_mode: Optional[str] = "auto_solver"
 
@@ -732,6 +941,9 @@ class GVCAccountUpdateRequest(BaseModel):
     otp_phone_number: Optional[str] = None
     target_vac_id: Optional[str] = None
     target_visa_type: Optional[str] = None
+    target_date_from: Optional[str] = None
+    account_role: Optional[str] = None
+    worker_persona_name: Optional[str] = None
     assigned_proxy_url: Optional[str] = None
     auth_mode: Optional[str] = None
     is_worker_active: Optional[bool] = None
@@ -929,6 +1141,90 @@ async def get_fleet_status_endpoint(user: dict = Depends(get_current_user)):
     is_admin = user.get("role") == "admin"
     username = user.get("username", "staff")
     return fleet_manager.get_telemetry(owner_username=username, is_admin=is_admin)
+
+
+@app.post("/api/gvc/fleet/pre-stage")
+async def pre_stage_fleet_endpoint(user: dict = Depends(get_current_user)):
+    """Pre-stage all authenticated booking operators into hot standby readiness."""
+    staged = fleet_manager.pre_stage_all_bookers()
+    return {
+        "success": True,
+        "pre_staged_count": staged,
+        "message": f"Pre-staged {staged} booking operator(s) in Hot Standby readiness.",
+    }
+
+
+@app.post("/api/gvc/fleet/reschedule-checks")
+async def reschedule_checks_endpoint(
+    vac_id: Optional[str] = Query(None),
+    visa_type: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """Resume slot discovery checking across centers after an auto-halt."""
+    fleet_manager.reschedule_slot_checks(vac_id=vac_id, visa_type=visa_type)
+    return {
+        "success": True,
+        "message": "Slot discovery checks rescheduled across all centers.",
+    }
+
+
+# ── System Activity Stream & Logging REST Endpoints ─────────────────────────
+
+@app.get("/api/logs/stream")
+async def get_logs_stream_endpoint(
+    limit: int = Query(100, ge=1, le=500),
+    level: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """Retrieve recent structured activity stream logs."""
+    logs = get_recent_system_logs(limit=limit, level=level, category=category)
+    return {"total": len(logs), "logs": logs}
+
+
+@app.get("/api/logs/export")
+async def export_logs_endpoint(
+    format: str = Query("txt", description="Export format: 'txt' or 'json'"),
+    user: dict = Depends(get_current_user),
+):
+    """Export persistent system activity logs as a downloadable file."""
+    from datetime import datetime as dt_now
+    timestamp_str = dt_now.utcnow().strftime("%Y%m%d_%H%M%S")
+    logs = get_recent_system_logs(limit=1000)
+
+    if format.lower() == "json":
+        content = json.dumps(logs, indent=2, ensure_ascii=False)
+        filename = f"kamal_express_logs_{timestamp_str}.json"
+        media_type = "application/json"
+    else:
+        lines = []
+        for l in logs:
+            worker_tag = f"[{l.get('worker_name')}] " if l.get("worker_name") else ""
+            acc_tag = f"[Acc #{l.get('account_id')}] " if l.get("account_id") else ""
+            lines.append(f"[{l.get('created_at')}] [{l.get('level')}] [{l.get('category')}] {worker_tag}{acc_tag}{l.get('message')}")
+        content = "\n".join(lines)
+        filename = f"kamal_express_logs_{timestamp_str}.txt"
+        media_type = "text/plain; charset=utf-8"
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.delete("/api/logs/clear")
+async def clear_logs_endpoint(user: dict = Depends(get_current_user)):
+    """Clear all system activity logs from SQLite database and in-memory buffer."""
+    cleared = clear_system_logs()
+    with fleet_manager._lock:
+        fleet_manager._activity_logs.clear()
+    fleet_manager.log_event(
+        f"Activity logs cleared by staff operator '{user.get('username', 'staff')}'.",
+        level="INFO",
+        category="SYSTEM",
+    )
+    return {"success": True, "cleared_count": cleared, "message": "Activity stream logs cleared."}
 
 
 @app.get("/api/monitor/status")

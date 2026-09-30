@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import threading
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 DB_PATH = DB_DIR / "kamal_express.db"
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 
 def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
@@ -249,6 +250,9 @@ def init_db(db_path: Path = DB_PATH) -> None:
                         target_visa_type TEXT DEFAULT '26',
                         assigned_proxy_url TEXT,
                         auth_mode TEXT DEFAULT 'auto_solver',
+                        account_role TEXT DEFAULT 'HYBRID',
+                        worker_persona_name TEXT DEFAULT '',
+                        target_date_from TEXT DEFAULT '',
                         auth_token TEXT DEFAULT '',
                         bearer_token TEXT DEFAULT '',
                         cookies_json TEXT DEFAULT '{}',
@@ -262,7 +266,21 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_gvc_accounts_owner ON gvc_portal_accounts(owner_username);")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_gvc_accounts_worker ON gvc_portal_accounts(is_worker_active, is_authenticated);")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS system_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp REAL NOT NULL,
+                        created_at TEXT NOT NULL,
+                        level TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        account_id INTEGER,
+                        worker_name TEXT,
+                        message TEXT NOT NULL,
+                        details_json TEXT
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_ts ON system_logs(timestamp DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_cat ON system_logs(category, level);")
 
                 # ── Schema Migrations (Ensure columns exist on existing databases) ────
                 def _ensure_cols(table: str, col_defs: dict[str, str]):
@@ -305,6 +323,11 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 _ensure_cols("proxies", {
                     "quarantined_until": "TEXT",
                     "last_error": "TEXT",
+                })
+                _ensure_cols("gvc_portal_accounts", {
+                    "account_role": "TEXT DEFAULT 'HYBRID'",
+                    "worker_persona_name": "TEXT DEFAULT ''",
+                    "target_date_from": "TEXT DEFAULT ''",
                 })
 
             logger.info(f"[db] Initialized and verified SQLite database tables at {db_path}")
@@ -1767,6 +1790,44 @@ def clear_all_persisted_otps(db_path: Path = DB_PATH) -> int:
             conn.close()
 
 
+WORKER_PERSONAS = [
+    "Tariq Mehmood",
+    "Yaqoob Masih",
+    "Hamza Malik",
+    "Farooq Ahmed",
+    "Daniel Gill",
+    "Bilal Shah",
+    "Yousaf Bhatti",
+    "Rashid Minhas",
+    "Imran Nazir",
+    "Peter Joseph",
+]
+
+def get_next_persona_name(account_id: Optional[int] = None) -> str:
+    if account_id:
+        return WORKER_PERSONAS[(account_id - 1) % len(WORKER_PERSONAS)]
+    return WORKER_PERSONAS[0]
+
+
+def mask_phone_pii(phone: Optional[str]) -> str:
+    """Mask phone number to protect PII privacy (e.g. +92-334-***-2969)."""
+    if not phone or not str(phone).strip():
+        return "+92-***-***"
+    digits = re.sub(r"\D", "", str(phone))
+    if digits.startswith("92") and len(digits) >= 11:
+        digits = digits[2:]
+    elif digits.startswith("0") and len(digits) >= 10:
+        digits = digits[1:]
+    
+    if len(digits) >= 9:
+        prefix = digits[:3]
+        suffix = digits[-4:]
+        return f"+92-{prefix}-***-{suffix}"
+    elif len(digits) >= 4:
+        return f"+92-***-{digits[-4:]}"
+    return "+92-***-***"
+
+
 # ── GVC Multi-Account Portal Fleet Database Functions ─────────────────────────
 
 def add_gvc_portal_account(account_data: dict, db_path: Path = DB_PATH) -> int:
@@ -1776,17 +1837,24 @@ def add_gvc_portal_account(account_data: dict, db_path: Path = DB_PATH) -> int:
         conn = get_connection(db_path)
         try:
             with conn:
+                # Determine persona name
+                persona = account_data.get("worker_persona_name")
+                if not persona:
+                    cnt = conn.execute("SELECT COUNT(*) as count FROM gvc_portal_accounts").fetchone()["count"]
+                    persona = get_next_persona_name(cnt + 1)
+
                 cur = conn.execute(
                     """
                     INSERT INTO gvc_portal_accounts (
                         account_label, owner_username, email, password, otp_phone_number,
                         target_vac_id, target_visa_type, assigned_proxy_url, auth_mode,
+                        account_role, worker_persona_name, target_date_from,
                         auth_token, bearer_token, cookies_json, is_authenticated,
                         is_worker_active, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        account_data.get("account_label") or f"Account ({account_data.get('email', '')[:10]})",
+                        account_data.get("account_label") or f"{persona} ({account_data.get('email', '')[:10]})",
                         account_data.get("owner_username", "staff"),
                         account_data.get("email", "").strip().lower(),
                         account_data.get("password", ""),
@@ -1795,6 +1863,9 @@ def add_gvc_portal_account(account_data: dict, db_path: Path = DB_PATH) -> int:
                         account_data.get("target_visa_type", "26"),
                         account_data.get("assigned_proxy_url") or None,
                         account_data.get("auth_mode", "auto_solver"),
+                        account_data.get("account_role", "HYBRID").upper(),
+                        persona,
+                        account_data.get("target_date_from", ""),
                         account_data.get("auth_token", ""),
                         account_data.get("bearer_token", ""),
                         account_data.get("cookies_json", "{}"),
@@ -1803,7 +1874,16 @@ def add_gvc_portal_account(account_data: dict, db_path: Path = DB_PATH) -> int:
                         now_str,
                     ),
                 )
-                return cur.lastrowid
+                acc_id = cur.lastrowid
+                log_system_event(
+                    level="INFO",
+                    category="FLEET",
+                    message=f"Added GVC Portal Account #{acc_id} assigned to operator '{persona}' ({account_data.get('email')}).",
+                    account_id=acc_id,
+                    worker_name=persona,
+                    db_path=db_path,
+                )
+                return acc_id
         finally:
             conn.close()
 
@@ -1820,6 +1900,7 @@ def get_gvc_portal_accounts(owner_username: Optional[str] = None, is_admin: bool
         rows = cur.fetchall()
         results = []
         for r in rows:
+            persona = r["worker_persona_name"] if "worker_persona_name" in r.keys() and r["worker_persona_name"] else get_next_persona_name(r["id"])
             results.append({
                 "id": r["id"],
                 "account_label": r["account_label"],
@@ -1827,8 +1908,12 @@ def get_gvc_portal_accounts(owner_username: Optional[str] = None, is_admin: bool
                 "email": r["email"],
                 "password": r["password"],
                 "otp_phone_number": r["otp_phone_number"],
+                "otp_phone_masked": mask_phone_pii(r["otp_phone_number"]),
                 "target_vac_id": r["target_vac_id"] or "138",
                 "target_visa_type": r["target_visa_type"] or "26",
+                "account_role": r["account_role"] if "account_role" in r.keys() and r["account_role"] else "HYBRID",
+                "worker_persona_name": persona,
+                "target_date_from": r["target_date_from"] if "target_date_from" in r.keys() and r["target_date_from"] else "",
                 "assigned_proxy_url": r["assigned_proxy_url"],
                 "auth_mode": r["auth_mode"] or "auto_solver",
                 "has_token": bool(r["auth_token"]),
@@ -1856,6 +1941,7 @@ def get_gvc_portal_account_by_id(account_id: int, db_path: Path = DB_PATH) -> Op
         r = cur.fetchone()
         if not r:
             return None
+        persona = r["worker_persona_name"] if "worker_persona_name" in r.keys() and r["worker_persona_name"] else get_next_persona_name(r["id"])
         return {
             "id": r["id"],
             "account_label": r["account_label"],
@@ -1863,8 +1949,12 @@ def get_gvc_portal_account_by_id(account_id: int, db_path: Path = DB_PATH) -> Op
             "email": r["email"],
             "password": r["password"],
             "otp_phone_number": r["otp_phone_number"],
+            "otp_phone_masked": mask_phone_pii(r["otp_phone_number"]),
             "target_vac_id": r["target_vac_id"] or "138",
             "target_visa_type": r["target_visa_type"] or "26",
+            "account_role": r["account_role"] if "account_role" in r.keys() and r["account_role"] else "HYBRID",
+            "worker_persona_name": persona,
+            "target_date_from": r["target_date_from"] if "target_date_from" in r.keys() and r["target_date_from"] else "",
             "assigned_proxy_url": r["assigned_proxy_url"],
             "auth_mode": r["auth_mode"] or "auto_solver",
             "has_token": bool(r["auth_token"]),
@@ -1888,7 +1978,7 @@ def update_gvc_portal_account(account_id: int, update_data: dict, db_path: Path 
     allowed = {
         "account_label", "email", "password", "otp_phone_number",
         "target_vac_id", "target_visa_type", "assigned_proxy_url",
-        "auth_mode", "is_worker_active"
+        "auth_mode", "is_worker_active", "account_role", "worker_persona_name", "target_date_from"
     }
     fields = []
     values = []
@@ -1920,6 +2010,126 @@ def delete_gvc_portal_account(account_id: int, db_path: Path = DB_PATH) -> bool:
             with conn:
                 cur = conn.execute("DELETE FROM gvc_portal_accounts WHERE id = ?", (account_id,))
                 return cur.rowcount > 0
+        finally:
+            conn.close()
+
+
+# ── Unified Persistent System Activity Logger ────────────────────────────────
+
+LOGS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "logs"
+
+def log_system_event(
+    level: str,
+    category: str,
+    message: str,
+    account_id: Optional[int] = None,
+    worker_name: Optional[str] = None,
+    details: Optional[dict] = None,
+    db_path: Path = DB_PATH,
+) -> dict:
+    """
+    Log operational event into SQLite system_logs table and daily rotating file data/logs/activity_YYYY-MM-DD.log.
+    """
+    now = datetime.utcnow()
+    now_iso = now.isoformat() + "Z"
+    now_ts = now.timestamp()
+    time_str = now.strftime("%H:%M:%S")
+    details_json = json.dumps(details) if details else None
+
+    # 1. Insert into SQLite
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cur = conn.execute("""
+                    INSERT INTO system_logs (
+                        timestamp, created_at, level, category, account_id, worker_name, message, details_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (now_ts, now_iso, level.upper(), category.upper(), account_id, worker_name or "", message, details_json))
+                log_id = cur.lastrowid
+        except Exception as e:
+            logger.error(f"[logger] Failed to insert log to SQLite: {e}")
+            log_id = 0
+        finally:
+            conn.close()
+
+    # 2. Append to daily rotating log file
+    try:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        log_file = LOGS_DIR / f"activity_{now.strftime('%Y-%m-%d')}.log"
+        log_line = f"[{now_iso}] [{level.upper():7s}] [{category.upper():12s}] {f'(Operator: {worker_name}) ' if worker_name else ''}{message}\n"
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(log_line)
+    except Exception as e:
+        logger.warning(f"[logger] Failed to write daily log file: {e}")
+
+    return {
+        "id": log_id,
+        "timestamp": now_ts,
+        "created_at": now_iso,
+        "time": time_str,
+        "level": level.upper(),
+        "category": category.upper(),
+        "account_id": account_id,
+        "worker_name": worker_name or "",
+        "message": message,
+        "details": details,
+    }
+
+
+def get_recent_system_logs(
+    limit: int = 100,
+    category: Optional[str] = None,
+    level: Optional[str] = None,
+    db_path: Path = DB_PATH,
+) -> list[dict]:
+    """Retrieve recent system logs from SQLite ordered by timestamp DESC."""
+    conn = get_connection(db_path)
+    try:
+        query = "SELECT * FROM system_logs"
+        params: list = []
+        conditions = []
+        if category:
+            conditions.append("category = ?")
+            params.append(category.upper().strip())
+        if level:
+            conditions.append("level = ?")
+            params.append(level.upper().strip())
+        if conditions:
+            query += f" WHERE {' AND '.join(conditions)}"
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+
+        rows = conn.execute(query, params).fetchall()
+        results = []
+        for r in rows:
+            dt_obj = datetime.fromtimestamp(r["timestamp"])
+            results.append({
+                "id": r["id"],
+                "timestamp": r["timestamp"],
+                "created_at": r["created_at"],
+                "time": dt_obj.strftime("%H:%M:%S"),
+                "date": dt_obj.strftime("%Y-%m-%d"),
+                "level": r["level"],
+                "category": r["category"],
+                "account_id": r["account_id"],
+                "worker_name": r["worker_name"] or "",
+                "message": r["message"],
+                "details": json.loads(r["details_json"]) if r["details_json"] else None,
+            })
+        return results
+    finally:
+        conn.close()
+
+
+def clear_system_logs(db_path: Path = DB_PATH) -> int:
+    """Clear all system logs from SQLite."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cur = conn.execute("DELETE FROM system_logs")
+                return cur.rowcount
         finally:
             conn.close()
 
