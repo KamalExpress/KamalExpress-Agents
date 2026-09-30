@@ -367,6 +367,51 @@ def test_blitz_queue_booking_endpoint():
         delete_client(cid)
 
 
+def test_requeue_failed_and_single_client_endpoints():
+    headers = get_auth_headers("admin")
+    from agents.appointments.schemas import ClientProfile
+    from agents.appointments.db import add_client, delete_client, update_client_status, get_client_by_id
+
+    c1 = ClientProfile(
+        first_name="FailedClient1",
+        last_name="Test",
+        dob="01/01/1992",
+        passport_number="PKFAIL01",
+        passport_expiry="01/01/2032",
+        phone_number="03345112969",
+        email="fail1@test.com",
+        destination="Greece",
+        visa_type="26",
+        vac_id="138",
+        vac_city="Islamabad",
+        status="FAILED",
+    )
+    cid = add_client(c1)
+    update_client_status(cid, status="FAILED", notes="Test failure")
+
+    try:
+        # 1. Test single client requeue
+        resp1 = client.post(f"/api/clients/{cid}/requeue", headers=headers)
+        assert resp1.status_code == 200
+        d1 = resp1.json()
+        assert d1["success"] is True
+        c_updated = get_client_by_id(cid)
+        assert c_updated.status == "QUEUED"
+
+        # 2. Set to FAILED again and test bulk requeue
+        update_client_status(cid, status="FAILED", notes="Test failure 2")
+        resp2 = client.post("/api/queue/requeue-failed", headers=headers)
+        assert resp2.status_code == 200
+        d2 = resp2.json()
+        assert d2["success"] is True
+        assert d2["requeued_count"] >= 1
+        c_updated2 = get_client_by_id(cid)
+        assert c_updated2.status == "QUEUED"
+    finally:
+        delete_client(cid)
+
+
+
 
 
 

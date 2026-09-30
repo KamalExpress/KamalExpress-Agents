@@ -55,6 +55,25 @@ from ..schemas import AvailableSlot, BookingResult, ClientProfile
 
 logger = logging.getLogger(__name__)
 
+
+def clean_portal_error_text(text: Optional[str]) -> str:
+    """Extract clean concise error summary from raw GVC / WAF responses (stripping raw HTML)."""
+    if not text:
+        return "Unknown error"
+    t = str(text).strip()
+    if "<!doctype html" in t.lower() or "<html" in t.lower() or "<head" in t.lower():
+        import re
+        title_match = re.search(r"<title>(.*?)</title>", t, re.IGNORECASE | re.DOTALL)
+        if title_match:
+            title = title_match.group(1).strip()
+            return f"WAF/Portal HTML ({title})"
+        h1_match = re.search(r"<h1>(.*?)</h1>", t, re.IGNORECASE | re.DOTALL)
+        if h1_match:
+            return f"WAF/Portal HTML ({h1_match.group(1).strip()})"
+        return "WAF/Edge Challenge HTML (Session invalid or Imperva challenge)"
+    return t[:200]
+
+
 # Official GVC Center Mappings for Pakistan
 GVC_VACS = {
     "138": {"id": 138, "name": "Islamabad VAC", "city": "Islamabad"},
@@ -629,11 +648,25 @@ class GVCPortalDriver:
     async def trigger_booking_otp(self, phone_number: str, prefix_id: str = "197", max_retries: int = 3) -> Dict[str, Any]:
         """
         Request GVC to send an SMS/WhatsApp OTP for appointment confirmation with automatic proxy failover.
+        Properly sanitizes Pakistan phone numbers (e.g. strips +92, 0092, 92, leading 0, dashes)
+        to ensure exact 10-digit format for GVC API prefix 197.
         """
         self._load_active_session_from_db()
-        phone_clean = phone_number.lstrip("0")
+        digits = re.sub(r"\D", "", str(phone_number or ""))
+        if digits.startswith("0092"):
+            digits = digits[4:]
+        elif digits.startswith("92") and len(digits) >= 11:
+            digits = digits[2:]
+        elif digits.startswith("0") and len(digits) >= 10:
+            digits = digits[1:]
+        phone_clean = digits.lstrip("0")
+
+        if not phone_clean:
+            logger.error(f"[gvc] Cannot trigger OTP: invalid or empty phone number '{phone_number}'")
+            return {"success": False, "error": f"Invalid phone number format: '{phone_number}'"}
+
         url = f"{self.base_url}/api/v1/onetimepassword/sendOtpBookAppointment/{phone_clean}/{prefix_id}"
-        logger.info(f"[gvc] Triggering OTP for +92-{phone_clean}...")
+        logger.info(f"[gvc] Triggering OTP at URL: {url} (for +92-{phone_clean})...")
 
         last_err = None
         for attempt in range(max_retries):
@@ -645,22 +678,23 @@ class GVCPortalDriver:
                     if resp.status_code in [200, 204]:
                         if proxy:
                             self.proxy_manager.mark_proxy_success(proxy)
-                        logger.info(f"[gvc] ✓ OTP successfully triggered for +92-{phone_clean}")
+                        logger.info(f"[gvc] ✓ OTP successfully triggered for +92-{phone_clean} on GVC API (HTTP {resp.status_code}).")
                         return {"success": True, "phone": phone_clean, "message": "OTP sent successfully."}
                     elif resp.status_code in [403, 429]:
                         logger.warning(f"[gvc] Proxy blocked/rate-limited (HTTP {resp.status_code}) on {proxy}. Quarantining and retrying...")
                         if proxy:
                             self.proxy_manager.mark_proxy_failed(proxy)
                     else:
-                        logger.warning(f"[gvc] OTP trigger returned HTTP {resp.status_code}: {resp.text[:150]}")
-                        return {"success": False, "status_code": resp.status_code, "message": resp.text[:150]}
+                        clean_err = clean_portal_error_text(resp.text)
+                        logger.warning(f"[gvc] GVC OTP trigger returned HTTP {resp.status_code}: {clean_err}")
+                        return {"success": False, "status_code": resp.status_code, "message": f"GVC returned HTTP {resp.status_code}: {clean_err}"}
             except Exception as e:
                 logger.warning(f"[gvc] Proxy error on {proxy}: {e}. Retrying on next proxy...")
                 if proxy:
                     self.proxy_manager.mark_proxy_failed(proxy)
                 last_err = str(e)
 
-        return {"success": False, "error": f"Failed after {max_retries} proxy attempts. Last error: {last_err}"}
+        return {"success": False, "error": f"Failed after {max_retries} proxy attempts. Last error: {clean_portal_error_text(last_err)}"}
 
     # ── Final Booking Submission ────────────────────────────────
 
@@ -684,7 +718,14 @@ class GVCPortalDriver:
         vac_meta = GVC_VACS.get(vac_key.lower(), GVC_VACS.get("138", {"id": 138, "name": "Islamabad", "city": "Islamabad"}))
         app_type = str(applicant.visa_type or visa_type or "26")
         
-        phone_clean = applicant.phone_number.lstrip("0")
+        digits = re.sub(r"\D", "", str(applicant.phone_number or ""))
+        if digits.startswith("0092"):
+            digits = digits[4:]
+        elif digits.startswith("92") and len(digits) >= 11:
+            digits = digits[2:]
+        elif digits.startswith("0") and len(digits) >= 10:
+            digits = digits[1:]
+        phone_clean = digits.lstrip("0")
         sub_payload = {
             "periodslotid": int(slot_id) if slot_id.isdigit() else 0,
             "type": int(app_type) if app_type.isdigit() else 26,
@@ -763,13 +804,14 @@ class GVCPortalDriver:
                         if proxy:
                             self.proxy_manager.mark_proxy_failed(proxy)
                     else:
+                        clean_err = clean_portal_error_text(resp.text)
                         return BookingResult(
                             success=False,
                             client_id=applicant.id,
                             client_name=f"{applicant.first_name} {applicant.last_name}",
                             vac_city=vac_meta.get("city", "Islamabad"),
                             visa_type=str(app_type),
-                            message=f"GVC rejected booking with HTTP {resp.status_code}: {resp.text[:200]}",
+                            message=f"GVC rejected booking with HTTP {resp.status_code}: {clean_err}",
                             raw_payload=resp.text,
                         )
             except Exception as e:
@@ -783,5 +825,5 @@ class GVCPortalDriver:
             client_name=f"{applicant.first_name} {applicant.last_name}",
             vac_city=vac_meta.get("city", "Islamabad"),
             visa_type=str(app_type),
-            message=f"Booking submission failed after {max_retries} attempts: {last_error}",
+            message=f"Booking submission failed after {max_retries} attempts: {clean_portal_error_text(last_error)}",
         )

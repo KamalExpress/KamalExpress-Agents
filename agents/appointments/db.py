@@ -770,6 +770,54 @@ def update_client_status(
             conn.close()
 
 
+def requeue_failed_clients(db_path: Path = DB_PATH) -> int:
+    """
+    Reset all clients with status 'FAILED' or 'IN_PROGRESS' back to 'QUEUED'
+    and clear worker locks so they can be picked up by the auto-booking pipeline.
+    """
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("""
+                    UPDATE client_queue
+                    SET status = 'QUEUED', locked_by_worker = NULL, locked_at = NULL,
+                        notes = CASE 
+                            WHEN notes IS NULL OR notes = '' THEN 'Re-queued for booking retry.'
+                            ELSE notes || ' | Re-queued for retry.'
+                        END
+                    WHERE status IN ('FAILED', 'IN_PROGRESS')
+                """)
+                count = cursor.rowcount
+                logger.info(f"[db] Re-queued {count} failed/in-progress client(s) to QUEUED.")
+                return count
+        finally:
+            conn.close()
+
+
+def requeue_client(client_id: int, db_path: Path = DB_PATH) -> bool:
+    """
+    Reset a specific client back to 'QUEUED' status.
+    """
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cursor = conn.execute("""
+                    UPDATE client_queue
+                    SET status = 'QUEUED', locked_by_worker = NULL, locked_at = NULL,
+                        notes = CASE 
+                            WHEN notes IS NULL OR notes = '' THEN 'Re-queued by staff.'
+                            ELSE notes || ' | Re-queued by staff.'
+                        END
+                    WHERE id = ?
+                """, (client_id,))
+                return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+
 def number_to_words_pkr(amount: int) -> str:
     """
     Convert an integer amount into formal English words representation.

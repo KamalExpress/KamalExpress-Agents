@@ -669,7 +669,12 @@ class GVCFleetManager:
             "activity_logs": self.get_recent_logs(50),
         }
 
-    async def trigger_client_booking(self, client_id: int, triggered_by: str = "staff") -> dict:
+    async def trigger_client_booking(
+        self,
+        client_id: int,
+        triggered_by: str = "staff",
+        assigned_account_id: Optional[int] = None
+    ) -> dict:
         """
         Manually trigger the full appointment booking workflow for a specific client.
         Uses an available authenticated worker/driver from the fleet or active GVC session.
@@ -687,14 +692,21 @@ class GVCFleetManager:
         selected_worker: Optional[AccountWorkerInstance] = None
         selected_account: Optional[dict] = None
 
-        # Prioritize worker matching client's target VAC and visa type
-        for worker in self._workers.values():
-            if worker._is_authenticated:
-                acc = get_gvc_portal_account_by_id(worker.account_id)
-                if acc and str(acc.get("target_vac_id")) == vac_id and str(acc.get("target_visa_type")) == visa_type:
-                    selected_worker = worker
-                    selected_account = acc
-                    break
+        if assigned_account_id and assigned_account_id in self._workers:
+            w = self._workers[assigned_account_id]
+            if w._is_authenticated:
+                selected_worker = w
+                selected_account = get_gvc_portal_account_by_id(assigned_account_id)
+
+        if not selected_worker:
+            # Prioritize worker matching client's target VAC and visa type
+            for worker in self._workers.values():
+                if worker._is_authenticated:
+                    acc = get_gvc_portal_account_by_id(worker.account_id)
+                    if acc and str(acc.get("target_vac_id")) == vac_id and str(acc.get("target_visa_type")) == visa_type:
+                        selected_worker = worker
+                        selected_account = acc
+                        break
 
         # Fallback to any authenticated fleet worker
         if not selected_worker:
@@ -713,7 +725,19 @@ class GVCFleetManager:
             driver = selected_worker._driver
             account_id = selected_worker.account_id
             persona = selected_account.get("worker_persona_name") or get_next_persona_name(account_id)
-            target_phone = selected_account.get("otp_phone_number") or client.phone_number
+            target_phone = client.phone_number or selected_account.get("otp_phone_number")
+
+            token = selected_account.get("bearer_token") or selected_account.get("auth_token")
+            if token:
+                driver._bearer_token = token
+                try:
+                    cj = selected_account.get("cookies_json")
+                    cookies = json.loads(cj) if isinstance(cj, str) else (cj or {})
+                    driver._session_cookies.update(cookies)
+                except Exception:
+                    pass
+            if selected_account.get("assigned_proxy_url"):
+                driver._session_proxy = selected_account.get("assigned_proxy_url")
         else:
             # Fallback to global gvc_driver
             try:
@@ -744,7 +768,7 @@ class GVCFleetManager:
                                 driver = worker._driver
                                 account_id = worker.account_id
                                 persona = acc.get("worker_persona_name") or get_next_persona_name(acc["id"])
-                                target_phone = acc.get("otp_phone_number") or client.phone_number
+                                target_phone = client.phone_number or acc.get("otp_phone_number")
                                 break
 
         if not driver:
@@ -802,28 +826,41 @@ class GVCFleetManager:
         )
 
         masked_sim = mask_phone_pii(target_phone)
-        self.log_event(
-            f"⚡ Operator '{persona}' initiated booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')} on {target_date} {target_time}. Triggering OTP to SIM {masked_sim}...",
-            level="INFO",
-            category="BOOKING",
-            account_id=account_id,
-            worker_name=persona,
-        )
 
-        # 4. Trigger OTP
-        await driver.trigger_booking_otp(phone_number=target_phone)
+        # 4 & 5. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 2 attempts)
+        max_otp_attempts = 2
+        otp_code = None
 
-        # 5. Wait for OTP
-        otp_code = await wait_for_otp(phone=target_phone, timeout=75.0)
+        for otp_attempt in range(1, max_otp_attempts + 1):
+            attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
+            self.log_event(
+                f"⚡ Operator '{persona}' triggered OTP{attempt_label} to SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}). Awaiting SMS...",
+                level="INFO",
+                category="BOOKING",
+                account_id=account_id,
+                worker_name=persona,
+            )
+            await driver.trigger_booking_otp(phone_number=target_phone)
+            otp_code = await wait_for_otp(phone=target_phone, timeout=55.0)
+            if otp_code:
+                self.log_event(
+                    f"✓ Operator '{persona}' successfully received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id}.",
+                    level="SUCCESS",
+                    category="OTP",
+                    account_id=account_id,
+                    worker_name=persona,
+                )
+                break
 
         if not otp_code:
+            # Return client to QUEUED state so they are not permanently blocked
             update_client_status(
                 client_id=client.id,
-                status="FAILED",
-                notes=f"OTP verification timed out after 75s on Operator '{persona}'."
+                status="QUEUED",
+                notes=f"OTP verification timed out on SIM {masked_sim} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
             )
             self.log_event(
-                f"❌ OTP verification timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim}.",
+                f"❌ OTP verification timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim} after {max_otp_attempts} attempts. Applicant returned to QUEUED status.",
                 level="WARNING",
                 category="OTP",
                 account_id=account_id,
@@ -832,7 +869,7 @@ class GVCFleetManager:
             return {
                 "success": False,
                 "status": "OTP_TIMEOUT",
-                "error": f"OTP verification timed out after 75s for SIM {masked_sim}. Please verify SIM connection or SMS forwarder.",
+                "error": f"OTP verification timed out after {max_otp_attempts} attempts for SIM {masked_sim}. Returned to queue.",
             }
 
         # 6. Record worker task
@@ -990,7 +1027,7 @@ class GVCFleetManager:
             driver = selected_worker._driver
             account_id = selected_worker.account_id
             persona = selected_account.get("worker_persona_name") or get_next_persona_name(account_id)
-            target_phone = selected_account.get("otp_phone_number") or client.phone_number
+            target_phone = client.phone_number or selected_account.get("otp_phone_number")
 
             token = selected_account.get("bearer_token") or selected_account.get("auth_token")
             if token:
@@ -1019,34 +1056,47 @@ class GVCFleetManager:
             self.log_event(msg, level="WARNING", category="AUTH")
             return {"success": False, "status": "UNAUTHENTICATED", "error": msg}
 
-        # 3. Trigger OTP
+        # 3. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 2 attempts)
         masked_sim = mask_phone_pii(target_phone)
-        self.log_event(
-            f"⚡ [QUICK BOOK] Operator '{persona}' triggered instant booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')} on {slot_date} {slot_time}. Triggering OTP to SIM {masked_sim}...",
-            level="INFO",
-            category="BOOKING",
-            account_id=account_id,
-            worker_name=persona,
-        )
+        max_otp_attempts = 2
+        otp_code = None
 
-        await driver.trigger_booking_otp(phone_number=target_phone)
+        for otp_attempt in range(1, max_otp_attempts + 1):
+            attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
+            self.log_event(
+                f"⚡ [QUICK BOOK] Operator '{persona}' triggered instant booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')} on {slot_date} {slot_time}. Triggering OTP{attempt_label} to SIM {masked_sim}...",
+                level="INFO",
+                category="BOOKING",
+                account_id=account_id,
+                worker_name=persona,
+            )
+            await driver.trigger_booking_otp(phone_number=target_phone)
+            otp_code = await wait_for_otp(phone=target_phone, timeout=55.0)
+            if otp_code:
+                self.log_event(
+                    f"✓ [QUICK BOOK] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id}.",
+                    level="SUCCESS",
+                    category="OTP",
+                    account_id=account_id,
+                    worker_name=persona,
+                )
+                break
 
-        # 4. Wait for OTP
-        otp_code = await wait_for_otp(phone=target_phone, timeout=75.0)
+        # 4. Wait for OTP result
         if not otp_code:
             update_client_status(
                 client_id=client.id,
-                status="FAILED",
-                notes=f"Quick-book failed: OTP verification timed out on SIM {masked_sim}."
+                status="QUEUED",
+                notes=f"Quick-book: OTP verification timed out on SIM {masked_sim} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
             )
             self.log_event(
-                f"❌ [QUICK BOOK] OTP timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim}.",
+                f"❌ [QUICK BOOK] OTP timed out for Client #{client.id} ({client.passport_number}) on SIM {masked_sim} after {max_otp_attempts} attempts. Reverted to QUEUED.",
                 level="WARNING",
                 category="OTP",
                 account_id=account_id,
                 worker_name=persona,
             )
-            return {"success": False, "status": "OTP_TIMEOUT", "error": f"OTP timed out after 75s for SIM {masked_sim}."}
+            return {"success": False, "status": "OTP_TIMEOUT", "error": f"OTP timed out after {max_otp_attempts} attempts for SIM {masked_sim}. Reverted to queue."}
 
         # 5. Record task & Submit
         if account_id:
@@ -1188,24 +1238,41 @@ class GVCFleetManager:
         """
         Launches parallel direct booking blitz for all QUEUED clients across all active operators.
         Bypasses prior search and strikes GVC directly starting from client's preferred_date_start.
+        Distributes applicants round-robin across authenticated operator SIMs with an 800ms stagger.
         """
         from .db import get_all_clients
         queued_clients = get_all_clients(status="QUEUED")
         if not queued_clients:
             return {"success": False, "message": "No applicants currently in QUEUED status."}
 
+        # Find active authenticated accounts for round-robin dispatch
+        auth_accounts = [
+            w.account_id for w in self._workers.values()
+            if w.is_authenticated
+        ]
+
         self.log_event(
-            f"🚀 [BOOKING BLITZ] Launching parallel direct booking blitz for {len(queued_clients)} queued applicant(s)...",
+            f"🚀 [BOOKING BLITZ] Launching direct booking blitz for {len(queued_clients)} queued applicant(s) across {len(auth_accounts) or 1} operator(s)...",
             level="SUCCESS",
             category="BOOKING",
         )
 
-        for c in queued_clients:
-            asyncio.create_task(self.trigger_client_booking(client_id=c.id, triggered_by=f"blitz-{triggered_by}"))
+        async def _dispatch_blitz(clients_list: list, accounts_list: list):
+            for idx, c in enumerate(clients_list):
+                assigned_acc = accounts_list[idx % len(accounts_list)] if accounts_list else None
+                asyncio.create_task(self.trigger_client_booking(
+                    client_id=c.id,
+                    assigned_account_id=assigned_acc,
+                    triggered_by=f"blitz-{triggered_by}"
+                ))
+                if idx < len(clients_list) - 1:
+                    await asyncio.sleep(0.8)  # Stagger SMS/requests to avoid simultaneous gateway flood
+
+        asyncio.create_task(_dispatch_blitz(queued_clients, auth_accounts))
 
         return {
             "success": True,
-            "message": f"Dispatched booking blitz for {len(queued_clients)} queued applicant(s).",
+            "message": f"Dispatched booking blitz for {len(queued_clients)} queued applicant(s) across {len(auth_accounts) or 1} operator(s).",
             "total_clients": len(queued_clients),
         }
 

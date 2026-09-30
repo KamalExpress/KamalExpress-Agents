@@ -94,6 +94,8 @@ from agents.appointments.db import (
     update_worker_accounting_settings,
     update_user_password,
     get_system_user_by_id,
+    requeue_failed_clients,
+    requeue_client,
 )
 from agents.appointments.fleet_manager import fleet_manager
 from agents.appointments.monitor import slot_monitor
@@ -980,6 +982,71 @@ async def blitz_queue_booking_endpoint(user: dict = Depends(get_current_user)):
             status_code=500,
             content={"success": False, "status": "INTERNAL_ERROR", "error": str(e)},
         )
+
+
+@app.post("/api/queue/requeue-failed")
+async def requeue_failed_endpoint(user: dict = Depends(get_current_user)):
+    """
+    Bulk reset all FAILED and stalled IN_PROGRESS applicants back to QUEUED status.
+    Clears any stale worker locks so the applicants can be auto-booked in future cycles.
+    """
+    try:
+        username = user.get("username", "staff")
+        count = requeue_failed_clients()
+        log_system_event(
+            level="INFO",
+            category="QUEUE",
+            message=f"Staff '{username}' re-queued {count} failed/stalled applicant(s) back to active queue.",
+            details={"requeued_count": count, "triggered_by": username},
+        )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "requeued_count": count,
+                "message": f"Successfully re-queued {count} applicant(s) back to active QUEUED status." if count > 0 else "No failed or stalled applicants found to re-queue.",
+            },
+        )
+    except Exception as e:
+        logger.error(f"[api] Error in requeue_failed_endpoint: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@app.post("/api/clients/{client_id}/requeue")
+async def requeue_single_client_endpoint(client_id: int, user: dict = Depends(get_current_user)):
+    """
+    Reset a specific applicant back to QUEUED status.
+    """
+    try:
+        client = get_client_by_id(client_id)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found.")
+        
+        ok = requeue_client(client_id)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to re-queue client.")
+            
+        username = user.get("username", "staff")
+        log_system_event(
+            level="INFO",
+            category="QUEUE",
+            message=f"Staff '{username}' re-queued applicant #{client_id} ({client.first_name} {client.last_name}) back to QUEUED status.",
+            details={"client_id": client_id, "triggered_by": username},
+        )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "client_id": client_id,
+                "message": f"Applicant #{client_id} ({client.first_name} {client.last_name}) is now back in active QUEUED status.",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[api] Error in requeue_single_client_endpoint: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
 
 
 
