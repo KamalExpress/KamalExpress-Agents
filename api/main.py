@@ -745,22 +745,27 @@ async def receive_otp_webhook(request: Request):
             "server_time": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
-    # 4. Universal field extraction for Phone
+    # 4. Universal field extraction for Recipient / Target Phone
+    # 'to' or 'recipient' represents the applicant/staff SIM phone receiving the SMS
     phone = (
-        data.get("phone")
-        or data.get("from")
-        or data.get("sender")
-        or data.get("number")
+        data.get("to")
+        or data.get("recipient")
+        or data.get("target_phone")
+        or data.get("sim_number")
+        or data.get("phone")
         or data.get("phoneNumber")
         or data.get("phone_number")
         or data.get("mobile")
-        or data.get("address")
-        or data.get("originatingAddress")
+        or data.get("number")
         or data.get("contact")
         or data.get("from_number")
+        or data.get("from")
+        or data.get("sender")
+        or data.get("address")
+        or data.get("originatingAddress")
     )
     if isinstance(phone, dict):
-        phone = phone.get("number") or phone.get("phone") or phone.get("address")
+        phone = phone.get("number") or phone.get("phone") or phone.get("address") or phone.get("to")
 
     # 5. Universal field extraction for OTP Code
     code = (
@@ -791,11 +796,14 @@ async def receive_otp_webhook(request: Request):
 
     if isinstance(data.get("sms"), dict):
         message = data["sms"].get("body") or data["sms"].get("text") or message
-        phone = data["sms"].get("from") or data["sms"].get("sender") or phone
+        phone = data["sms"].get("to") or data["sms"].get("recipient") or data["sms"].get("from") or data["sms"].get("sender") or phone
 
-    sender_name = data.get("sender") or data.get("from") or request.headers.get("user-agent", "ANDROID_SMS_FORWARDER")
+    # Determine sender name (e.g. GERRYS, shortcode, or device agent)
+    sender_name = data.get("from") or data.get("sender") or request.headers.get("user-agent", "ANDROID_SMS_FORWARDER")
+    if isinstance(sender_name, dict):
+        sender_name = sender_name.get("name") or sender_name.get("from") or "ANDROID_SMS_FORWARDER"
 
-    # If code is still not present, scan the message or raw body for 6-digit regex
+    # If code is still not present, scan the message or raw body for 4-8 digit regex
     if not code:
         code = extract_otp_code(str(message)) or extract_otp_code(raw_body_str)
 
