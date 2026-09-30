@@ -862,7 +862,7 @@ class GVCFleetManager:
             else:
                 # DIRECT BLIND STRIKE: No search slots found, but we proceed with direct booking on or after preferred_date_start
                 target_date = client.preferred_date_start or (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
-                target_time = "09:00"
+                target_time = "09:30"
                 target_slot_id = "0"
                 self.log_event(
                     f"⚡ [DIRECT BLIND STRIKE] No prior slots in cache for {vac_meta.get('name', 'VAC')} (Type {visa_type}). Executing direct booking strike on target date {target_date} {target_time} for Client #{client.id} ({client.first_name} {client.last_name})...",

@@ -496,7 +496,7 @@ class GVCPortalDriver:
                     self.last_search_status = {"status": "SUCCESS", "code": 200, "error": None}
                     for item in slot_items:
                         slot_date = item.get("date") or item.get("slotdate") or date_from
-                        slot_time = item.get("starttime") or item.get("time") or "09:00"
+                        slot_time = item.get("starttime") or item.get("time") or "09:30"
                         slot_id = str(item.get("periodslotid") or item.get("id") or item.get("slotId") or "0")
                         capacity = int(item.get("capacity") or item.get("available") or 1)
 
@@ -608,7 +608,7 @@ class GVCPortalDriver:
                 self.last_search_status = {"status": "SUCCESS", "code": 200, "error": None}
                 for item in slot_items:
                     slot_date = item.get("date") or item.get("slotdate") or date_from
-                    slot_time = item.get("starttime") or item.get("time") or "09:00"
+                    slot_time = item.get("starttime") or item.get("time") or "09:30"
                     slot_id = str(item.get("periodslotid") or item.get("id") or item.get("slotId") or "0")
                     capacity = int(item.get("capacity") or item.get("available") or 1)
 
