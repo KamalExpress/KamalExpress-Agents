@@ -827,21 +827,30 @@ class GVCFleetManager:
 
         masked_sim = mask_phone_pii(target_phone)
 
-        # 4 & 5. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 2 attempts)
-        max_otp_attempts = 2
+        # 4 & 5. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 3 attempts, 60s each)
+        max_otp_attempts = 3
+        otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
         otp_code = None
 
         for otp_attempt in range(1, max_otp_attempts + 1):
             attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
             self.log_event(
-                f"⚡ Operator '{persona}' triggered OTP{attempt_label} to SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}). Awaiting SMS...",
+                f"⚡ Operator '{persona}' triggered OTP{attempt_label} to SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}). Awaiting SMS ({int(otp_timeout)}s window)...",
                 level="INFO",
                 category="BOOKING",
                 account_id=account_id,
                 worker_name=persona,
             )
-            await driver.trigger_booking_otp(phone_number=target_phone)
-            otp_code = await wait_for_otp(phone=target_phone, timeout=55.0)
+            otp_res = await driver.trigger_booking_otp(phone_number=target_phone)
+            if not otp_res.get("success"):
+                self.log_event(
+                    f"⚠️ GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
+                    level="WARNING",
+                    category="OTP",
+                    account_id=account_id,
+                    worker_name=persona,
+                )
+            otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
             if otp_code:
                 self.log_event(
                     f"✓ Operator '{persona}' successfully received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id}.",
@@ -1056,22 +1065,31 @@ class GVCFleetManager:
             self.log_event(msg, level="WARNING", category="AUTH")
             return {"success": False, "status": "UNAUTHENTICATED", "error": msg}
 
-        # 3. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 2 attempts)
+        # 3. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 3 attempts, 60s each)
         masked_sim = mask_phone_pii(target_phone)
-        max_otp_attempts = 2
+        max_otp_attempts = 3
+        otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
         otp_code = None
 
         for otp_attempt in range(1, max_otp_attempts + 1):
             attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
             self.log_event(
-                f"⚡ [QUICK BOOK] Operator '{persona}' triggered instant booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')} on {slot_date} {slot_time}. Triggering OTP{attempt_label} to SIM {masked_sim}...",
+                f"⚡ [QUICK BOOK] Operator '{persona}' triggered instant booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_meta.get('name', 'VAC')} on {slot_date} {slot_time}. Triggering OTP{attempt_label} to SIM {masked_sim} ({int(otp_timeout)}s window)...",
                 level="INFO",
                 category="BOOKING",
                 account_id=account_id,
                 worker_name=persona,
             )
-            await driver.trigger_booking_otp(phone_number=target_phone)
-            otp_code = await wait_for_otp(phone=target_phone, timeout=55.0)
+            otp_res = await driver.trigger_booking_otp(phone_number=target_phone)
+            if not otp_res.get("success"):
+                self.log_event(
+                    f"⚠️ [QUICK BOOK] GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
+                    level="WARNING",
+                    category="OTP",
+                    account_id=account_id,
+                    worker_name=persona,
+                )
+            otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
             if otp_code:
                 self.log_event(
                     f"✓ [QUICK BOOK] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id}.",

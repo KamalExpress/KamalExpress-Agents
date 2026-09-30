@@ -198,8 +198,8 @@ def record_incoming_otp(
 
 async def wait_for_otp(
     phone: Optional[str] = None,
-    timeout: float = 75.0,
-    max_age_seconds: float = 45.0,
+    timeout: float = 60.0,
+    max_age_seconds: float = 90.0,
 ) -> Optional[str]:
     """
     Asynchronously await arrival of an OTP for the given phone number with timeout.

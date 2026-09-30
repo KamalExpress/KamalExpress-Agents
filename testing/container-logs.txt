@@ -1,158 +1,604 @@
 INFO:     Started server process [1]
 INFO:     Waiting for application startup.
-INFO:api.main:[api] Initializing background solver worker...
+INFO:api.main:[api] Initializing background solver worker and GVC fleet manager...
 INFO:agents.appointments.solver_worker:[solver_worker] GVCSolverWorker background task started.
+INFO:agents.appointments.fleet_manager:[fleet_worker #1] Started worker loop.
+INFO:agents.appointments.fleet_manager:[fleet_worker #2] Started worker loop.
+INFO:agents.appointments.fleet_manager:[fleet_worker #3] Started worker loop.
+INFO:agents.appointments.fleet_manager:[fleet_worker #4] Started worker loop.
 INFO:agents.appointments.solver_worker:[solver_worker] Loop entered. Waiting for active jobs...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 01/10/2026...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 01/10/2026...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 01/10/2026...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 01/10/2026...
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
-INFO:     192.168.16.1:32984 - "GET /favicon.ico HTTP/1.1" 404 Not Found
-INFO:     192.168.16.1:53696 - "GET / HTTP/1.1" 200 OK
-INFO:     192.168.16.1:53696 - "GET /api/auth/me HTTP/1.1" 200 OK
-INFO:     192.168.16.1:53696 - "GET /api/clients HTTP/1.1" 200 OK
-INFO:     192.168.16.1:53700 - "GET /api/proxies HTTP/1.1" 200 OK
-INFO:     192.168.16.1:53708 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:53712 - "GET /api/monitor/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:53712 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:53712 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:59444 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 01/10/2026...
-WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10007. Auto-refreshing WAF cookies via Playwright...
+INFO:     192.168.16.1:43812 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43824 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43834 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43844 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43844 - "GET / HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
 INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:57684 - "GET /health HTTP/1.1" 200 OK
-INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
-INFO:     192.168.16.1:56524 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:agents.appointments.portals.gvc:[gvc] Login form rendered! Imperva WAF challenge successfully bypassed.
-INFO:agents.appointments.db:[db] ✓ Saved active GVC session #111 (source=AUTO_SOLVER, synced_by=waf_refresher)
-WARNING:agents.appointments.portals.gvc:[gvc] Session token was rejected (HTTP 401 Unauthorized). The token has expired or is bound to a different client IP.
-INFO:agents.appointments.portals.gvc:[gvc] Auto-Solver mode active. Triggering background login renewal...
-INFO:agents.appointments.portals.gvc_auth:[gvc_auth] Initiating autonomous GVC login for account: amr.shah@gmail.com...
-INFO:agents.appointments.portals.gvc_auth:[gvc_auth] Attempt 1/3 via proxy http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10007...
-INFO:     192.168.16.1:56526 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:33404 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:agents.appointments.captcha:[captcha] Solving reCAPTCHA v2 at https://pk-gr-services.gvcworld.eu/login via capsolver
-INFO:agents.appointments.captcha:[capsolver] Submitting task (ReCaptchaV2TaskProxyless) to CapSolver API...
-INFO:agents.appointments.captcha:[capsolver] Task #a1c34fe6-1e73-4a4e-9c16-2dce9f918a2a submitted. Polling for solution (max 150s)...
-INFO:agents.appointments.captcha:[capsolver] ✓ Solved CAPTCHA successfully! (Token length: 2596)
-INFO:agents.appointments.db:[db] ✓ Saved active GVC session #112 (source=AUTO_SOLVER, synced_by=auto_solver)
-INFO:agents.appointments.portals.gvc_auth:[gvc_auth] ✓ Successfully authenticated GVC session (ID: 112) for amr.shah@gmail.com!
-INFO:agents.appointments.portals.gvc:[gvc] ✓ Re-authentication succeeded. Retrying slot search with fresh session...
-INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 01/10/2026...
-INFO:agents.appointments.portals.gvc:[gvc] ✓ Direct REST slot query returned 0 open slots.
-INFO:     192.168.16.1:59444 - "GET /api/slots/search?vac_id=138&visa_type=26&date_from=01%2F10%2F2026 HTTP/1.1" 200 OK
-INFO:     192.168.16.1:59444 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:42630 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:55654 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:59870 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 03/10/2026...
-WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10009. Auto-refreshing WAF cookies via Playwright...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
 INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+INFO:     192.168.16.1:43844 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43834 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43824 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43812 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43824 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43812 - "GET /api/monitor/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43834 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43844 - "GET /api/proxies HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43852 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43856 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
 INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
-INFO:     192.168.16.1:59884 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:agents.appointments.portals.gvc:[gvc] Login form rendered! Imperva WAF challenge successfully bypassed.
-INFO:agents.appointments.db:[db] ✓ Saved active GVC session #113 (source=AUTO_SOLVER, synced_by=waf_refresher)
-INFO:agents.appointments.portals.gvc:[gvc] ✓ Direct REST slot query returned 0 open slots.
-INFO:     192.168.16.1:59870 - "GET /api/slots/search?vac_id=138&visa_type=26&date_from=03%2F10%2F2026 HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:40882 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:59870 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:54368 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:51390 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:47718 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:54034 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:47730 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:46262 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:38584 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:48264 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:59884 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:55372 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:55380 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:40948 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:46684 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:58660 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:37734 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:50190 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:50202 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:35954 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:36802 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:51782 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:43286 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:40184 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:59692 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:40192 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:43584 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:56256 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:35346 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:50322 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:48362 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:48376 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:56274 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:36132 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:45258 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:48750 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:58744 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:58756 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:36540 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:49868 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:43760 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:42324 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:55074 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:55090 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:51222 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:39286 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:36632 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:42312 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:40876 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:46436 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:46442 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:36828 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:35342 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:53992 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:46498 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:55718 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:43948 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:43948 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:57636 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:49348 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:49356 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:39664 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:54556 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:40022 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+INFO:     192.168.16.1:43856 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43852 - "GET /api/monitor/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43852 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43856 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43856 - "POST /api/queue/blitz-book HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Lahore VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 01/10/2026...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+INFO:     192.168.16.1:43856 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43852 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50588 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50588 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+INFO:     192.168.16.1:50588 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43852 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43856 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50588 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50588 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43852 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43852 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50588 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:43852 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56020 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56020 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56020 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56020 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56020 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:     127.0.0.1:58434 - "GET /health HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56020 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56020 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:44508 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:44508 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:44508 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:44508 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Lahore VAC for National Visa (Long term - Type D) starting 07/10/2026...
+INFO:     192.168.16.1:56020 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Direct REST slot query failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:agents.appointments.db:[db] Updated client #9 status → IN_PROGRESS (Ref: None)
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3455232924/197 (for +92-3455232924)...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Lahore VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 07/10/2026...
+WARNING:agents.appointments.portals.gvc:[gvc] Direct REST slot query failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:agents.appointments.db:[db] Updated client #8 status → IN_PROGRESS (Ref: None)
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3000590935/197 (for +92-3000590935)...
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Lahore VAC for National Visa (Long term - Type D) starting 08/10/2026...
+INFO:     192.168.16.1:52852 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52858 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52860 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52876 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52888 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52888 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3455232924 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3455232924 (timeout: 55.0s)...
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.portals.gvc:[gvc] Direct REST slot query failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:agents.appointments.db:[db] Updated client #7 status → IN_PROGRESS (Ref: None)
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3345112969/197 (for +92-3345112969)...
 INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 07/10/2026...
-WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10009. Auto-refreshing WAF cookies via Playwright...
+INFO:     192.168.16.1:52416 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52420 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3000590935 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3000590935 (timeout: 55.0s)...
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:     192.168.16.1:52420 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52416 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52420 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52436 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Direct REST slot query failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:agents.appointments.db:[db] Updated client #3 status → IN_PROGRESS (Ref: None)
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3486241251/197 (for +92-3486241251)...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 07/10/2026...
+INFO:     192.168.16.1:52420 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52436 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52416 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52470 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52470 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.portals.gvc:[gvc] Direct REST slot query failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:agents.appointments.db:[db] Updated client #2 status → IN_PROGRESS (Ref: None)
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3335567824/197 (for +92-3335567824)...
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3345112969 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3345112969 (timeout: 55.0s)...
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3486241251 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3486241251 (timeout: 55.0s)...
+INFO:     192.168.16.1:52470 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:45786 - "GET /health HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 07/10/2026...
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3335567824 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3335567824 (timeout: 55.0s)...
+INFO:     192.168.16.1:52470 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52890 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52906 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52920 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Direct REST slot query failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:agents.appointments.db:[db] Updated client #1 status → IN_PROGRESS (Ref: None)
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3195351623/197 (for +92-3195351623)...
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:     192.168.16.1:52920 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52920 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3195351623 on GVC API (HTTP 200).
+INFO:     192.168.16.1:52920 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3195351623 (timeout: 55.0s)...
+INFO:     192.168.16.1:50322 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50322 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52920 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50332 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50342 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50342 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50342 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50342 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50332 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50332 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50342 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50342 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50332 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50332 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50332 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:50342 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48382 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48404 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48404 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:     127.0.0.1:38710 - "GET /health HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48404 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48404 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:49226 - "GET /api/otp/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Headless Playwright WAF cookie refresh encountered: Page.wait_for_selector: Timeout 90000ms exceeded.
+
+:
+  - waiting for locator("input[name=\"username\"], input[type=\"email\"], input[id*=\"user\"], #email, form") to be visible
+WARNING:agents.appointments.portals.gvc:[gvc] Headless Playwright WAF cookie refresh encountered: Page.wait_for_selector: Timeout 90000ms exceeded.
+
+:
+  - waiting for locator("input[name=\"username\"], input[type=\"email\"], input[id*=\"user\"], #email, form") to be visible
+WARNING:agents.appointments.portals.gvc:[gvc] Headless Playwright WAF cookie refresh encountered: Page.wait_for_selector: Timeout 90000ms exceeded.
+
+:
+  - waiting for locator("input[name=\"username\"], input[type=\"email\"], input[id*=\"user\"], #email, form") to be visible
+WARNING:agents.appointments.portals.gvc:[gvc] Retry after WAF refresh failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge page still active after refresh attempt on proxy http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Session is preserved.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.portals.gvc:[gvc] Retry after WAF refresh failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge page still active after refresh attempt on proxy http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Session is preserved.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.portals.gvc:[gvc] Headless Playwright WAF cookie refresh encountered: Page.wait_for_selector: Timeout 90000ms exceeded.
+
+:
+  - waiting for locator("input[name=\"username\"], input[type=\"email\"], input[id*=\"user\"], #email, form") to be visible
+    - waiting for "https://pk-gr-services.gvcworld.eu/login" navigation to finish...
+    - navigated to "https://pk-gr-services.gvcworld.eu/login"
+WARNING:agents.appointments.portals.gvc:[gvc] Retry after WAF refresh failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge page still active after refresh attempt on proxy http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Session is preserved.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:     192.168.16.1:49226 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3455232924 after 55.0s.
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3455232924/197 (for +92-3455232924)...
+WARNING:agents.appointments.portals.gvc:[gvc] Retry after WAF refresh failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge page still active after refresh attempt on proxy http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Session is preserved.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:     192.168.16.1:48390 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:49226 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:58040 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3000590935 after 55.0s.
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3000590935/197 (for +92-3000590935)...
+WARNING:agents.appointments.portals.gvc:[gvc] Headless Playwright WAF cookie refresh encountered: Page.wait_for_selector: Timeout 90000ms exceeded.
+
+:
+  - waiting for locator("input[name=\"username\"], input[type=\"email\"], input[id*=\"user\"], #email, form") to be visible
+    - waiting for "https://pk-gr-services.gvcworld.eu/login" navigation to finish...
+    - navigated to "https://pk-gr-services.gvcworld.eu/login"
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3455232924 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3455232924 (timeout: 55.0s)...
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.portals.gvc:[gvc] Retry after WAF refresh failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge page still active after refresh attempt on proxy http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Session is preserved.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+ERROR:asyncio:Task exception was never retrieved
+future: <Task finished name='Task-69' coro=<GVCFleetManager.trigger_client_booking() done, defined at /app/agents/appointments/fleet_manager.py:672> exception=NameError("name 'timedelta' is not defined")>
+Traceback (most recent call last):
+  File "/app/agents/appointments/fleet_manager.py", line 810, in trigger_client_booking
+    target_date = client.preferred_date_start or (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
+                                                                   ^^^^^^^^^
+NameError: name 'timedelta' is not defined
+INFO:     192.168.16.1:58040 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:58040 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3000590935 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3000590935 (timeout: 55.0s)...
+INFO:     192.168.16.1:58040 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:48390 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:58040 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52822 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52834 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52844 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52844 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3345112969 after 55.0s.
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3345112969/197 (for +92-3345112969)...
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3486241251 after 55.0s.
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3486241251/197 (for +92-3486241251)...
+INFO:     192.168.16.1:52844 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52834 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52822 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52844 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:     192.168.16.1:52844 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52844 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3335567824 after 55.0s.
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3335567824/197 (for +92-3335567824)...
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3486241251 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3486241251 (timeout: 55.0s)...
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3345112969 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3345112969 (timeout: 55.0s)...
+INFO:     192.168.16.1:52844 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52822 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:     127.0.0.1:54706 - "GET /health HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3335567824 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3335567824 (timeout: 55.0s)...
+INFO:     192.168.16.1:52822 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52844 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59650 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59652 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3195351623 after 55.0s.
+INFO:agents.appointments.portals.gvc:[gvc] Triggering OTP at URL: https://pk-gr-services.gvcworld.eu/api/v1/onetimepassword/sendOtpBookAppointment/3195351623/197 (for +92-3195351623)...
+WARNING:agents.appointments.portals.gvc:[gvc] Proxy error on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying on next proxy...
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+INFO:     192.168.16.1:59660 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59652 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] ✓ OTP successfully triggered for +92-3195351623 on GVC API (HTTP 200).
+INFO:agents.appointments.otp:[otp] ⏳ Awaiting OTP for +92-3195351623 (timeout: 55.0s)...
+INFO:     192.168.16.1:59652 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59652 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59652 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59652 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54450 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54450 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59652 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59652 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54450 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54450 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54450 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54450 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54476 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54488 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54488 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54488 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54476 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54450 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54476 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54450 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54488 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54488 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54488 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54488 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:41336 - "GET /health HTTP/1.1" 200 OK
+INFO:     192.168.16.1:59660 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54488 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33486 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33498 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33502 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33502 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33502 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33498 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33502 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33486 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33486 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33486 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33486 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33502 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33502 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33486 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33486 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33486 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3455232924 after 55.0s.
+INFO:agents.appointments.db:[db] Updated client #9 status → QUEUED (Ref: None)
+INFO:     192.168.16.1:44508 - "POST /api/clients/9/trigger-booking HTTP/1.1" 200 OK
+INFO:     192.168.16.1:44508 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33486 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:33502 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:60352 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3000590935 after 55.0s.
+INFO:agents.appointments.db:[db] Updated client #8 status → QUEUED (Ref: None)
+INFO:     192.168.16.1:56024 - "POST /api/clients/8/trigger-booking HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:60352 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:60352 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:60352 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:60352 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:60352 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:60352 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:60352 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:56024 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:60352 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54262 - "GET /api/otp/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3486241251 after 55.0s.
+INFO:agents.appointments.db:[db] Updated client #3 status → QUEUED (Ref: None)
+INFO:     192.168.16.1:52888 - "POST /api/clients/3/trigger-booking HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3345112969 after 55.0s.
+INFO:agents.appointments.db:[db] Updated client #7 status → QUEUED (Ref: None)
+INFO:     192.168.16.1:52888 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54262 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54262 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54262 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52888 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52888 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54262 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3335567824 after 55.0s.
+INFO:agents.appointments.db:[db] Updated client #2 status → QUEUED (Ref: None)
+INFO:     192.168.16.1:52452 - "POST /api/clients/2/trigger-booking HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:     127.0.0.1:35752 - "GET /health HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51596 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51596 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54256 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51602 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51602 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+WARNING:agents.appointments.otp:[otp] ⚠️ Timed out waiting for OTP for +92-3195351623 after 55.0s.
+INFO:agents.appointments.db:[db] Updated client #1 status → QUEUED (Ref: None)
+INFO:     192.168.16.1:52464 - "POST /api/clients/1/trigger-booking HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51602 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51602 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52452 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51602 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36732 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36740 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36740 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36740 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36732 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51602 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36732 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:agents.appointments.db:[db] Re-queued 0 failed/in-progress client(s) to QUEUED.
+INFO:     192.168.16.1:36732 - "POST /api/queue/requeue-failed HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55964 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55964 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55964 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36732 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36732 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36732 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:52464 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36732 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55964 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55972 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55972 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55972 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55972 - "POST /api/queue/blitz-book HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 07/10/2026...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 07/10/2026...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Islamabad VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 07/10/2026...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+INFO:     192.168.16.1:55972 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36732 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Lahore VAC for National Visa (Long term - Type D) starting 08/10/2026...
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+INFO:     192.168.16.1:36732 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55972 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Lahore VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 07/10/2026...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Lahore VAC for National Visa (Long term - Type D) starting 07/10/2026...
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Lahore VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 01/10/2026...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
 INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
 INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
-INFO:     192.168.16.1:43098 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:agents.appointments.portals.gvc:[gvc] Login form rendered! Imperva WAF challenge successfully bypassed.
-INFO:agents.appointments.db:[db] ✓ Saved active GVC session #114 (source=AUTO_SOLVER, synced_by=waf_refresher)
-INFO:     192.168.16.1:38680 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:     127.0.0.1:55344 - "GET /health HTTP/1.1" 200 OK
+INFO:     192.168.16.1:55972 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+INFO:     192.168.16.1:55972 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+WARNING:agents.appointments.portals.gvc:[gvc] Imperva WAF challenge encountered on http://spbisytqkz:GuiSe08Bwcg2~ciC3b@pk.decodo.com:10002. Auto-refreshing WAF cookies via Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Refreshing Imperva WAF cookies via Headless Playwright...
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+INFO:     192.168.16.1:55972 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54466 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54482 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54490 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Navigating to https://pk-gr-services.gvcworld.eu/login to clear Imperva challenge...
+INFO:     192.168.16.1:54490 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54482 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54482 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54482 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54482 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54490 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54482 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36518 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36524 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36524 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36524 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36524 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36518 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36518 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36524 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54570 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54574 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54586 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54586 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:agents.appointments.portals.gvc:[gvc] Querying slots on Lahore VAC for Long-Term Type D (Seasonal / Dependent Employment) starting 01/10/2026...
+INFO:     192.168.16.1:54574 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54570 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:36518 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54574 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54574 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:54574 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+WARNING:agents.appointments.portals.gvc:[gvc] Direct REST slot query failed: Failed to perform, curl: (7) CONNECT tunnel failed, response 522. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+WARNING:agents.appointments.proxy:[proxy] ⚠️ Proxy pk.decodo.com:10002 marked failed in SQLite (quarantined 5m).
+ERROR:api.main:[api] Error executing trigger_client_booking for client #10: name 'timedelta' is not defined
+Traceback (most recent call last):
+  File "/app/api/main.py", line 953, in trigger_client_booking_endpoint
+    res = await fleet_manager.trigger_client_booking(client_id=client_id, triggered_by=username)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/agents/appointments/fleet_manager.py", line 810, in trigger_client_booking
+    target_date = client.preferred_date_start or (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
+                                                                   ^^^^^^^^^
+NameError: name 'timedelta' is not defined
+INFO:agents.appointments.db:[db] Updated client #10 status → QUEUED (Ref: None)
+INFO:     192.168.16.1:54586 - "POST /api/clients/10/trigger-booking HTTP/1.1" 500 Internal Server Error
 INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:39524 - "GET /health HTTP/1.1" 200 OK
-INFO:agents.appointments.portals.gvc:[gvc] ✓ Direct REST slot query returned 0 open slots.
-INFO:     192.168.16.1:40022 - "GET /api/slots/search?vac_id=138&visa_type=26&date_from=07%2F10%2F2026 HTTP/1.1" 200 OK
-INFO:     192.168.16.1:38686 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:34234 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:43584 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:48840 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:57330 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:42406 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:42410 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:     192.168.16.1:42792 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
-INFO:httpx2:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:38668 - "GET /health HTTP/1.1" 200 OK
-INFO:     192.168.16.1:50188 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60828 - "GET /health HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51728 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51742 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51728 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51742 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51746 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51746 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51746 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51746 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51746 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51742 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51742 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51742 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51742 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51762 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51742 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51774 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51774 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51742 - "GET /api/clients HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51742 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51774 - "GET /api/gvc/session/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51778 - "GET /api/logs/stream?limit=60 HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51778 - "GET /api/otp/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51778 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51778 - "GET /api/gvc/accounts HTTP/1.1" 200 OK
+INFO:     192.168.16.1:51778 - "GET /api/gvc/fleet/status HTTP/1.1" 200 OK
