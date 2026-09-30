@@ -88,7 +88,109 @@ flowchart TD
 
 ---
 
-## 3. Subsystem Technical Specifications
+## 3. End-to-End Automated Booking Execution Workflow
+
+The automated booking pipeline executes across 6 deterministic stages designed to minimize latency from slot detection to confirmed appointment submission:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ScanPool as 🔍 Slot Scanner Pool
+    participant Cache as ⚡ Slot Discovery Cache
+    participant Booker as ⚡ Dedicated Booker Worker
+    participant Queue as 🗄️ Client Queue (SQLite WAL)
+    participant GVC as 🇬🇷 GVC World API
+    participant SimPhone as 📱 Physical SIM Device
+    participant Webhook as ⚡ OTP Webhook (/api/otp/webhook)
+    participant Stream as 💻 Live Activity Stream
+
+    Note over ScanPool,Booker: Stage 1: Hot Standby Initialization (Pre-Staged)
+    ScanPool->>GVC: Periodic Slot Polling (/dates & /periods)
+    GVC-->>ScanPool: Slots Available (e.g. ISB Type 26)
+    ScanPool->>Cache: Broadcast SLOTS_OPEN + Auto-Halt Scanner
+    Cache->>Booker: Immediate Wakeup Signal
+
+    Note over Booker,Queue: Stage 2: Slot Trigger & Atomic Applicant Lock
+    Booker->>Queue: claim_next_client() (FIFO, VAC & Visa Match)
+    Queue-->>Booker: Locked Client Profile (Status: PROCESSING)
+
+    Note over Booker,GVC: Stage 3: OTP Dispatch Initiation
+    Booker->>GVC: POST /api/v1/booking/send-otp (curl_cffi chrome120)
+    GVC-->>SimPhone: SMS OTP Dispatched via GSM Network
+    Booker->>Booker: Register Async Event Listener on OTP Bus
+
+    Note over SimPhone,Webhook: Stage 4: Real-Time Webhook OTP Interception (<5ms)
+    SimPhone->>Webhook: HTTP POST Incoming SMS (Android Forwarder)
+    Webhook->>Webhook: JSON Sanitize + Regex Extract (e.g. 99910)
+    Webhook->>Booker: Event Bus Coroutine Wakeup (Zero Polling Delay)
+
+    Note over Booker,GVC: Stage 5: Zero-Delay Final Submission (<1s)
+    Booker->>GVC: POST /api/v1/booking/confirm (Full Client JSON + OTP)
+    GVC-->>Booker: HTTP 200 OK (Booking Reference: GR-ISB-2026-9842)
+
+    Note over Booker,Stream: Stage 6: Confirmation, Audit & Next Wave
+    Booker->>Queue: Update Status='BOOKED', Ref='GR-ISB-2026-9842'
+    Booker->>Stream: Log SUCCESS Event to system_logs & Daily File
+    Stream-->>Stream: UI Live Activity Stream Updates in Real Time
+```
+
+### Detailed Workflow Stages:
+
+1. **Stage 1: Hot Standby Booker Initialization (Pre-Staged Fleet)**
+   * Booker instances are pre-authenticated with active JWT Bearer tokens and cookies.
+   * Residential proxy tunnels are pre-tested and active.
+   * Persistent HTTP keep-alive connections to `pk-gr-services.gvcworld.eu` are maintained via `curl_cffi` (impersonating `chrome120`).
+   * Dedicated SIM phone numbers (`otp_phone_number`, e.g., `+92-334-***-2969`) are bound to each booker instance.
+
+2. **Stage 2: Slot Trigger & Atomic Applicant Lock**
+   * Upon receiving `SLOTS_OPEN` from `SlotDiscoveryCache`, the booker immediately executes `claim_next_client()` against `client_queue`.
+   * **Atomic Concurrency:** The client record is atomically transitioned to `status = 'PROCESSING'` and tagged with `locked_by_worker = account_id` using SQLite `BEGIN IMMEDIATE` / `RLock` to prevent race conditions across parallel bookers.
+   * **Client Preference Precedence:** The booker extracts VAC (`client.vac_id`) and Visa Category (`client.visa_type`) directly from the claimed client's profile, overriding account default settings.
+   * Earliest available date (`preferred_date_start` constraint respected) and earliest slot time period are selected.
+
+3. **Stage 3: OTP Dispatch Initiation**
+   * Booker dispatches the initial appointment verification request (`POST /api/v1/booking/send-otp`) to GVC World API.
+   * GVC initiates an SMS dispatch to the account's registered SIM phone number.
+   * The booker coroutine registers a high-speed in-memory event listener on `Universal OTP Event Bus`, waiting specifically for an OTP mapped to its assigned SIM number.
+
+4. **Stage 4: Real-Time Webhook OTP Interception (<5ms)**
+   * The physical Android device receives the SMS from Gerrys / GVC.
+   * The Android SMS Forwarder application relays the raw SMS payload via HTTP POST to `https://<domain>/api/otp/webhook`.
+   * **Sanitization & Extraction:**
+     * `_sanitize_json_payload()` normalizes unquoted leading-zero numbers.
+     * Universal regex matches Gerrys/GVC patterns (4–8 digit codes) in `<0.05ms`.
+   * The Event Bus immediately wakes the waiting Booker worker coroutine (zero polling delay).
+
+5. **Stage 5: Zero-Delay Final Booking Submission via `curl_cffi` (<1s)**
+   * Booker constructs the complete applicant booking payload:
+     ```json
+     {
+       "vac_id": 138,
+       "visa_type_id": 26,
+       "appointment_date": "2026-10-07",
+       "period_id": 4821,
+       "first_name": "Muhammad",
+       "last_name": "Tariq",
+       "passport_number": "PK1234567",
+       "dob": "1992-08-15",
+       "passport_expiry": "2032-05-10",
+       "phone": "+923001234567",
+       "email": "tariq@example.com",
+       "otp_code": "99910"
+     }
+     ```
+   * Submits `POST /api/v1/booking/confirm` using `curl_cffi` with exact `chrome120` TLS fingerprint and standardized Chrome desktop headers.
+
+6. **Stage 6: Confirmation, Audit Broadcast & Multi-Wave Continuation**
+   * Booker extracts the confirmed Booking Reference (e.g. `GR-ISB-2026-9842`).
+   * Atomically updates `client_queue` (`status = 'BOOKED'`, `booking_reference = 'GR-ISB-2026-9842'`, `booked_at = datetime.utcnow()`).
+   * Emits a `SUCCESS` event to `system_logs` and daily rotating log file (`data/logs/activity_YYYY-MM-DD.log`).
+   * Broadcasts to UI Activity Stream (`[BOOKING] Successfully booked appointment for Client: Muhammad Tariq (Ref: GR-ISB-2026-9842)`).
+   * **Multi-Wave Processing:** If pending applicants remain in `client_queue`, the booker immediately loops back to Stage 2 to claim the next applicant in Wave 2; otherwise, it returns to idle hot-standby.
+
+---
+
+## 4. Subsystem Technical Specifications
 
 ### Subsystem 1: Unified Activity Stream & Persistent Logging
 * **SQLite Table:** `system_logs`
@@ -180,7 +282,7 @@ flowchart TD
 
 ---
 
-## 4. Implementation Schedule & Verification Plan
+## 5. Implementation Schedule & Verification Plan
 
 | Phase | Milestone | Deliverables |
 | :--- | :--- | :--- |

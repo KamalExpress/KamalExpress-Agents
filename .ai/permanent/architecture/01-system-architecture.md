@@ -126,7 +126,18 @@ flowchart TD
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"Windows"',
     ```
-  - Paired with `curl_cffi` (impersonating `chrome120`), every API interaction produces a genuine Chrome on Windows TLS and HTTP fingerprint.
+### F. Dual-Pool Fleet Coordination & 6-Stage Booking Pipeline
+- **Dedicated Architecture Document:** For complete operational and technical specifications, see [07-dual-pool-fleet-and-drop-planner.md](file:///e:/Alamia/KamalExpress-Agents/.ai/permanent/architecture/07-dual-pool-fleet-and-drop-planner.md).
+- **Capability Segregation:** GVC portal accounts operate in dedicated roles (`SLOT_CHECKER`, `BOOKER`, or `HYBRID`):
+  - *Slot Checkers:* Poll `/dates` and `/periods` and update `SlotDiscoveryCache` (3-5 min TTL). Auto-halt upon slot detection to conserve rate limits.
+  - *Dedicated Bookers:* Pre-staged in hot standby with pre-warmed sessions and keep-alive connections.
+- **6-Stage Deterministic Booking Execution:**
+  1. *Hot Standby Initialization:* Sessions pre-warmed, proxies validated, and SIM phone mapped.
+  2. *Slot Trigger & Atomic Lock:* `claim_next_client()` atomically locks client profile with strict precedence for client VAC/Visa preferences.
+  3. *OTP Dispatch Initiation:* Booker fires verification request to GVC and listens on Universal OTP Event Bus.
+  4. *Real-Time Webhook OTP Interception:* Android SMS forwarder relays SMS to `/api/otp/webhook` (<5ms regex extraction and zero-delay coroutine wakeup).
+  5. *Zero-Delay Final Submission:* Complete JSON payload submitted via `curl_cffi` (`chrome120` impersonation).
+  6. *Confirmation & Audit Broadcast:* Booking reference extracted, `client_queue` updated to `BOOKED`, and `SUCCESS` event broadcast to UI Activity Stream.
 
 ---
 
@@ -135,10 +146,11 @@ flowchart TD
 | Table | Purpose |
 | :--- | :--- |
 | `client_queue` | Visa applicants, passport details, destination, status, booking reference, and worker locking columns. |
-| `gvc_portal_accounts` | Staff-owned GVC portal accounts, target VACs, visa types, proxy bindings, tokens, and worker active flags. |
+| `gvc_portal_accounts` | Staff-owned GVC portal accounts, target VACs, visa types, proxy bindings, tokens, role (`SLOT_CHECKER`/`BOOKER`), and worker active flags. |
 | `proxies` | Residential proxy pool, credentials, health stats, fail counts, and quarantine timestamps. |
 | `users` | Staff and Admin credentials (PBKDF2-HMAC-SHA256 salted hashes), roles, and active states. |
 | `otp_records` | Rolling and persisted SMS/WhatsApp OTP payloads ingested via webhook. |
+| `system_logs` | Centralized system event audit trail, categorized logging (`BOOKING`, `AUTH`, `OTP`, etc.), and daily rotation. |
 | `gvc_sessions` | Active and historical GVC authentication session tokens. |
 | `system_settings` | Key-value settings (CapSolver keys, auth modes, solver credentials). |
 | `visa_rules` | Requirements, embassy fees, processing times for Greece, Schengen, KSA, UAE, UK. |
