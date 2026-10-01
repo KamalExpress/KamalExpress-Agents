@@ -94,6 +94,56 @@ GVC_VISA_TYPES = {
     "6": "Prime Time",
 }
 
+# GVC Appointment Availability & Monitoring Active Day Rules
+# Python weekday(): Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6
+GVC_VISA_DAY_RULES = {
+    "26": {
+        "label": "Long-Term Type D (Seasonal / Dependent Employment)",
+        "allowed_weekdays": [0, 1, 2, 3, 4],  # Mon, Tue, Wed, Thu, Fri
+        "allowed_weekday_names": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "enabled": True,
+    },
+    "0": {
+        "label": "Submission Schengen Visa (Short term - Type C)",
+        "allowed_weekdays": [],  # Disabled - workers do not query
+        "allowed_weekday_names": ["None"],
+        "enabled": False,
+    },
+    "2": {
+        "label": "National Visa (Long term - Type D)",
+        "allowed_weekdays": [3, 4],  # Thu, Fri
+        "allowed_weekday_names": ["Thu", "Fri"],
+        "enabled": True,
+    },
+    "5": {
+        "label": "Premium Lounge",
+        "allowed_weekdays": [0, 1, 2, 3, 4],  # Mon, Tue, Wed, Thu, Fri
+        "allowed_weekday_names": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "enabled": True,
+    },
+    "6": {
+        "label": "Prime Time",
+        "allowed_weekdays": [0, 1, 2, 3, 4],  # Mon, Tue, Wed, Thu, Fri
+        "allowed_weekday_names": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "enabled": True,
+    },
+}
+
+
+def is_visa_type_active_today(visa_type: str, dt: Optional[datetime] = None) -> bool:
+    """Check if the given visa type has active monitoring on the specified date (default: today)."""
+    vt = str(visa_type or "26").strip()
+    rule = GVC_VISA_DAY_RULES.get(vt)
+    if not rule:
+        return True  # Unknown types default to active
+    if not rule.get("enabled", True):
+        return False
+    allowed = rule.get("allowed_weekdays", [])
+    if not allowed:
+        return False
+    check_dt = dt or datetime.now()
+    return check_dt.weekday() in allowed
+
 
 class GVCPortalDriver:
     """

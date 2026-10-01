@@ -39,9 +39,17 @@ from .db import (
     record_worker_task,
     record_worker_error,
     get_system_setting,
+    get_discovered_slots_history,
+    record_discovered_slot_history,
 )
 from .otp import wait_for_otp
-from .portals.gvc import GVCPortalDriver, GVC_VACS, GVC_VISA_TYPES
+from .portals.gvc import (
+    GVCPortalDriver,
+    GVC_VACS,
+    GVC_VISA_TYPES,
+    GVC_VISA_DAY_RULES,
+    is_visa_type_active_today,
+)
 from .portals.gvc_auth import gvc_auth_solver
 from .schemas import AvailableSlot, ClientProfile
 
@@ -277,8 +285,28 @@ class AccountWorkerInstance:
                     self._last_status = "HOT_STANDBY (Pre-Staged Booker)"
                     await asyncio.sleep(3)
                     continue
-                else:
                     # SLOT_CHECKER or HYBRID scanning
+                    if not is_visa_type_active_today(visa_type):
+                        visa_label = GVC_VISA_TYPES.get(str(visa_type), f"Type {visa_type}")
+                        rule = GVC_VISA_DAY_RULES.get(str(visa_type), {})
+                        allowed_names = ", ".join(rule.get("allowed_weekday_names", [])) or "None"
+                        now_day_name = datetime.now().strftime("%A")
+                        
+                        self._last_status = f"STANDBY_INACTIVE_DAY ({now_day_name} closed)"
+                        
+                        last_inactive_log = getattr(self, "_last_inactive_day_log", 0)
+                        if time.time() - last_inactive_log > 900:
+                            self._last_inactive_day_log = time.time()
+                            fleet_manager.log_event(
+                                f"Operator '{persona}' on standby: {vac_meta.get('name', 'VAC')} ({visa_label}) is inactive today ({now_day_name}). Active monitoring days: {allowed_names}. Polling paused to preserve proxy & rate limits.",
+                                level="INFO",
+                                category="FLEET",
+                                account_id=self.account_id,
+                                worker_name=persona,
+                            )
+                        await asyncio.sleep(60)
+                        continue
+
                     if cached_slots is not None and len(cached_slots) == 0:
                         self._last_status = "IDLE (Shared Cache Active)"
                         await asyncio.sleep(15)
@@ -845,37 +873,58 @@ class GVCFleetManager:
                 if slots and any(s.available_capacity > 0 for s in slots):
                     slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=90)
 
+            # Check operational mode setting (Safe Mode vs Blitz Drop Mode)
+            require_check_raw = get_system_setting("require_slot_availability_check", "true")
+            require_check = str(require_check_raw).lower() in ["true", "1", "yes", "on"]
+
             # Filter available slots
             available_slots = [s for s in (slots or []) if s.available_capacity > 0]
             if not available_slots:
                 visa_label = GVC_VISA_TYPES.get(str(client.visa_type or visa_type), f"Type {client.visa_type or visa_type}")
                 vac_name = vac_meta.get("name", f"VAC {vac_id}")
-                msg = f"No open appointment slots found at {vac_name} ({visa_label}) for Client #{client.id} ({client.first_name} {client.last_name}). Booking halted; applicant remains QUEUED."
-                self.log_event(
-                    f"⚠️ {msg}",
-                    level="WARNING",
-                    category="SLOT_DISCOVERY",
-                    account_id=account_id,
-                    worker_name=persona,
-                )
-                return {
-                    "success": False,
-                    "status": "NO_SLOTS_AVAILABLE",
-                    "error": msg,
-                    "vac_id": vac_id,
-                    "visa_type": visa_type,
-                }
 
-            target_slot: Optional[AvailableSlot] = None
-            for s in available_slots:
-                if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
-                    target_slot = s
-                    break
-            if not target_slot:
-                target_slot = available_slots[0]
-            target_date = target_slot.date
-            target_time = target_slot.time
-            target_slot_id = target_slot.slot_id
+                if require_check:
+                    # SAFE MODE: Halt cleanly without triggering OTPs
+                    msg = f"No open appointment slots found at {vac_name} ({visa_label}) for Client #{client.id} ({client.first_name} {client.last_name}). Booking halted; applicant remains QUEUED."
+                    self.log_event(
+                        f"⚠️ {msg}",
+                        level="WARNING",
+                        category="SLOT_DISCOVERY",
+                        account_id=account_id,
+                        worker_name=persona,
+                    )
+                    return {
+                        "success": False,
+                        "status": "NO_SLOTS_AVAILABLE",
+                        "error": msg,
+                        "vac_id": vac_id,
+                        "visa_type": visa_type,
+                    }
+                else:
+                    # BLITZ DROP MODE: Proceed with direct strike on configured drop date/time or client preferred date
+                    blitz_date = get_system_setting("blitz_target_date", "")
+                    blitz_time = get_system_setting("blitz_target_time", "")
+                    target_date = blitz_date or client.preferred_date_start or (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
+                    target_time = blitz_time or "09:30"
+                    target_slot_id = "0"
+                    self.log_event(
+                        f"⚡ [BLITZ DROP STRIKE] Direct booking strike enabled (Availability Check: OFF). Striking GVC for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_name} ({visa_label}) on target date {target_date} {target_time}...",
+                        level="INFO",
+                        category="BOOKING",
+                        account_id=account_id,
+                        worker_name=persona,
+                    )
+            else:
+                target_slot: Optional[AvailableSlot] = None
+                for s in available_slots:
+                    if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
+                        target_slot = s
+                        break
+                if not target_slot:
+                    target_slot = available_slots[0]
+                target_date = target_slot.date
+                target_time = target_slot.time
+                target_slot_id = target_slot.slot_id
 
             # 3. Mark client in progress
             update_client_status(
@@ -1344,16 +1393,45 @@ class GVCFleetManager:
 
         return results
 
-    async def blitz_queue_booking(self, triggered_by: str = "staff") -> dict:
+    async def blitz_queue_booking(
+        self,
+        triggered_by: str = "staff",
+        target_vac_id: Optional[str] = None,
+        target_visa_type: Optional[str] = None,
+        target_date: Optional[str] = None,
+        target_time: Optional[str] = None,
+    ) -> dict:
         """
-        Launches parallel direct booking blitz for all QUEUED clients across all active operators.
-        Bypasses prior search and strikes GVC directly starting from client's preferred_date_start.
+        Launches parallel direct booking blitz for QUEUED clients across all active operators.
+        Optionally filters clients by VAC and visa type. If none specified, runs autonomously across all queued clients.
         Distributes applicants round-robin across authenticated operator SIMs with an 800ms stagger.
         """
-        from .db import get_all_clients
-        queued_clients = get_all_clients(status="QUEUED")
-        if not queued_clients:
+        from .db import get_all_clients, set_system_setting
+        all_queued = get_all_clients(status="QUEUED")
+        if not all_queued:
             return {"success": False, "message": "No applicants currently in QUEUED status."}
+
+        # Filter by target VAC / Visa type if specified
+        queued_clients = all_queued
+        if target_vac_id:
+            queued_clients = [c for c in queued_clients if str(c.vac_id) == str(target_vac_id)]
+        if target_visa_type:
+            queued_clients = [c for c in queued_clients if str(c.visa_type) == str(target_visa_type)]
+
+        if not queued_clients:
+            vac_label = f" for VAC {target_vac_id}" if target_vac_id else ""
+            type_label = f" (Type {target_visa_type})" if target_visa_type else ""
+            return {"success": False, "message": f"No QUEUED applicants matching criteria{vac_label}{type_label}."}
+
+        # If custom target date/time specified, save to system settings for this blitz cycle
+        if target_date:
+            set_system_setting("blitz_target_date", str(target_date))
+        if target_time:
+            set_system_setting("blitz_target_time", str(target_time))
+
+        # Temporarily enable direct strike mode for blitz execution
+        prev_check_mode = get_system_setting("require_slot_availability_check", "true")
+        set_system_setting("require_slot_availability_check", "false")
 
         # Find active authenticated accounts for round-robin dispatch
         auth_accounts = [
@@ -1361,29 +1439,40 @@ class GVCFleetManager:
             if w.is_authenticated
         ]
 
+        vac_desc = f" ({GVC_VACS.get(str(target_vac_id), {}).get('name', f'VAC {target_vac_id}')})" if target_vac_id else " (All VACs)"
+        date_desc = f" targeting {target_date} {target_time or '09:30'}" if target_date else " (Autonomous Dates)"
         self.log_event(
-            f"🚀 [BOOKING BLITZ] Launching direct booking blitz for {len(queued_clients)} queued applicant(s) across {len(auth_accounts) or 1} operator(s)...",
+            f"🚀 [BOOKING BLITZ] Launching direct booking blitz for {len(queued_clients)} queued applicant(s){vac_desc}{date_desc} across {len(auth_accounts) or 1} operator(s)...",
             level="SUCCESS",
             category="BOOKING",
         )
 
-        async def _dispatch_blitz(clients_list: list, accounts_list: list):
-            for idx, c in enumerate(clients_list):
-                assigned_acc = accounts_list[idx % len(accounts_list)] if accounts_list else None
-                asyncio.create_task(self.trigger_client_booking(
-                    client_id=c.id,
-                    assigned_account_id=assigned_acc,
-                    triggered_by=f"blitz-{triggered_by}"
-                ))
-                if idx < len(clients_list) - 1:
-                    await asyncio.sleep(0.8)  # Stagger SMS/requests to avoid simultaneous gateway flood
+        async def _dispatch_blitz(clients_list: list, accounts_list: list, prev_mode: str):
+            try:
+                for idx, c in enumerate(clients_list):
+                    assigned_acc = accounts_list[idx % len(accounts_list)] if accounts_list else None
+                    asyncio.create_task(self.trigger_client_booking(
+                        client_id=c.id,
+                        assigned_account_id=assigned_acc,
+                        triggered_by=f"blitz-{triggered_by}"
+                    ))
+                    if idx < len(clients_list) - 1:
+                        await asyncio.sleep(0.8)  # Stagger SMS/requests to avoid simultaneous gateway flood
+            finally:
+                # Restore previous check mode after dispatch
+                await asyncio.sleep(5)
+                set_system_setting("require_slot_availability_check", prev_mode)
 
-        asyncio.create_task(_dispatch_blitz(queued_clients, auth_accounts))
+        asyncio.create_task(_dispatch_blitz(queued_clients, auth_accounts, prev_check_mode))
 
         return {
             "success": True,
             "message": f"Dispatched booking blitz for {len(queued_clients)} queued applicant(s) across {len(auth_accounts) or 1} operator(s).",
             "total_clients": len(queued_clients),
+            "target_vac_id": target_vac_id,
+            "target_visa_type": target_visa_type,
+            "target_date": target_date,
+            "target_time": target_time,
         }
 
 

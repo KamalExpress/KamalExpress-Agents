@@ -563,6 +563,11 @@
     <p>Autonomous Visa Appointments & Multi-Agent Travel Operations</p>
   </div>
   <div class="header-stats">
+    <div class="header-stat-pill" id="hdr-op-mode-pill" onclick="toggleOperationalMode()" style="cursor:pointer;" title="Operational Mode: Click to toggle Safe Verification vs Blitz Drop Mode">
+      <div class="status-dot online" id="dot-op-mode"></div>
+      <i data-lucide="shield-check" class="icon" id="ico-op-mode"></i>
+      <span id="hdr-op-mode-text">Safe Mode (Strict)</span>
+    </div>
     <div class="header-stat-pill" id="pill-gvc-auth" onclick="switchNavTab('auth-view')" style="cursor:pointer;" title="GVC Authentication & Dual-Mode Status">
       <div class="status-dot idle" id="dot-gvc-auth"></div>
       <i data-lucide="key-round" class="icon"></i>
@@ -713,7 +718,7 @@ How can I help you today?</div>
           <button class="btn btn-outline btn-sm" onclick="openBulkUploadModal()">
             <i data-lucide="upload-cloud" class="icon"></i> Bulk CSV / TXT
           </button>
-          <button class="btn btn-sm" onclick="triggerBookingBlitz()" id="btn-booking-blitz" style="background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; font-weight: 600;">
+          <button class="btn btn-sm" onclick="openBlitzModal()" id="btn-booking-blitz" style="background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; font-weight: 600;">
             <i data-lucide="zap" class="icon"></i> 🚀 Launch Booking Blitz
           </button>
           <button class="btn btn-primary btn-sm" onclick="openAddModal()">
@@ -853,13 +858,14 @@ How can I help you today?</div>
 
         <div class="form-group" style="margin-bottom:0;">
           <label>Visa Category</label>
-          <select id="slot-type">
-            <option value="26">Type 26: Long-Term Type D (Seasonal Work)</option>
-            <option value="0">Type 0: Submission Schengen Visa (Type C)</option>
-            <option value="2">Type 2: National Visa (Long term - Type D)</option>
-            <option value="5">Type 5: Premium Lounge</option>
-            <option value="6">Type 6: Prime Time</option>
+          <select id="slot-type" onchange="updateVisaDayRuleNotice()">
+            <option value="26">Type 26: Long-Term Type D (Mon–Fri)</option>
+            <option value="0">Type 0: Schengen Type C (Disabled)</option>
+            <option value="2">Type 2: National Visa Type D (Thu–Fri only)</option>
+            <option value="5">Type 5: Premium Lounge (Mon–Fri)</option>
+            <option value="6">Type 6: Prime Time (Mon–Fri)</option>
           </select>
+          <div id="slot-day-rule-notice" style="margin-top:6px; min-height:20px; display:flex; align-items:center;"></div>
         </div>
 
         <div class="form-group" style="margin-bottom:0;">
@@ -899,6 +905,43 @@ How can I help you today?</div>
           </thead>
           <tbody id="slot-results-body">
             <tr><td colspan="7" style="text-align:center; color:var(--muted-foreground); padding:24px;">Select VAC and click 'Query Live Slots' to inspect open appointments.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Persistent Discovered Slots Activity Log -->
+    <div class="card" style="margin-top:4px;">
+      <div class="card-header" style="flex-wrap:wrap; gap:8px;">
+        <div>
+          <div class="card-title">
+            <i data-lucide="history" class="icon"></i> Discovered Open Slots Activity Log
+          </div>
+          <div class="card-desc">Persistent chronological activity log of open appointment drops discovered across all parallel workers and centers.</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-outline btn-sm" onclick="loadDiscoveredSlotsHistory()">
+            <i data-lucide="rotate-cw" class="icon"></i> Refresh History
+          </button>
+        </div>
+      </div>
+
+      <div class="queue-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Discovered</th>
+              <th>VAC Center</th>
+              <th>Category</th>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Capacity</th>
+              <th>Found By</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="slot-history-results-body">
+            <tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:20px;">Loading historical slot discoveries...</td></tr>
           </tbody>
         </table>
       </div>
@@ -2062,6 +2105,71 @@ How can I help you today?</div>
   </div>
 </div>
 
+<!-- ── BLITZ CONFIGURATION MODAL ── -->
+<div class="modal" id="blitz-modal">
+  <div class="modal-content" style="width: 580px; max-width: 95%;">
+    <div class="card-header" style="padding-bottom:10px; margin-bottom:4px;">
+      <div>
+        <div class="card-title" style="color:var(--primary); font-size:15px;">
+          <i data-lucide="zap" class="icon" style="color:var(--accent);"></i> Launch Parallel Booking Blitz
+        </div>
+        <div class="card-desc">Execute high-speed direct strikes across all active booking accounts.</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeBlitzModal()" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <div style="background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius); padding:12px; font-size:12px; color:var(--muted-foreground); line-height:1.45; margin-bottom:12px;">
+      ⚡ <b>Blind Strike Drop Mode:</b> Dispatches parallel direct booking waves across all ready portal accounts. Optional target overrides below apply globally across all queued applicants. If fields are left empty, workers book <b>autonomously</b> using each applicant's individual profile and preferred dates.
+    </div>
+
+    <form onsubmit="event.preventDefault(); executeBookingBlitz();" style="display:flex; flex-direction:column; gap:12px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Target VAC Center (Optional)</label>
+          <select id="blitz-vac">
+            <option value="">Autonomous (Per Client Profile)</option>
+            <option value="138">Islamabad VAC (138)</option>
+            <option value="137">Karachi VAC (137)</option>
+            <option value="139">Lahore VAC (139)</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Target Visa Category (Optional)</label>
+          <select id="blitz-visa-type">
+            <option value="">Autonomous (Per Client Profile)</option>
+            <option value="26">Type 26: Long-Term Type D (Mon–Fri)</option>
+            <option value="2">Type 2: National Visa (Thu–Fri)</option>
+            <option value="5">Type 5: Premium Lounge (Mon–Fri)</option>
+            <option value="6">Type 6: Prime Time (Mon–Fri)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Target Appointment Date (Optional)</label>
+          <input type="text" id="blitz-date" placeholder="DD/MM/YYYY (or leave blank for Auto)">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Target Slot Time (Optional)</label>
+          <input type="text" id="blitz-time" placeholder="HH:MM (e.g. 09:30 or leave blank)">
+        </div>
+      </div>
+
+      <div style="background:var(--accent-light); border:1px solid #fed7aa; border-radius:var(--radius); padding:10px; font-size:11.5px; color:#9a3412;">
+        ℹ️ <b>Operational Rule:</b> All ready workers will simultaneously claim and lock queued applicants to prevent duplicate OTP requests. In Safe Mode, booking only proceeds when slots are confirmed. In Blitz Mode, bookings strike directly.
+      </div>
+
+      <div class="modal-actions" style="margin-top:6px;">
+        <button type="button" class="btn btn-outline" onclick="closeBlitzModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btn-submit-blitz" style="background: linear-gradient(135deg, #0284c7, #2563eb); font-weight:600;">
+          <i data-lucide="zap" class="icon"></i> ⚡ Launch Parallel Blitz
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ── BULK CLIENT QUEUE INTAKE MODAL ── -->
 <div class="modal" id="bulk-upload-modal">
   <div class="modal-content" style="width: 640px; max-width: 95%;">
@@ -2333,14 +2441,19 @@ How can I help you today?</div>
     }
     initGVCBookmarklet();
     checkAuth();
+    loadOperationalMode();
     loadGvcAccounts();
     loadOtpStream();
     loadActivityLogsStream();
+    loadDiscoveredSlotsHistory();
+    updateVisaDayRuleNotice();
     startLogStreamTimer();
     setInterval(refreshQueue, 5000);
     setInterval(loadGvcAccounts, 8000);
     setInterval(loadGVCAuthStatus, 10000);
     setInterval(loadOtpStream, 10000);
+    setInterval(loadOperationalMode, 10000);
+    setInterval(loadDiscoveredSlotsHistory, 8000);
     setInterval(updateDropCountdown, 1000);
     renderIcons();
   });
@@ -3302,6 +3415,9 @@ How can I help you today?</div>
       if (tab.dataset.view === 'queue-view') {
         refreshQueue();
         refreshTelemetry();
+      } else if (tab.dataset.view === 'slot-search-view') {
+        loadDiscoveredSlotsHistory();
+        updateVisaDayRuleNotice();
       } else if (tab.dataset.view === 'proxy-view') {
         loadProxies();
       } else if (tab.dataset.view === 'otp-view') {
@@ -3708,29 +3824,120 @@ How can I help you today?</div>
     }
   }
 
-  async function triggerBookingBlitz() {
-    if (!confirm("🚀 LAUNCH DIRECT BOOKING BLITZ?\n\nThis will trigger parallel direct booking for ALL currently queued applicants on or after their preferred dates across all active fleet operators without waiting for a search.\n\nProceed?")) return;
+  // ── Operational Modes & Blitz Dispatch ───────────────────────
+  let currentOperationalMode = { require_slot_availability_check: true, mode: 'SAFE_MODE' };
 
-    const btn = document.getElementById('btn-booking-blitz');
+  async function loadOperationalMode() {
+    try {
+      const resp = await fetch('/api/settings/operational-mode');
+      if (resp.status === 401) return;
+      if (!resp.ok) return;
+      const data = await resp.json();
+      currentOperationalMode = data;
+
+      const pill = document.getElementById('hdr-op-mode-pill');
+      const dot = document.getElementById('dot-op-mode');
+      const ico = document.getElementById('ico-op-mode');
+      const text = document.getElementById('hdr-op-mode-text');
+
+      if (!pill || !dot || !text) return;
+
+      const isSafe = data.require_slot_availability_check;
+      if (isSafe) {
+        dot.className = 'status-dot online';
+        text.textContent = 'Safe Mode (Strict)';
+        pill.title = 'Operational Mode: Safe Mode (Strict Slot Verification Active). Click to toggle Blitz Mode.';
+        if (ico) ico.setAttribute('data-lucide', 'shield-check');
+      } else {
+        dot.className = 'status-dot active';
+        text.textContent = '⚡ Blitz Mode (Drop)';
+        pill.title = 'Operational Mode: Blitz Mode (Blind Strikes Enabled). Click to toggle Safe Mode.';
+        if (ico) ico.setAttribute('data-lucide', 'zap');
+      }
+      renderIcons();
+    } catch (e) {
+      console.warn('Error fetching operational mode:', e);
+    }
+  }
+
+  async function toggleOperationalMode() {
+    const isCurrentlySafe = currentOperationalMode.require_slot_availability_check;
+    const confirmMsg = isCurrentlySafe
+      ? "⚡ SWITCH TO BLITZ DROP MODE (BLIND STRIKES)?\n\nWorkers will bypass live slot availability checks and strike GVC booking directly on target or preferred dates.\n\nRecommended during confirmed embassy slot drops.\n\nProceed?"
+      : "🛡️ SWITCH TO SAFE MODE (STRICT VERIFICATION)?\n\nWorkers will verify open slot availability on GVC before attempting applicant bookings, preventing phantom OTP requests.\n\nProceed?";
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const resp = await fetch('/api/settings/operational-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ require_slot_availability_check: !isCurrentlySafe }),
+      });
+      if (resp.status === 401) { showLogin(); return; }
+      const data = await resp.json();
+      await loadOperationalMode();
+      alert(`Operational mode updated to: ${!isCurrentlySafe ? '⚡ BLITZ DROP MODE (Blind Strikes Enabled)' : '🛡️ SAFE MODE (Strict Verification Active)'}`);
+    } catch (e) {
+      alert(`Error toggling operational mode: ${e.message}`);
+    }
+  }
+
+  function openBlitzModal() {
+    document.getElementById('blitz-modal').classList.add('active');
+    renderIcons();
+  }
+
+  function closeBlitzModal() {
+    document.getElementById('blitz-modal').classList.remove('active');
+  }
+
+  async function executeBookingBlitz() {
+    const vac_id = document.getElementById('blitz-vac').value;
+    const visa_type = document.getElementById('blitz-visa-type').value;
+    const target_date = document.getElementById('blitz-date').value.trim();
+    const target_time = document.getElementById('blitz-time').value.trim();
+
+    const targetDesc = [
+      vac_id ? `VAC: ${vac_id}` : 'VAC: Autonomous',
+      visa_type ? `Category: Type ${visa_type}` : 'Category: Autonomous',
+      target_date ? `Date: ${target_date}` : 'Date: Preferred Start Date',
+      target_time ? `Time: ${target_time}` : 'Time: Autonomous Slot',
+    ].join(' | ');
+
+    if (!confirm(`🚀 LAUNCH PARALLEL BOOKING BLITZ?\n\nTarget Config: ${targetDesc}\n\nThis will trigger parallel direct booking for all currently queued applicants across all active fleet operators.\n\nProceed?`)) {
+      return;
+    }
+
+    const btn = document.getElementById('btn-submit-blitz');
     const origHtml = btn ? btn.innerHTML : '';
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader-2" class="icon" style="animation:spin 1s linear infinite;"></i> Blitzing...`;
+      btn.innerHTML = `<i data-lucide="loader-2" class="icon" style="animation:spin 1s linear infinite;"></i> Dispatching Blitz...`;
       renderIcons();
     }
 
     try {
+      const payload = {
+        target_vac_id: vac_id || null,
+        target_visa_type: visa_type || null,
+        target_date: target_date || null,
+        target_time: target_time || null,
+      };
+
       const resp = await fetch('/api/queue/blitz-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
       if (resp.status === 401) { showLogin(); return; }
 
       const data = await resp.json();
+      closeBlitzModal();
       if (resp.ok && data.success) {
-        alert(`⚡ BOOKING BLITZ LAUNCHED!\n\n${data.message || 'Parallel direct bookings dispatched for all queued applicants.'}\n\nCheck Activity Stream and Queue table for live updates.`);
+        alert(`⚡ BOOKING BLITZ DISPATCHED!\n\n${data.message || 'Parallel bookings launched across active accounts.'}\n\nMonitor the Activity Stream & Queue table.`);
       } else {
-        alert(`Blitz Notice: ${data.message || data.detail || 'No clients to blitz.'}`);
+        alert(`Blitz Notice: ${data.message || data.detail || 'No clients to blitz or error occurred.'}`);
       }
     } catch (err) {
       alert(`Network error launching booking blitz: ${err.message}`);
@@ -3742,6 +3949,113 @@ How can I help you today?</div>
       }
       refreshQueue();
       loadActivityLogsStream();
+    }
+  }
+
+  // ── GVC Visa Category Day Rules & History Handlers ────────────
+  const VISA_DAY_RULES = {
+    '26': { label: 'Long-Term Type D (Seasonal Work)', days: [1,2,3,4,5], dayNames: 'Mon, Tue, Wed, Thu, Fri', closedDays: 'Sat, Sun' },
+    '0': { label: 'Submission Schengen Visa (Type C)', days: [], dayNames: 'None (Disabled)', closedDays: 'All Days' },
+    '2': { label: 'National Visa (Long term - Type D)', days: [4,5], dayNames: 'Thu, Fri', closedDays: 'Mon, Tue, Wed, Sat, Sun' },
+    '5': { label: 'Premium Lounge (Optional Service)', days: [1,2,3,4,5], dayNames: 'Mon, Tue, Wed, Thu, Fri', closedDays: 'Sat, Sun' },
+    '6': { label: 'Prime Time (Optional Service)', days: [1,2,3,4,5], dayNames: 'Mon, Tue, Wed, Thu, Fri', closedDays: 'Sat, Sun' },
+  };
+
+  function updateVisaDayRuleNotice() {
+    const selectEl = document.getElementById('slot-type');
+    const visaType = selectEl ? selectEl.value : '26';
+    const noticeEl = document.getElementById('slot-day-rule-notice');
+    if (!noticeEl) return;
+
+    const rule = VISA_DAY_RULES[visaType] || { days: [1,2,3,4,5], dayNames: 'Mon-Fri', closedDays: 'Sat-Sun' };
+    const today = new Date().getDay(); // 0: Sun, 1: Mon, ... 6: Sat
+    const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const currentDayName = weekdayNames[today];
+    const isActiveToday = rule.days.includes(today);
+
+    if (rule.days.length === 0) {
+      noticeEl.innerHTML = `<span class="badge badge-destructive" style="font-size:11px; padding:2px 6px;">⛔ Type ${visaType} Inactive</span> <span style="color:#991b1b; font-size:11px; margin-left:4px;">GVC does not accept monitoring/booking queries for this category.</span>`;
+    } else if (isActiveToday) {
+      noticeEl.innerHTML = `<span class="badge badge-booked" style="font-size:11px; padding:2px 6px;">🟢 Active Today (${currentDayName})</span> <span style="color:var(--muted-foreground); font-size:11px; margin-left:4px;">Monitoring Schedule: <b>${rule.dayNames}</b> (Closed: ${rule.closedDays})</span>`;
+    } else {
+      noticeEl.innerHTML = `<span class="badge badge-in_progress" style="font-size:11px; padding:2px 6px; background:#fff7ed; color:#c2410c; border:1px solid #fed7aa;">⏸️ Inactive Today (${currentDayName})</span> <span style="color:#c2410c; font-size:11px; margin-left:4px;">Workers paused today. Active on: <b>${rule.dayNames}</b></span>`;
+    }
+    renderIcons();
+  }
+
+  function formatSlotTimestamp(ts) {
+    if (!ts) return '—';
+    try {
+      const d = new Date(ts.endsWith('Z') ? ts : ts + 'Z');
+      if (isNaN(d.getTime())) return ts;
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch {
+      return ts;
+    }
+  }
+
+  async function loadDiscoveredSlotsHistory() {
+    const tbody = document.getElementById('slot-history-results-body');
+    if (!tbody) return;
+
+    try {
+      const resp = await fetch('/api/slots/history?limit=50');
+      if (resp.status === 401) return;
+      const data = await resp.json();
+      const history = data.history || [];
+
+      if (history.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--muted-foreground); padding:20px;">No historical open slots recorded yet. Discovered slots from manual searches and autonomous workers will appear here.</td></tr>`;
+        return;
+      }
+
+      const nowMs = Date.now();
+      tbody.innerHTML = '';
+      history.forEach(item => {
+        const tr = document.createElement('tr');
+
+        // Age calculation
+        let ageSec = 999999;
+        const tsDisplay = item.discovered_at || item.created_at || '';
+        if (tsDisplay) {
+          try {
+            const itemDate = new Date(tsDisplay.endsWith('Z') ? tsDisplay : tsDisplay + 'Z');
+            if (!isNaN(itemDate.getTime())) {
+              ageSec = Math.max(0, (nowMs - itemDate.getTime()) / 1000);
+            }
+          } catch {}
+        }
+
+        let badgeHtml = '';
+        if (ageSec < 60) {
+          badgeHtml = `<span class="badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-weight:700;"><i data-lucide="flame" class="icon" style="width:11px; height:11px; color:#10b981;"></i> Fresh (${Math.round(ageSec)}s ago)</span>`;
+        } else if (ageSec < 180) {
+          badgeHtml = `<span class="badge" style="background:#fffbeb; color:#92400e; border:1px solid #fde68a; font-weight:600;"><i data-lucide="clock" class="icon" style="width:11px; height:11px; color:#f59e0b;"></i> Recent (${Math.round(ageSec / 60)}m ago)</span>`;
+        } else {
+          badgeHtml = `<span class="badge" style="background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0;">${escapeHtml(formatSlotTimestamp(tsDisplay))}</span>`;
+        }
+
+        const vacName = item.vac_name || (item.vac_id === '138' ? 'Islamabad (138)' : (item.vac_id === '139' ? 'Lahore (139)' : (item.vac_id === '137' ? 'Karachi (137)' : `VAC ${item.vac_id}`)));
+
+        tr.innerHTML = `
+          <td>${badgeHtml}</td>
+          <td><b>${escapeHtml(vacName)}</b></td>
+          <td><span class="badge badge-booked">Type ${escapeHtml(String(item.visa_type || '26'))}</span></td>
+          <td><b>${escapeHtml(item.slot_date || '')}</b></td>
+          <td><code>${escapeHtml(item.slot_time || '')}</code></td>
+          <td><span class="badge badge-active">${escapeHtml(String(item.available_capacity || '1'))} slots</span></td>
+          <td><span style="font-size:11.5px; color:var(--muted-foreground);">${escapeHtml(item.found_by || 'Autonomous Worker')}</span></td>
+          <td>
+            <button class="btn btn-primary btn-sm" onclick="quickBookSlot('${item.slot_id}', '${item.slot_date}', '${item.slot_time}', '${item.vac_id}', '${item.visa_type}', '${escapeHtml(vacName)}')" title="Instantly book next queued applicant" style="padding:2px 8px; background:#0284c7; border-color:#0284c7; font-size:11px; font-weight:600;">
+              <i data-lucide="zap" class="icon" style="width:10px; height:10px;"></i> Quick Book
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      renderIcons();
+    } catch (e) {
+      console.warn('Error loading slot history:', e);
     }
   }
 

@@ -222,6 +222,26 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 """)
                 conn.execute("""
                     INSERT OR IGNORE INTO system_settings (key, value, updated_at)
+                    VALUES ('require_slot_availability_check', 'true', datetime('now'))
+                """)
+                conn.execute("""
+                    INSERT OR IGNORE INTO system_settings (key, value, updated_at)
+                    VALUES ('blitz_target_vac_id', '', datetime('now'))
+                """)
+                conn.execute("""
+                    INSERT OR IGNORE INTO system_settings (key, value, updated_at)
+                    VALUES ('blitz_target_visa_type', '', datetime('now'))
+                """)
+                conn.execute("""
+                    INSERT OR IGNORE INTO system_settings (key, value, updated_at)
+                    VALUES ('blitz_target_date', '', datetime('now'))
+                """)
+                conn.execute("""
+                    INSERT OR IGNORE INTO system_settings (key, value, updated_at)
+                    VALUES ('blitz_target_time', '', datetime('now'))
+                """)
+                conn.execute("""
+                    INSERT OR IGNORE INTO system_settings (key, value, updated_at)
                     VALUES ('worker_rate_per_booking_pkr', '5000', datetime('now'))
                 """)
                 conn.execute("""
@@ -313,6 +333,26 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_hot_slots_exp ON hot_slots(vac_id, visa_type, status, expires_at);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS discovered_slots_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        vac_id TEXT NOT NULL,
+                        vac_name TEXT DEFAULT '',
+                        visa_type TEXT NOT NULL,
+                        visa_label TEXT DEFAULT '',
+                        slot_id TEXT DEFAULT '',
+                        slot_date TEXT NOT NULL,
+                        slot_time TEXT NOT NULL,
+                        capacity INTEGER NOT NULL DEFAULT 1,
+                        status TEXT NOT NULL DEFAULT 'DISCOVERED',
+                        discovered_by TEXT DEFAULT '',
+                        discovered_at TEXT NOT NULL,
+                        timestamp REAL NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_discovered_slots_ts ON discovered_slots_history(timestamp DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_discovered_slots_lookup ON discovered_slots_history(vac_id, visa_type, slot_date);")
 
                 # ── Schema Migrations (Ensure columns exist on existing databases) ────
                 def _ensure_cols(table: str, col_defs: dict[str, str]):
@@ -643,11 +683,18 @@ def record_discovered_hot_slots(
     """
     Persist newly discovered hot slots with a short expiration TTL (default: 90s).
     Auto-purges stale/expired hot slots to prevent ghost booking attempts.
+    Also archives the discovery event to discovered_slots_history for staff visibility.
     """
     now_ts = time.time()
     expires_ts = now_ts + ttl_seconds
     now_str = datetime.utcnow().isoformat()
     inserted = 0
+
+    # Archive to persistent history
+    try:
+        record_discovered_slot_history(vac_id=vac_id, visa_type=visa_type, slots=slots, discovered_by=discovered_by, db_path=db_path)
+    except Exception as err:
+        logger.warning(f"[db] Warning archiving discovered slots history: {err}")
 
     with _lock:
         conn = get_connection(db_path)
@@ -657,19 +704,95 @@ def record_discovered_hot_slots(
                 conn.execute("DELETE FROM hot_slots WHERE expires_at <= ? OR status != 'HOT_AVAILABLE'", (now_ts,))
 
                 for s in slots:
-                    cap = getattr(s, "available_capacity", 1)
+                    cap = getattr(s, "available_capacity", 1) if not isinstance(s, dict) else s.get("available_capacity", s.get("capacity", 1))
                     if cap <= 0:
                         continue
-                    slot_id = getattr(s, "slot_id", "") or f"{vac_id}_{visa_type}_{getattr(s, 'date', '')}_{getattr(s, 'time', '')}"
-                    slot_date = getattr(s, "date", "")
-                    slot_time = getattr(s, "time", "")
+                    slot_id = (getattr(s, "slot_id", "") if not isinstance(s, dict) else s.get("slot_id", "")) or f"{vac_id}_{visa_type}_{getattr(s, 'date', '')}_{getattr(s, 'time', '')}"
+                    slot_date = getattr(s, "date", "") if not isinstance(s, dict) else s.get("date", s.get("slot_date", ""))
+                    slot_time = getattr(s, "time", "") if not isinstance(s, dict) else s.get("time", s.get("slot_time", ""))
 
                     conn.execute("""
                         INSERT INTO hot_slots (vac_id, visa_type, slot_id, slot_date, slot_time, capacity, status, discovered_by, discovered_at, expires_at)
                         VALUES (?, ?, ?, ?, ?, ?, 'HOT_AVAILABLE', ?, ?, ?)
-                    """, (str(vac_id), str(visa_type), slot_id, slot_date, slot_time, cap, discovered_by, now_str, expires_ts))
+                    """, (str(vac_id), str(visa_type), str(slot_id), str(slot_date), str(slot_time), cap, discovered_by, now_str, expires_ts))
                     inserted += 1
             return inserted
+        finally:
+            conn.close()
+
+
+def record_discovered_slot_history(
+    vac_id: str,
+    visa_type: str,
+    slots: list,
+    discovered_by: str = "",
+    db_path: Path = DB_PATH
+) -> int:
+    """
+    Persistently archive discovered open slots for historical tracking and UI visibility.
+    """
+    if not slots:
+        return 0
+    now_ts = time.time()
+    now_str = datetime.utcnow().isoformat()
+    inserted = 0
+
+    from .portals.gvc import GVC_VACS, GVC_VISA_TYPES
+    vac_meta = GVC_VACS.get(str(vac_id).lower(), GVC_VACS.get(str(vac_id), {"name": f"VAC {vac_id}"}))
+    vac_name = vac_meta.get("name", f"VAC {vac_id}")
+    visa_label = GVC_VISA_TYPES.get(str(visa_type), f"Type {visa_type}")
+
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                for s in slots:
+                    cap = getattr(s, "available_capacity", 1) if not isinstance(s, dict) else s.get("available_capacity", s.get("capacity", 1))
+                    if cap <= 0:
+                        continue
+                    slot_date = getattr(s, "date", "") if not isinstance(s, dict) else s.get("date", s.get("slot_date", ""))
+                    slot_time = getattr(s, "time", "") if not isinstance(s, dict) else s.get("time", s.get("slot_time", ""))
+                    slot_id = getattr(s, "slot_id", "") if not isinstance(s, dict) else s.get("slot_id", "")
+                    if not slot_id:
+                        slot_id = f"{vac_id}_{visa_type}_{slot_date}_{slot_time}"
+
+                    conn.execute("""
+                        INSERT INTO discovered_slots_history (
+                            vac_id, vac_name, visa_type, visa_label, slot_id, slot_date, slot_time, capacity, status, discovered_by, discovered_at, timestamp
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DISCOVERED', ?, ?, ?)
+                    """, (str(vac_id), vac_name, str(visa_type), visa_label, str(slot_id), str(slot_date), str(slot_time), cap, str(discovered_by or "Operator"), now_str, now_ts))
+                    inserted += 1
+            return inserted
+        except Exception as err:
+            logger.warning(f"[db] Failed to record discovered slot history: {err}")
+            return 0
+        finally:
+            conn.close()
+
+
+def get_discovered_slots_history(
+    limit: int = 100,
+    vac_id: Optional[str] = None,
+    visa_type: Optional[str] = None,
+    db_path: Path = DB_PATH
+) -> List[dict]:
+    """Retrieve historical log of discovered slots ordered by newest timestamp first."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                query = "SELECT * FROM discovered_slots_history WHERE 1=1"
+                params = []
+                if vac_id:
+                    query += " AND vac_id = ?"
+                    params.append(str(vac_id))
+                if visa_type:
+                    query += " AND visa_type = ?"
+                    params.append(str(visa_type))
+                query += " ORDER BY timestamp DESC LIMIT ?"
+                params.append(limit)
+                rows = conn.execute(query, params).fetchall()
+                return [dict(r) for r in rows]
         finally:
             conn.close()
 

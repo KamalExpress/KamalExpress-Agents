@@ -1005,15 +1005,37 @@ async def trigger_client_booking_endpoint(client_id: int, user: dict = Depends(g
         )
 
 
+class BlitzBookingRequest(BaseModel):
+    target_vac_id: Optional[str] = None
+    target_visa_type: Optional[str] = None
+    target_date: Optional[str] = None
+    target_time: Optional[str] = None
+
+
 @app.post("/api/queue/blitz-book")
-async def blitz_queue_booking_endpoint(user: dict = Depends(get_current_user)):
+async def blitz_queue_booking_endpoint(
+    req: Optional[BlitzBookingRequest] = None,
+    user: dict = Depends(get_current_user)
+):
     """
-    Launch direct parallel booking blitz for all QUEUED clients.
-    Strikes GVC directly using each applicant's preferred_date_start without waiting for a search.
+    Launch direct parallel booking blitz for QUEUED clients.
+    Strikes GVC directly using optional target VAC, visa type, and date/time parameters.
+    If none specified, runs autonomously across all queued clients using individual preferences.
     """
     try:
         username = user.get("username", "staff")
-        res = await fleet_manager.blitz_queue_booking(triggered_by=username)
+        vac_id = req.target_vac_id if req else None
+        visa_type = req.target_visa_type if req else None
+        target_date = req.target_date if req else None
+        target_time = req.target_time if req else None
+
+        res = await fleet_manager.blitz_queue_booking(
+            triggered_by=username,
+            target_vac_id=vac_id,
+            target_visa_type=visa_type,
+            target_date=target_date,
+            target_time=target_time,
+        )
         return JSONResponse(status_code=200, content=res)
     except Exception as e:
         logger.error(f"[api] Error executing blitz_queue_booking: {e}", exc_info=True)
@@ -1179,6 +1201,78 @@ async def quick_book_slot_endpoint(
             status_code=500,
             content={"success": False, "status": "ERROR", "error": f"Quick-book failed: {str(e)}"},
         )
+
+
+@app.get("/api/slots/history")
+async def get_slots_history_endpoint(
+    limit: int = Query(100, ge=1, le=500),
+    vac_id: Optional[str] = Query(None),
+    visa_type: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """Retrieve persistent activity log of discovered open slots across all centers."""
+    from agents.appointments.db import get_discovered_slots_history
+    history = get_discovered_slots_history(limit=limit, vac_id=vac_id, visa_type=visa_type)
+    return {"total": len(history), "history": history}
+
+
+class OperationalModeRequest(BaseModel):
+    require_slot_availability_check: Optional[bool] = None
+    blitz_target_vac_id: Optional[str] = None
+    blitz_target_visa_type: Optional[str] = None
+    blitz_target_date: Optional[str] = None
+    blitz_target_time: Optional[str] = None
+
+
+@app.get("/api/settings/operational-mode")
+async def get_operational_mode_endpoint(user: dict = Depends(get_current_user)):
+    """Retrieve active operational mode (Safe vs Blitz Mode) and target settings."""
+    from agents.appointments.db import get_system_setting
+    req_check_raw = get_system_setting("require_slot_availability_check", "true")
+    is_safe = str(req_check_raw).lower() in ["true", "1", "yes", "on"]
+
+    return {
+        "require_slot_availability_check": is_safe,
+        "mode": "SAFE_MODE" if is_safe else "BLITZ_DROP_MODE",
+        "mode_label": "Safe Mode (Verified Slots Only)" if is_safe else "Blitz Drop Mode (Blind Strikes Enabled)",
+        "blitz_target_vac_id": get_system_setting("blitz_target_vac_id", ""),
+        "blitz_target_visa_type": get_system_setting("blitz_target_visa_type", ""),
+        "blitz_target_date": get_system_setting("blitz_target_date", ""),
+        "blitz_target_time": get_system_setting("blitz_target_time", ""),
+    }
+
+
+@app.post("/api/settings/operational-mode")
+async def set_operational_mode_endpoint(req: OperationalModeRequest, user: dict = Depends(get_current_user)):
+    """Update operational mode (Safe vs Blitz Mode) and target settings."""
+    from agents.appointments.db import set_system_setting
+    username = user.get("username", "staff")
+
+    if req.require_slot_availability_check is not None:
+        val = "true" if req.require_slot_availability_check else "false"
+        set_system_setting("require_slot_availability_check", val)
+        mode_str = "Safe Mode (Verified Slots Only)" if req.require_slot_availability_check else "Blitz Drop Mode (Blind Strikes Enabled)"
+        log_system_event(
+            level="INFO",
+            category="FLEET",
+            message=f"Staff '{username}' switched operational mode to: {mode_str}.",
+            details={"require_slot_availability_check": val, "triggered_by": username},
+        )
+
+    if req.blitz_target_vac_id is not None:
+        set_system_setting("blitz_target_vac_id", str(req.blitz_target_vac_id))
+    if req.blitz_target_visa_type is not None:
+        set_system_setting("blitz_target_visa_type", str(req.blitz_target_visa_type))
+    if req.blitz_target_date is not None:
+        set_system_setting("blitz_target_date", str(req.blitz_target_date))
+    if req.blitz_target_time is not None:
+        set_system_setting("blitz_target_time", str(req.blitz_target_time))
+
+    return {
+        "success": True,
+        "message": "Operational mode settings updated.",
+        "settings": await get_operational_mode_endpoint(user=user),
+    }
 
 
 # ── GVC Session & Dual-Mode Auth Endpoints ─────────────────────────────────────
