@@ -154,10 +154,32 @@ def test_operational_mode_api_endpoints(auth_client):
 
 
 def test_slots_history_api_endpoint(auth_client):
-    """Test /api/slots/history endpoint."""
+    """Test /api/slots/history GET and DELETE endpoints."""
+    # 1. Test GET
     resp = auth_client.get("/api/slots/history?limit=20")
     assert resp.status_code == 200
     data = resp.json()
     assert "history" in data
     assert "total" in data
     assert isinstance(data["history"], list)
+
+    # 2. Record temporary slot
+    from agents.appointments.db import record_discovered_slot_history
+    record_discovered_slot_history(
+        vac_id="138",
+        visa_type="26",
+        slots=[{"slot_id": "test_del_01", "date": "10/10/2026", "time": "09:00", "available_capacity": 1}],
+        discovered_by="TestClear",
+    )
+
+    # 3. Test DELETE
+    del_resp = auth_client.delete("/api/slots/history?vac_id=138")
+    assert del_resp.status_code == 200
+    del_data = del_resp.json()
+    assert del_data["success"] is True
+    assert del_data["deleted_count"] >= 1
+
+    # Verify history is empty
+    resp_after = auth_client.get("/api/slots/history?limit=20")
+    assert resp_after.status_code == 200
+    assert not any(s.get("slot_id") == "test_del_01" for s in resp_after.json().get("history", []))

@@ -1216,6 +1216,29 @@ async def get_slots_history_endpoint(
     return {"total": len(history), "history": history}
 
 
+@app.delete("/api/slots/history")
+async def clear_slots_history_endpoint(
+    vac_id: Optional[str] = Query(None),
+    visa_type: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """Purge persistent activity log of discovered slots."""
+    from agents.appointments.db import clear_discovered_slots_history
+    deleted_count = clear_discovered_slots_history(vac_id=vac_id, visa_type=visa_type)
+    username = user.get("username", "staff")
+    log_system_event(
+        level="INFO",
+        category="SLOT_DISCOVERY",
+        message=f"Staff '{username}' cleared {deleted_count} record(s) from slot discovery history.",
+        details={"deleted_count": deleted_count, "vac_id": vac_id, "visa_type": visa_type},
+    )
+    return {
+        "success": True,
+        "deleted_count": deleted_count,
+        "message": f"Cleared {deleted_count} slot discovery history records.",
+    }
+
+
 class OperationalModeRequest(BaseModel):
     require_slot_availability_check: Optional[bool] = None
     blitz_target_vac_id: Optional[str] = None

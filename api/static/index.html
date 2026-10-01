@@ -923,6 +923,9 @@ How can I help you today?</div>
           <button class="btn btn-outline btn-sm" onclick="loadDiscoveredSlotsHistory()">
             <i data-lucide="rotate-cw" class="icon"></i> Refresh History
           </button>
+          <button class="btn btn-outline btn-sm" onclick="clearDiscoveredSlotsHistory()" title="Purge all discovered slot history records" style="color:var(--destructive); border-color:#fecaca;">
+            <i data-lucide="trash-2" class="icon"></i> Clear Slot History
+          </button>
         </div>
       </div>
 
@@ -4056,6 +4059,25 @@ How can I help you today?</div>
       renderIcons();
     } catch (e) {
       console.warn('Error loading slot history:', e);
+    }
+  }
+
+  async function clearDiscoveredSlotsHistory() {
+    if (!confirm("🗑️ CLEAR DISCOVERED SLOT HISTORY?\n\nThis will purge all discovered open slot history records from the persistent database activity log.\n\nProceed?")) {
+      return;
+    }
+
+    try {
+      const resp = await fetch('/api/slots/history', { method: 'DELETE' });
+      if (resp.status === 401) { showLogin(); return; }
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        await loadDiscoveredSlotsHistory();
+      } else {
+        alert(`Failed to clear slot history: ${data.detail || data.error || 'Error'}`);
+      }
+    } catch (err) {
+      alert(`Network error clearing slot history: ${err.message}`);
     }
   }
 

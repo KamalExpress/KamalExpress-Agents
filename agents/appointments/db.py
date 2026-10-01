@@ -797,6 +797,30 @@ def get_discovered_slots_history(
             conn.close()
 
 
+def clear_discovered_slots_history(
+    vac_id: Optional[str] = None,
+    visa_type: Optional[str] = None,
+    db_path: Path = DB_PATH,
+) -> int:
+    """Purge all or filtered records from discovered_slots_history table."""
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                query = "DELETE FROM discovered_slots_history WHERE 1=1"
+                params = []
+                if vac_id:
+                    query += " AND vac_id = ?"
+                    params.append(str(vac_id))
+                if visa_type:
+                    query += " AND visa_type = ?"
+                    params.append(str(visa_type))
+                res = conn.execute(query, params)
+                return res.rowcount
+        finally:
+            conn.close()
+
+
 def get_active_hot_slots(
     vac_id: Optional[str] = None,
     visa_type: Optional[str] = None,
