@@ -305,8 +305,8 @@ def test_hot_slots_lifecycle_and_auto_purge():
     from agents.appointments.schemas import AvailableSlot
 
     mock_slots = [
-        AvailableSlot(slot_id="HOT_SLOT_01", vac_id="138", vac_name="Islamabad", visa_type="26", date="20/10/2026", time="10:00", available_capacity=1, is_available=True),
-        AvailableSlot(slot_id="HOT_SLOT_02", vac_id="138", vac_name="Islamabad", visa_type="26", date="21/10/2026", time="11:30", available_capacity=2, is_available=True),
+        AvailableSlot(slot_id="HOT_SLOT_01", vac_id="138", vac_name="Islamabad", visa_type="26", date="20/10/2026", time="10:00", available_capacity=1),
+        AvailableSlot(slot_id="HOT_SLOT_02", vac_id="138", vac_name="Islamabad", visa_type="26", date="21/10/2026", time="11:30", available_capacity=2),
     ]
 
     # 1. Record hot slots with short TTL (2 seconds for testing)

@@ -145,6 +145,101 @@ def is_visa_type_active_today(visa_type: str, dt: Optional[datetime] = None) -> 
     return check_dt.weekday() in allowed
 
 
+def parse_gvc_slots_payload(
+    data: Any,
+    default_date: str,
+    vac_meta: Dict[str, Any],
+    visa_type: str,
+) -> List[AvailableSlot]:
+    """
+    Rigorously parses and filters raw GVC `/api/v1/periodslot/slots` JSON responses.
+    Accurately handles GVC's slot object schema:
+      - `isavailable`: bool (must be True)
+      - `isselectable`: bool (must not be False)
+      - `numofavailableslots`: int (must be > 0 if specified)
+      - `periodslotid` / `id`: slot identifier
+      - `starttime` / `endtime`: slot time
+      - `date`: slot date
+    Rejects disabled/booked timeslot timetable items where isavailable is False or numofavailableslots == 0.
+    """
+    if not data:
+        return []
+
+    slot_items: List[Dict[str, Any]] = []
+    if isinstance(data, list):
+        slot_items = [x for x in data if isinstance(x, dict)]
+    elif isinstance(data, dict):
+        slot_obj = data.get("returnobject") or {}
+        if isinstance(slot_obj, dict):
+            raw_slots = slot_obj.get("slots") or []
+            if isinstance(raw_slots, list):
+                slot_items = [x for x in raw_slots if isinstance(x, dict)]
+        elif isinstance(slot_obj, list):
+            slot_items = [x for x in slot_obj if isinstance(x, dict)]
+
+    found_slots: List[AvailableSlot] = []
+    for item in slot_items:
+        # 1. Explicit availability / selectability flags from GVC
+        is_avail = item.get("isavailable")
+        if is_avail is None:
+            is_avail = item.get("is_available")
+
+        is_select = item.get("isselectable")
+        if is_select is None:
+            is_select = item.get("is_selectable")
+
+        # Explicitly marked as unavailable or non-selectable
+        if is_avail is False or is_select is False:
+            continue
+
+        # 2. Extract slot capacity / count
+        num_slots = item.get("numofavailableslots")
+        if num_slots is None:
+            num_slots = item.get("capacity")
+        if num_slots is None:
+            num_slots = item.get("available")
+        if num_slots is None:
+            num_slots = item.get("available_capacity")
+
+        # If numerical count is provided and <= 0, the slot is closed
+        if num_slots is not None:
+            try:
+                if int(num_slots) <= 0:
+                    continue
+            except (ValueError, TypeError):
+                pass
+
+        # 3. If GVC does not explicitly state isavailable=True AND no positive slot count is present,
+        # skip it (prevents treating raw timetable template slots as open slots)
+        if is_avail is not True and (num_slots is None or int(num_slots or 0) <= 0):
+            continue
+
+        slot_date = item.get("date") or item.get("slotdate") or default_date
+        slot_time = item.get("starttime") or item.get("time") or "09:30"
+        slot_id = str(item.get("periodslotid") or item.get("id") or item.get("slotId") or "0")
+
+        capacity = 1
+        if num_slots is not None:
+            try:
+                capacity = max(1, int(num_slots))
+            except (ValueError, TypeError):
+                capacity = 1
+
+        found_slots.append(
+            AvailableSlot(
+                date=slot_date,
+                time=slot_time,
+                slot_id=slot_id,
+                vac_id=str(vac_meta.get("id", "138")),
+                vac_name=vac_meta.get("name", "GVC Center"),
+                visa_type=str(visa_type),
+                available_capacity=capacity,
+            )
+        )
+
+    return found_slots
+
+
 class GVCPortalDriver:
     """
     High-performance Greece GVC World portal automation driver.
@@ -535,35 +630,13 @@ class GVCPortalDriver:
                     except Exception:
                         pass
 
-                    slot_items = []
-                    if isinstance(data, list):
-                        slot_items = data
-                    elif isinstance(data, dict):
-                        slot_obj = data.get("returnobject") or {}
-                        if isinstance(slot_obj, dict):
-                            slot_items = slot_obj.get("slots") or []
-                        elif isinstance(slot_obj, list):
-                            slot_items = slot_obj
-
                     self.last_search_status = {"status": "SUCCESS", "code": 200, "error": None}
-                    for item in slot_items:
-                        slot_date = item.get("date") or item.get("slotdate") or date_from
-                        slot_time = item.get("starttime") or item.get("time") or "09:30"
-                        slot_id = str(item.get("periodslotid") or item.get("id") or item.get("slotId") or "0")
-                        capacity = int(item.get("capacity") or item.get("available") or 1)
-
-                        if capacity > 0:
-                            found_slots.append(
-                                AvailableSlot(
-                                    date=slot_date,
-                                    time=slot_time,
-                                    slot_id=slot_id,
-                                    vac_id=str(vac_meta["id"]),
-                                    vac_name=vac_meta["name"],
-                                    visa_type=str(visa_type),
-                                    available_capacity=capacity,
-                                )
-                            )
+                    found_slots = parse_gvc_slots_payload(
+                        data=data,
+                        default_date=date_from,
+                        vac_meta=vac_meta,
+                        visa_type=str(visa_type),
+                    )
 
                     logger.info(f"[gvc] ✓ Direct REST slot query returned {len(found_slots)} open slots.")
                     return found_slots
@@ -647,36 +720,13 @@ class GVCPortalDriver:
             cdp_res = await asyncio.to_thread(self._run_cdp_in_thread, _cdp_fetch)
             if cdp_res and cdp_res.get("status") == 200:
                 data = cdp_res.get("data") or {}
-                slot_items = []
-                if isinstance(data, list):
-                    slot_items = data
-                elif isinstance(data, dict):
-                    slot_obj = data.get("returnobject") or {}
-                    if isinstance(slot_obj, dict):
-                        slot_items = slot_obj.get("slots") or []
-                    elif isinstance(slot_obj, list):
-                        slot_items = slot_obj
-
                 self.last_search_status = {"status": "SUCCESS", "code": 200, "error": None}
-                for item in slot_items:
-                    slot_date = item.get("date") or item.get("slotdate") or date_from
-                    slot_time = item.get("starttime") or item.get("time") or "09:30"
-                    slot_id = str(item.get("periodslotid") or item.get("id") or item.get("slotId") or "0")
-                    capacity = int(item.get("capacity") or item.get("available") or 1)
-
-                    if capacity > 0:
-                        found_slots.append(
-                            AvailableSlot(
-                                date=slot_date,
-                                time=slot_time,
-                                slot_id=slot_id,
-                                vac_id=str(vac_meta["id"]),
-                                vac_name=vac_meta["name"],
-                                visa_type=str(visa_type),
-                                available_capacity=capacity,
-                            )
-                        )
-
+                found_slots = parse_gvc_slots_payload(
+                    data=data,
+                    default_date=date_from,
+                    vac_meta=vac_meta,
+                    visa_type=str(visa_type),
+                )
                 logger.info(f"[gvc] ✓ In-browser CDP slot query returned {len(found_slots)} open slots.")
                 return found_slots
         except Exception:
