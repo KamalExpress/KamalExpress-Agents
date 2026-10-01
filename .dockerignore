@@ -1,0 +1,13 @@
+.git
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+data/*.db
+data/*.sqlite
+testing/kamal_express_logs_*.txt
+node_modules
+.venv
+venv
+.env

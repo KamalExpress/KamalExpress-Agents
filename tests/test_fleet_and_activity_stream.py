@@ -334,6 +334,16 @@ def test_hot_slots_lifecycle_and_auto_purge():
     purged = get_active_hot_slots(vac_id="138", visa_type="26")
     assert not any(s["slot_id"] in ("HOT_SLOT_01", "HOT_SLOT_02") for s in purged)
 
+    # 6. Cleanup mock test slot history records so test artifacts do not pollute dev database
+    from agents.appointments.db import get_connection, _lock
+    with _lock:
+        conn = get_connection()
+        try:
+            with conn:
+                conn.execute("DELETE FROM discovered_slots_history WHERE discovered_by = 'test_runner' OR slot_id IN ('HOT_SLOT_01', 'HOT_SLOT_02')")
+        finally:
+            conn.close()
+
 
 def test_blitz_queue_booking_endpoint():
     headers = get_auth_headers("admin")

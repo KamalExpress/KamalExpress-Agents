@@ -100,6 +100,16 @@ def test_discovered_slots_history_storage():
     assert matched[0]["slot_time"] == "10:30"
     assert matched[0]["capacity"] == 3
 
+    # Cleanup test slot record
+    from agents.appointments.db import get_connection, _lock
+    with _lock:
+        conn = get_connection()
+        try:
+            with conn:
+                conn.execute("DELETE FROM discovered_slots_history WHERE slot_id = ?", (test_slot_id,))
+        finally:
+            conn.close()
+
 
 def test_operational_mode_api_endpoints(auth_client):
     """Test GET and POST for /api/settings/operational-mode."""
