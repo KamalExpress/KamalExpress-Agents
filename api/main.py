@@ -1144,6 +1144,16 @@ async def search_slots(
             triggered_by=username
         ))
 
+    # Internal Structured Audit Logging (Diagnostics separated from public schema)
+    telemetry = getattr(gvc_driver, "last_telemetry", {})
+    if telemetry.get("raw_count", 0) > 0 and len(slots) == 0:
+        log_system_event(
+            level="DEBUG",
+            category="SLOT_PARSER",
+            message=f"GVC returned {telemetry.get('raw_count')} timetable template items for VAC {vac_id} on {date_from or 'default'}; 0 passed bookable validation.",
+            details=telemetry,
+        )
+
     status_info = getattr(gvc_driver, "last_search_status", {})
     return {
         "vac_id": vac_id,

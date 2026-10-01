@@ -1,7 +1,7 @@
 """
-Test suite for Greece GVC World slot parsing and availability validation.
-Ensures disabled/booked timetable slots (isavailable=False, numofavailableslots=0)
-are never falsely flagged as open available appointment slots.
+Exhaustive test suite for Greece GVC World slot parsing and availability validation.
+Strictly verifies that the parser fails closed and never fabricates business facts
+(such as synthesizing open slots when id=null, isavailable=false, or numofavailableslots=0).
 """
 
 import pytest
@@ -13,120 +13,153 @@ def vac_meta():
     return GVC_VACS["138"]
 
 
-def test_parse_gvc_slots_empty_payload(vac_meta):
-    """Empty or None payload should return empty list."""
-    assert parse_gvc_slots_payload({}, "21/10/2026", vac_meta, "26") == []
+# ── 1. Rejection Matrix (Fail Closed) ──────────────────────────
+
+def test_reject_id_null(vac_meta):
+    """id=null must never be synthesized into slot_id='0' and accepted."""
+    payload = {"returnobject": {"slots": [{"id": None, "periodslotid": None, "isavailable": True, "isselectable": True, "numofavailableslots": 1, "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload, "21/10/2026", vac_meta, "26") == []
+
+
+def test_reject_id_zero(vac_meta):
+    """id=0 or periodslotid=0 is an unreleased shift placeholder and must be rejected."""
+    payload = {"returnobject": {"slots": [{"id": 0, "isavailable": True, "isselectable": True, "numofavailableslots": 1, "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload, "21/10/2026", vac_meta, "26") == []
+
+    payload_str_zero = {"returnobject": {"slots": [{"periodslotid": "0", "isavailable": True, "isselectable": True, "numofavailableslots": 1, "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload_str_zero, "21/10/2026", vac_meta, "26") == []
+
+
+def test_reject_id_undefined_or_non_numeric(vac_meta):
+    """id='undefined' or non-numeric strings must be rejected."""
+    payload = {"returnobject": {"slots": [{"id": "undefined", "isavailable": True, "isselectable": True, "numofavailableslots": 1, "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload, "21/10/2026", vac_meta, "26") == []
+
+
+def test_reject_isavailable_false(vac_meta):
+    """isavailable=False must be strictly rejected even if valid ID is present."""
+    payload = {"returnobject": {"slots": [{"id": 2528256, "isavailable": False, "isselectable": True, "numofavailableslots": 1, "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload, "21/10/2026", vac_meta, "26") == []
+
+
+def test_reject_isselectable_false(vac_meta):
+    """isselectable=False must be strictly rejected."""
+    payload = {"returnobject": {"slots": [{"id": 2528256, "isavailable": True, "isselectable": False, "numofavailableslots": 1, "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload, "21/10/2026", vac_meta, "26") == []
+
+
+def test_reject_numofavailableslots_zero(vac_meta):
+    """numofavailableslots=0 indicates zero capacity and must be rejected."""
+    payload = {"returnobject": {"slots": [{"id": 2528256, "isavailable": True, "isselectable": True, "numofavailableslots": 0, "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload, "21/10/2026", vac_meta, "26") == []
+
+
+def test_reject_missing_numofavailableslots(vac_meta):
+    """Missing numofavailableslots must NOT default to 1. Proves no manufactured capacity."""
+    payload = {"returnobject": {"slots": [{"id": 2528256, "isavailable": True, "isselectable": True, "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload, "21/10/2026", vac_meta, "26") == []
+
+
+def test_reject_non_numeric_availability(vac_meta):
+    """Non-numeric or corrupt numofavailableslots must be rejected."""
+    payload = {"returnobject": {"slots": [{"id": 2528256, "isavailable": True, "isselectable": True, "numofavailableslots": "infinite", "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload, "21/10/2026", vac_meta, "26") == []
+
+
+def test_reject_corrupt_or_unexpected_payloads(vac_meta):
+    """Non-dictionary or corrupt payloads must safely fail closed."""
     assert parse_gvc_slots_payload(None, "21/10/2026", vac_meta, "26") == []
+    assert parse_gvc_slots_payload("<html>Imperva Blocked</html>", "21/10/2026", vac_meta, "26") == []
+    assert parse_gvc_slots_payload({"returnobject": "unexpected_string"}, "21/10/2026", vac_meta, "26") == []
+    assert parse_gvc_slots_payload({"returnobject": {"slots": "not_a_list"}}, "21/10/2026", vac_meta, "26") == []
     assert parse_gvc_slots_payload({"returnobject": {"slots": []}}, "21/10/2026", vac_meta, "26") == []
 
 
-def test_parse_gvc_slots_disabled_timetable_slots_rejected(vac_meta):
+def test_unknown_future_fields_do_not_invent_meaning(vac_meta):
+    """Unrecognized fields must not bypass mandatory invariants."""
+    payload = {"returnobject": {"slots": [{"id": None, "futureStatus": "VIP_OPEN", "isavailable": False, "numofavailableslots": 0, "starttime": "09:30"}]}}
+    assert parse_gvc_slots_payload(payload, "21/10/2026", vac_meta, "26") == []
+
+
+# ── 2. Acceptance Matrix (Verified Bookable Slots) ────────────
+
+def test_accept_valid_slot_count_one(vac_meta):
+    """Legitimate open slot with valid ID and positive count is parsed accurately."""
+    payload = {"returnobject": {"slots": [{"id": 2528256, "isavailable": True, "isselectable": True, "numofavailableslots": 1, "starttime": "12:00", "date": "12/08/2026"}]}}
+    slots = parse_gvc_slots_payload(payload, "12/08/2026", vac_meta, "26")
+    assert len(slots) == 1
+    assert slots[0].slot_id == "2528256"
+    assert slots[0].available_capacity == 1
+    assert slots[0].time == "12:00"
+    assert slots[0].date == "12/08/2026"
+
+
+def test_accept_valid_slot_count_greater_than_one(vac_meta):
+    """Slot with capacity > 1 accurately reports its actual capacity without truncation."""
+    payload = {"returnobject": {"slots": [{"id": 2528257, "isavailable": True, "isselectable": True, "numofavailableslots": 4, "starttime": "12:30", "date": "12/08/2026"}]}}
+    slots = parse_gvc_slots_payload(payload, "12/08/2026", vac_meta, "26")
+    assert len(slots) == 1
+    assert slots[0].slot_id == "2528257"
+    assert slots[0].available_capacity == 4
+
+
+# ── 3. Exact HAR Trace Payloads ────────────────────────────────
+
+def test_har_trace_form2_closed_shift_template_rejected(vac_meta):
     """
-    When GVC returns full timetable with isavailable=False / isselectable=False / numofavailableslots=0,
-    none should be flagged as available.
+    Exact snippet from RnD/sample-booking-form/form2.har line 13545.
+    22 timetable shift items with id=null, isavailable=false, numofavailableslots=0.
+    Must return 0 slots.
     """
-    gvc_disabled_response = {
-        "code": "SUCCESS",
+    har_payload = {
         "message": "",
         "returnobject": {
             "slots": [
-                {
-                    "id": 2528250,
-                    "periodslotid": 2528250,
-                    "starttime": "09:00",
-                    "endtime": "09:20",
-                    "date": "21/10/2026",
-                    "isavailable": False,
-                    "isselectable": False,
-                    "numofavailableslots": 0,
-                    "related": [],
-                },
-                {
-                    "id": 2528251,
-                    "periodslotid": 2528251,
-                    "starttime": "09:30",
-                    "endtime": "09:50",
-                    "date": "21/10/2026",
-                    "isavailable": False,
-                    "isselectable": False,
-                    "numofavailableslots": 0,
-                    "related": [],
-                },
-                {
-                    "id": 2528252,
-                    "periodslotid": 2528252,
-                    "starttime": "10:00",
-                    "endtime": "10:20",
-                    "date": "21/10/2026",
-                    "isavailable": False,
-                    "isselectable": True,
-                    "numofavailableslots": 0,
-                    "related": [],
-                },
+                {"id": None, "periodid": 14064, "starttime": "09:00", "endtime": "09:15", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
+                {"id": None, "periodid": 14064, "starttime": "09:15", "endtime": "09:30", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
+                {"id": None, "periodid": 14065, "starttime": "09:30", "endtime": "09:45", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
+                {"id": None, "periodid": 14065, "starttime": "09:45", "endtime": "10:00", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
+                {"id": None, "periodid": 14065, "starttime": "10:00", "endtime": "10:15", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
+                {"id": None, "periodid": 14065, "starttime": "10:15", "endtime": "10:30", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
+                {"id": None, "periodid": 14065, "starttime": "10:30", "endtime": "10:45", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
+                {"id": None, "periodid": 14065, "starttime": "10:45", "endtime": "11:00", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
             ]
-        }
+        },
+        "code": "SUCCESS"
     }
 
-    slots = parse_gvc_slots_payload(gvc_disabled_response, "21/10/2026", vac_meta, "26")
-    assert len(slots) == 0, f"Expected 0 available slots, got {len(slots)}"
+    telemetry = {}
+    slots = parse_gvc_slots_payload(har_payload, "07/10/2026", vac_meta, "26", telemetry_collector=telemetry)
+    assert len(slots) == 0
+    assert telemetry["raw_count"] == 8
+    assert telemetry["verified_count"] == 0
+    assert telemetry["rejections"]["missing_or_invalid_id"] == 8
 
 
-def test_parse_gvc_slots_real_open_slots(vac_meta):
+def test_har_trace_complete_booking_mixed_payload(vac_meta):
     """
-    When GVC returns active open slots with isavailable=True and isselectable=True,
-    they should be accurately parsed and converted to AvailableSlot.
+    Exact snippet from RnD/sample-booking-form/complete-booking-workflow-with-wrong-otp.har line 32142.
+    Mixed payload with closed slots and one active open slot (id=2528256).
     """
-    gvc_active_response = {
-        "code": "SUCCESS",
+    har_payload = {
         "message": "",
         "returnobject": {
             "slots": [
-                {
-                    "id": 2528250,
-                    "periodslotid": 2528250,
-                    "starttime": "09:00",
-                    "endtime": "09:20",
-                    "date": "21/10/2026",
-                    "isavailable": True,
-                    "isselectable": True,
-                    "numofavailableslots": 3,
-                    "related": [],
-                },
-                {
-                    "id": 2528251,
-                    "periodslotid": 2528251,
-                    "starttime": "11:30",
-                    "endtime": "11:50",
-                    "date": "21/10/2026",
-                    "isavailable": True,
-                    "isselectable": True,
-                    "numofavailableslots": 1,
-                    "related": [],
-                },
-                {
-                    "id": 2528252,
-                    "periodslotid": 2528252,
-                    "starttime": "12:00",
-                    "endtime": "12:20",
-                    "date": "21/10/2026",
-                    "isavailable": False,
-                    "isselectable": False,
-                    "numofavailableslots": 0,
-                    "related": [],
-                },
+                {"id": None, "periodid": 14098, "starttime": "09:00", "endtime": "09:15", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
+                {"id": None, "periodid": 14099, "starttime": "11:45", "endtime": "12:00", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
+                {"id": 2528256, "periodid": 14099, "starttime": "12:00", "endtime": "12:15", "numofavailableslots": 1, "isavailable": True, "isselectable": True},
+                {"id": None, "periodid": 14099, "starttime": "12:15", "endtime": "12:30", "numofavailableslots": 0, "isavailable": False, "isselectable": False},
             ]
-        }
+        },
+        "code": "SUCCESS"
     }
 
-    slots = parse_gvc_slots_payload(gvc_active_response, "21/10/2026", vac_meta, "26")
-    assert len(slots) == 2, f"Expected 2 available slots, got {len(slots)}"
-    
-    assert slots[0].slot_id == "2528250"
-    assert slots[0].time == "09:00"
-    assert slots[0].date == "21/10/2026"
-    assert slots[0].available_capacity == 3
-    assert slots[0].vac_id == "138"
-
-    assert slots[1].slot_id == "2528251"
-    assert slots[1].time == "11:30"
-    assert slots[1].available_capacity == 1
+    telemetry = {}
+    slots = parse_gvc_slots_payload(har_payload, "12/08/2026", vac_meta, "26", telemetry_collector=telemetry)
+    assert len(slots) == 1
+    assert slots[0].slot_id == "2528256"
+    assert slots[0].time == "12:00"
+    assert slots[0].available_capacity == 1
+    assert telemetry["raw_count"] == 4
+    assert telemetry["verified_count"] == 1
+    assert telemetry["rejections"]["missing_or_invalid_id"] == 3

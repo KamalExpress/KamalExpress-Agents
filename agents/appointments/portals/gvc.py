@@ -150,92 +150,112 @@ def parse_gvc_slots_payload(
     default_date: str,
     vac_meta: Dict[str, Any],
     visa_type: str,
+    telemetry_collector: Optional[Dict[str, Any]] = None,
 ) -> List[AvailableSlot]:
     """
-    Rigorously parses and filters raw GVC `/api/v1/periodslot/slots` JSON responses.
-    Accurately handles GVC's slot object schema:
-      - `isavailable`: bool (must be True)
-      - `isselectable`: bool (must not be False)
-      - `numofavailableslots`: int (must be > 0 if specified)
-      - `periodslotid` / `id`: slot identifier
-      - `starttime` / `endtime`: slot time
-      - `date`: slot date
-    Rejects disabled/booked timeslot timetable items where isavailable is False or numofavailableslots == 0.
+    Rigorously parses raw GVC `/api/v1/periodslot/slots` JSON responses.
+    Adheres strictly to the verified GVC HAR contract:
+      - Rejects id=null, id<=0, or non-numeric identifiers.
+      - Rejects isavailable != True.
+      - Rejects isselectable != True.
+      - Rejects numofavailableslots <= 0 or non-numeric.
+      - BANS all fallback defaults that manufacture business facts.
     """
-    if not data:
+    if telemetry_collector is not None:
+        telemetry_collector.clear()
+
+    if not data or not isinstance(data, dict):
+        if telemetry_collector is not None:
+            telemetry_collector["error"] = "INVALID_PAYLOAD_STRUCTURE"
+            telemetry_collector["raw_count"] = 0
+            telemetry_collector["verified_count"] = 0
         return []
 
+    # Handle standard GVC returnobject container
     slot_items: List[Dict[str, Any]] = []
-    if isinstance(data, list):
-        slot_items = [x for x in data if isinstance(x, dict)]
-    elif isinstance(data, dict):
-        slot_obj = data.get("returnobject") or {}
-        if isinstance(slot_obj, dict):
-            raw_slots = slot_obj.get("slots") or []
-            if isinstance(raw_slots, list):
-                slot_items = [x for x in raw_slots if isinstance(x, dict)]
-        elif isinstance(slot_obj, list):
-            slot_items = [x for x in slot_obj if isinstance(x, dict)]
+    return_obj = data.get("returnobject")
+    if isinstance(return_obj, dict):
+        raw_slots = return_obj.get("slots")
+        if isinstance(raw_slots, list):
+            slot_items = [x for x in raw_slots if isinstance(x, dict)]
+    elif isinstance(return_obj, list):
+        slot_items = [x for x in return_obj if isinstance(x, dict)]
+    elif isinstance(data.get("slots"), list):
+        slot_items = [x for x in data["slots"] if isinstance(x, dict)]
+
+    rejection_stats = {
+        "missing_or_invalid_id": 0,
+        "not_available": 0,
+        "not_selectable": 0,
+        "missing_or_zero_count": 0,
+        "missing_time": 0,
+    }
 
     found_slots: List[AvailableSlot] = []
+
     for item in slot_items:
-        # 1. Explicit availability / selectability flags from GVC
-        is_avail = item.get("isavailable")
-        if is_avail is None:
-            is_avail = item.get("is_available")
-
-        is_select = item.get("isselectable")
-        if is_select is None:
-            is_select = item.get("is_selectable")
-
-        # Explicitly marked as unavailable or non-selectable
-        if is_avail is False or is_select is False:
+        # Invariant 1: Valid Positive Slot ID (Authoritative consular primary key)
+        raw_id = item.get("id") if item.get("id") is not None else item.get("periodslotid")
+        if raw_id is None:
+            rejection_stats["missing_or_invalid_id"] += 1
+            continue
+        try:
+            slot_id_int = int(raw_id)
+            if slot_id_int <= 0:
+                rejection_stats["missing_or_invalid_id"] += 1
+                continue
+        except (ValueError, TypeError):
+            rejection_stats["missing_or_invalid_id"] += 1
             continue
 
-        # 2. Extract slot capacity / count
-        num_slots = item.get("numofavailableslots")
-        if num_slots is None:
-            num_slots = item.get("capacity")
-        if num_slots is None:
-            num_slots = item.get("available")
-        if num_slots is None:
-            num_slots = item.get("available_capacity")
-
-        # If numerical count is provided and <= 0, the slot is closed
-        if num_slots is not None:
-            try:
-                if int(num_slots) <= 0:
-                    continue
-            except (ValueError, TypeError):
-                pass
-
-        # 3. If GVC does not explicitly state isavailable=True AND no positive slot count is present,
-        # skip it (prevents treating raw timetable template slots as open slots)
-        if is_avail is not True and (num_slots is None or int(num_slots or 0) <= 0):
+        # Invariant 2: Explicit Boolean isavailable Flag
+        if item.get("isavailable") is not True:
+            rejection_stats["not_available"] += 1
             continue
 
-        slot_date = item.get("date") or item.get("slotdate") or default_date
-        slot_time = item.get("starttime") or item.get("time") or "09:30"
-        slot_id = str(item.get("periodslotid") or item.get("id") or item.get("slotId") or "0")
+        # Invariant 3: Explicit Boolean isselectable Flag
+        if item.get("isselectable") is not True:
+            rejection_stats["not_selectable"] += 1
+            continue
 
-        capacity = 1
-        if num_slots is not None:
-            try:
-                capacity = max(1, int(num_slots))
-            except (ValueError, TypeError):
-                capacity = 1
+        # Invariant 4: Explicit Positive numofavailableslots Count (Never manufactured)
+        raw_count = item.get("numofavailableslots")
+        if raw_count is None:
+            rejection_stats["missing_or_zero_count"] += 1
+            continue
+        try:
+            available_count = int(raw_count)
+            if available_count <= 0:
+                rejection_stats["missing_or_zero_count"] += 1
+                continue
+        except (ValueError, TypeError):
+            rejection_stats["missing_or_zero_count"] += 1
+            continue
+
+        # Invariant 5: Start Time Mandatory
+        slot_time = item.get("starttime")
+        if not slot_time or not isinstance(slot_time, str):
+            rejection_stats["missing_time"] += 1
+            continue
+
+        slot_date = item.get("date") or default_date
 
         found_slots.append(
             AvailableSlot(
                 date=slot_date,
-                time=slot_time,
-                slot_id=slot_id,
+                time=slot_time.strip(),
+                slot_id=str(slot_id_int),
                 vac_id=str(vac_meta.get("id", "138")),
                 vac_name=vac_meta.get("name", "GVC Center"),
                 visa_type=str(visa_type),
-                available_capacity=capacity,
+                available_capacity=available_count,
             )
         )
+
+    if telemetry_collector is not None:
+        telemetry_collector["raw_count"] = len(slot_items)
+        telemetry_collector["verified_count"] = len(found_slots)
+        telemetry_collector["rejections"] = rejection_stats
 
     return found_slots
 
@@ -258,6 +278,7 @@ class GVCPortalDriver:
         self._last_cookie_sync = 0.0
         self.cdp_connected: bool = False
         self.last_search_status: Dict[str, Any] = {"status": "INITIAL", "code": 0, "error": None}
+        self.last_telemetry: Dict[str, Any] = {}
 
     # ── Multi-Source Session Management ─────────────────────────
 
@@ -636,6 +657,7 @@ class GVCPortalDriver:
                         default_date=date_from,
                         vac_meta=vac_meta,
                         visa_type=str(visa_type),
+                        telemetry_collector=self.last_telemetry,
                     )
 
                     logger.info(f"[gvc] ✓ Direct REST slot query returned {len(found_slots)} open slots.")
@@ -726,6 +748,7 @@ class GVCPortalDriver:
                     default_date=date_from,
                     vac_meta=vac_meta,
                     visa_type=str(visa_type),
+                    telemetry_collector=self.last_telemetry,
                 )
                 logger.info(f"[gvc] ✓ In-browser CDP slot query returned {len(found_slots)} open slots.")
                 return found_slots
