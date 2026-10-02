@@ -1,0 +1,19 @@
+{
+  "mode": "drop",
+  "vac": "137",
+  "visa_type": "26",
+  "target_month": "10/2026",
+  "target_date": "",
+  "start_date": "11/10/2026",
+  "end_date": "14/10/2026",
+  "min_delay": 3.0,
+  "max_delay": 12.0,
+  "preferred_times": ["09:30", "10:00", "11:30"],
+  "applicant_file": "standalone_workers/data/applicants/sample_applicant.json",
+  "account_file": "standalone_workers/data/accounts/sample_account.json",
+  "proxy_string": "",
+  "portal_base_url": "https://pk-gr-services.gvcworld.eu",
+  "otp_timeout": 180,
+  "save_har": true,
+  "use_mock_captcha": false
+}

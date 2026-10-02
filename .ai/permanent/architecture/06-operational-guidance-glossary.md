@@ -41,17 +41,53 @@ Standardized Explain, Diagnose & Recover (EDR) guide for Kamal Express AI Platfo
 - **Diagnose:** If a client record fails validation, ensure both `first_name` and `last_name` (or `surname` alias) are populated.
 - **Recover:** The `ClientProfile` Pydantic model automatically aliases `surname` $\leftrightarrow$ `last_name`, allowing backwards and forwards compatibility without database migrations.
 
+### Dynamic Hidden Entity Extraction (`#otpuser` Extraction)
+- **Explain:** Server-side rendered hidden input field on `POST /appointments/add` containing the serialized user entity string (`User{id=..., username=..., ...}`). GVC requires this exact string in `POST /api/v1/appointments`.
+- **Diagnose:** Booking fails with backend error or rejection when only calling REST APIs without loading `POST /appointments/add`.
+- **Recover:** Ensure worker warms up session by calling `POST /appointments/add` and extracting `#otpuser` via regex.
+
+### Single-OTP Multi-Slot Traversal Loop (`SLOT_TRAVERSAL_RECOVERY`)
+- **Explain:** Sequential attempt across ordered timetable slots reusing a single active session OTP. Prevents rate-limiting and invalidation caused by multi-OTP dispatch.
+- **Diagnose:** First slot attempt returns `SLOT_UNAVAILABLE` or `CAPACITY_EXCEEDED`.
+- **Recover:** Do not request new OTP. Worker immediately iterates to next available candidate slot in memory and resubmits `POST /api/v1/appointments` with existing OTP.
+
+### Slot-Drop Strike Mode (`SLOT_DROP_STRIKE`)
+- **Explain:** Zero-latency direct execution mode triggered when quota drop is announced. Bypasses polling loops, fetches target timetable once, selects candidate, and fires OTP immediately.
+- **Diagnose:** Timetable query returns 0 slots or target date violates weekday rule.
+- **Recover:** Verify date against `GVC_VISA_DAY_RULES`. If 0 slots, transition to Scout Mode or verify center ID.
+
+### 1-Click Desktop & VPS Launchers (`START_CHECKER.bat`, `START_BOOKER.bat`)
+- **Explain:** Zero-CLI wrappers located inside `standalone_workers/` allowing non-technical office staff to launch workers without memorizing terminal commands, typing CLI flags, or interacting with Python. All operational parameters (VAC ID, Visa Type, Month, Date, Preferences) are pre-loaded from `config.json`.
+- **Diagnose:** If launcher exits immediately, check if Python is on system `PATH` or if virtual environment activation is missing.
+- **Recover:** Double-click `START_CHECKER.bat` for continuous scouting, or `START_BOOKER.bat` for drop booking. For Linux VPS, use `start_checker.sh` and `start_booker.sh`.
+
+### Scout Polling Cadence & Multi-Date Scan Pacing (`SCOUT_POLL_CADENCE`)
+- **Explain:** When monitoring a full month (e.g., 22 operational weekdays in October 2026), the scout sequentially queries each date with a 300ms polite throttle to prevent proxy rate-limiting. A 22-date cycle takes $\approx 18$ seconds, followed by the configured quiet interval (default 15s). The next poll banner appears after $\approx 33$ seconds total.
+- **Diagnose:** Staff may perceive the scout as "stuck" between poll banners while it is actively traversing dates or sleeping through the quiet interval.
+- **Recover:** Inspect console timestamps to confirm normal progress. To accelerate feedback on confirmed drop days, set `target_date: "07/10/2026"` in `config.json` to monitor a single high-priority day in $<1$ second instead of scanning the full month.
+
+### Automated CapSolver Engine (`CAPSOLVER_SOLVER_ENGINE`)
+- **Explain:** Autonomous background captcha solver integrated across both the FastAPI control plane and standalone worker execution plane. Resolves reCAPTCHA v2 tokens for GVC session login and final booking submissions (`g-recaptcha-response`).
+- **Diagnose:** Check CapSolver API balance (`https://api.capsolver.com/getBalance`). If balance reaches zero, solving fails with `ERROR_ZERO_BALANCE`.
+- **Recover:** Ensure `CAPSOLVER_API_KEY` is present in `standalone_workers/.env` and root `.env` with a positive account balance. Both systems auto-detect and refresh this key dynamically without server restarts.
+
 ---
 
 ## 2. Standard Greek VAC & Visa Category Codes
 
-| Code | Name / Category | Default |
-| :--- | :--- | :--- |
-| `138` | Islamabad VAC | ✅ Default |
-| `137` | Karachi VAC | — |
-| `139` | Lahore VAC | — |
-| `26` | Long-Term Type D (Seasonal/Dependent Employment) | ✅ Default |
-| `0` | Submission Schengen Visa (Short term – Type C) | — |
-| `2` | National visa (Long term - type D) | — |
-| `5` | Premium Lounge | Optional Service |
-| `6` | Prime Time | Optional Service |
+### Official GVC Pakistan Centers (Strict Invariant)
+* **`137`**: **Islamabad Visa Application Center for Greece** (Primary / Default)
+* **`138`**: **Lahore Visa Application Center for Greece**
+* **`139`**: **Document Verification Office** (Reserved for future document verification phase)
+* **Karachi Center**: **Does NOT exist** for Greece in GVC World.
+
+| Code | Name / Category | City / Status | Default |
+| :--- | :--- | :--- | :--- |
+| `137` | Islamabad Visa Application Center for Greece | Islamabad (Active) | ✅ Default |
+| `138` | Lahore Visa Application Center for Greece | Lahore (Active) | — |
+| `139` | Document Verification Office | Verification Phase (Future) | — |
+| `26` | Long-Term Type D (Seasonal/Dependent Employment) | Mon, Tue, Wed, Thu, Fri | ✅ Default |
+| `0` | Submission Schengen Visa (Short term – Type C) | None (Workers do not query) | — |
+| `2` | National visa (Long term - type D) | Thu, Fri | — |
+| `5` | Premium Lounge | Mon, Tue, Wed, Thu, Fri | Optional Service |
+| `6` | Prime Time | Mon, Tue, Wed, Thu, Fri | Optional Service |

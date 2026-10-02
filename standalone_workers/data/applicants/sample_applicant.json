@@ -1,0 +1,12 @@
+{
+  "firstname": "SHAHID",
+  "surname": "RIAZ",
+  "dateofbirth": "01/01/2000",
+  "passportnumber": "FR321456",
+  "traveldocumentvaliduntil": "01/01/2036",
+  "gender_id": "2",
+  "nationality_id": "197",
+  "phone_prefix_id": "197",
+  "phone": "3165185964",
+  "email": "siddiquez296@gmail.com"
+}

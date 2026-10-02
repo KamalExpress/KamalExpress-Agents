@@ -1,0 +1,9 @@
+# ==============================================================================
+# KAMAL EXPRESS - CLIENT INTAKE QUEUE (One client per row)
+# Format:
+# firstname | surname | date_of_birth | passport_number | passport_expiry | phone | email | [gender_id] | [nationality_id]
+# ==============================================================================
+SHAHID | RIAZ | 01/01/2000 | FR321456 | 01/01/2036 | 3165185964 | siddiquez296@gmail.com | 2 | 197
+AMR | SHAH | 03/07/1944 | FS9910272 | 27/07/2027 | 3345112969 | amr.shah@gmail.com | 2 | 197
+KAMAL | HUSSAIN | 12/04/1988 | FN8832101 | 15/09/2032 | 3119876543 | kamal.hussain@gmail.com | 1 | 197
+ASIF | ALI | 25/11/1995 | FP5521904 | 10/10/2035 | 3001234567 | asif.ali@gmail.com | 1 | 197

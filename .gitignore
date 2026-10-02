@@ -33,6 +33,8 @@ MANIFEST
 # Environment & Sensitive Config
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
 *.pem
 *.key
@@ -40,6 +42,8 @@ MANIFEST
 *.crt
 id_rsa*
 secrets.json
+session_cache.json
+**/session_cache.json
 
 # Databases & Runtime State (Keep initial data files like proxies & assets)
 *.db
