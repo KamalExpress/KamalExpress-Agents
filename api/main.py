@@ -1569,7 +1569,8 @@ async def login_account_endpoint(account_id: int, user: dict = Depends(get_curre
 
     res = await gvc_auth_solver.login_with_credentials(
         email=acc["email"],
-        password=acc["password"]
+        password=acc["password"],
+        proxy=acc.get("assigned_proxy_url")
     )
     if res.get("success"):
         update_gvc_account_session(

@@ -126,6 +126,7 @@ class GVCAuthSolver:
         email: Optional[str] = None,
         password: Optional[str] = None,
         max_retries: int = 3,
+        proxy: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Execute automated login via CapSolver + GVC REST API.
@@ -153,19 +154,47 @@ class GVCAuthSolver:
 
         last_error = None
         for attempt in range(1, max_retries + 1):
-            proxy = self.proxy_manager.get_proxy_url()
-            logger.info(f"[gvc_auth] Attempt {attempt}/{max_retries} via proxy {proxy or 'direct'}...")
+            chosen_proxy = proxy or self.proxy_manager.get_proxy_url()
+            if not chosen_proxy:
+                try:
+                    from standalone_workers.utils.proxy_loader import get_proxy_for_worker
+                    chosen_proxy = get_proxy_for_worker(attempt - 1)
+                except Exception:
+                    pass
+
+            logger.info(f"[gvc_auth] Attempt {attempt}/{max_retries} via proxy {chosen_proxy or 'direct'}...")
 
             try:
                 # 1. Clear Imperva WAF challenge on proxy via Playwright Stealth
-                waf_cookies = await asyncio.to_thread(self._clear_waf_cookies_sync, proxy)
-                proxies = {"http": proxy, "https": proxy} if proxy else None
+                waf_cookies = await asyncio.to_thread(self._clear_waf_cookies_sync, chosen_proxy)
+                proxies = {"http": chosen_proxy, "https": chosen_proxy} if chosen_proxy else None
+
+                # Fallback: if Playwright yielded no cookies, execute preflight GET via curl_cffi to prime Incapsula session
+                if not waf_cookies and HAS_CURL_CFFI and AsyncSession:
+                    try:
+                        async with AsyncSession(impersonate="chrome120") as pf_sess:
+                            await pf_sess.get(
+                                f"{self.base_url}/?lang=en_US",
+                                headers={
+                                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                                    "Sec-Fetch-Dest": "document",
+                                    "Sec-Fetch-Mode": "navigate",
+                                    "Sec-Fetch-Site": "none",
+                                },
+                                proxies=proxies,
+                                timeout=15,
+                            )
+                            if hasattr(pf_sess, "cookies"):
+                                waf_cookies = pf_sess.cookies.get_dict()
+                    except Exception as pf_err:
+                        logger.debug(f"[gvc_auth] Preflight note: {pf_err}")
 
                 # 2. Solve reCAPTCHA
                 page_url = f"{self.base_url}/login"
                 captcha_token = await self.captcha_solver.solve_recaptcha_v2(self.sitekey, page_url)
                 if not captcha_token:
                     logger.warning(f"[gvc_auth] Captcha solving returned empty on attempt {attempt}.")
+                    last_error = "CapSolver returned empty captcha token"
                     continue
 
                 log_system_event(
@@ -198,7 +227,7 @@ class GVCAuthSolver:
                             session_cookies.update(session.cookies.get_dict())
                         auth_header_val = resp.headers.get("authorization") or resp.headers.get("Authorization")
                 else:
-                    async with httpx.AsyncClient(cookies=session_cookies, proxy=proxy, timeout=30.0, follow_redirects=True) as client:
+                    async with httpx.AsyncClient(cookies=session_cookies, proxy=chosen_proxy, timeout=30.0, follow_redirects=True) as client:
                         resp = await client.post(login_url, json=payload, headers=self._get_headers())
                         session_cookies.update(dict(resp.cookies))
                         auth_header_val = resp.headers.get("authorization") or resp.headers.get("Authorization")
@@ -207,11 +236,12 @@ class GVCAuthSolver:
                 is_waf_challenge = "_incapsula_resource" in body_text.lower() or (resp.status_code == 200 and body_text.lower().startswith("<html"))
 
                 if is_waf_challenge:
-                    logger.warning(f"[gvc_auth] Login hit WAF challenge HTML on proxy {proxy}. Quarantining and rotating...")
-                    if proxy:
-                        self.proxy_manager.mark_proxy_failed(proxy, error="Imperva WAF challenge on login", log_event=False)
+                    last_error = f"Imperva WAF challenge HTML returned on {chosen_proxy or 'direct'}"
+                    logger.warning(f"[gvc_auth] Login hit WAF challenge HTML on proxy {chosen_proxy}. Quarantining and rotating...")
+                    if chosen_proxy:
+                        self.proxy_manager.mark_proxy_failed(chosen_proxy, error="Imperva WAF challenge on login", log_event=False)
                     next_proxy = self.proxy_manager.get_proxy_url()
-                    clean_proxy = proxy.split("@")[-1] if proxy else "direct"
+                    clean_proxy = chosen_proxy.split("@")[-1] if chosen_proxy else "direct"
                     clean_next = next_proxy.split("@")[-1] if next_proxy else "default"
                     active_count = len(self.proxy_manager._get_healthy_proxies())
                     total_count = self.proxy_manager.total_proxies
