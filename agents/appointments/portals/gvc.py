@@ -675,6 +675,24 @@ class GVCPortalDriver:
                     }
                     return []
 
+                elif resp.status_code == 429:
+                    retry_after = 10
+                    try:
+                        hdrs = getattr(resp, "headers", {})
+                        if "retry-after" in hdrs:
+                            retry_after = int(hdrs["retry-after"])
+                    except Exception:
+                        pass
+                    logger.warning(f"[gvc] Hit GVC / Imperva rate limit (HTTP 429). Server requested retry-after: {retry_after}s.")
+                    self.last_search_status = {
+                        "status": "RATE_LIMITED",
+                        "code": 429,
+                        "retry_after": retry_after,
+                        "error": f"Rate Limit Exceeded (HTTP 429). Backing off {retry_after}s.",
+                        "proxy": proxy,
+                    }
+                    return []
+
                 else:
                     logger.warning(f"[gvc] Direct REST returned HTTP {resp.status_code}: {resp.text[:120]}")
                     if proxy:

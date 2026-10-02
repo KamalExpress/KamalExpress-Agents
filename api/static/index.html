@@ -836,11 +836,103 @@ How can I help you today?</div>
 <div class="view-container" id="slot-search-view" style="padding:18px; overflow-y:auto;">
   <div style="display:flex; flex-direction:column; gap:16px; max-width:1100px; margin:0 auto; width:100%;">
     
+    <!-- ── Autonomous Background Slot Scout Card ── -->
+    <div class="card" style="border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+      <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+            <i data-lucide="radar" class="icon" style="color:var(--primary);"></i> Autonomous Multi-Date Slot Scout
+          </div>
+          <div class="card-desc">Continuous background scanning across calendar date ranges with anti-ban randomized delays and auto-recovery.</div>
+        </div>
+        <div>
+          <span class="badge badge-disabled" id="monitor-status-badge">
+            <i data-lucide="circle-stop" class="icon"></i> STOPPED
+          </span>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <!-- Scout Parameters Grid -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Target VAC Center</label>
+            <select id="monitor-vac">
+              <option value="138">Islamabad VAC (138)</option>
+              <option value="137">Karachi VAC (137)</option>
+              <option value="139">Lahore VAC (139)</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Visa Category</label>
+            <select id="monitor-visa-type">
+              <option value="26">Type 26: Long-Term Type D (Mon–Fri)</option>
+              <option value="2">Type 2: National Visa Type D (Thu–Fri only)</option>
+              <option value="5">Type 5: Premium Lounge (Mon–Fri)</option>
+              <option value="6">Type 6: Prime Time (Mon–Fri)</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Date From (DD/MM/YYYY)</label>
+            <input type="text" id="monitor-date-from" placeholder="DD/MM/YYYY (e.g. 05/10/2026)">
+          </div>
+
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Date To (DD/MM/YYYY)</label>
+            <input type="text" id="monitor-date-to" placeholder="DD/MM/YYYY (e.g. 31/10/2026)">
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:12px; align-items:flex-end;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Min Pacing Delay (s)</label>
+            <input type="number" id="monitor-min-delay" value="3.0" step="0.5" min="1.0" title="Minimum randomized jitter delay between probed dates">
+          </div>
+
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Max Pacing Delay (s)</label>
+            <input type="number" id="monitor-max-delay" value="12.0" step="0.5" min="2.0" title="Maximum randomized jitter delay between probed dates">
+          </div>
+
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Cycle Interval (s)</label>
+            <input type="number" id="monitor-interval" value="45" step="5" min="15" title="Wait time between complete scan cycles">
+          </div>
+
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+            <button class="btn btn-primary btn-sm" id="btn-monitor-start" onclick="controlMonitor('start')" style="flex:1;">
+              <i data-lucide="play" class="icon"></i> Start
+            </button>
+            <button class="btn btn-outline btn-sm" id="btn-monitor-pause" onclick="controlMonitor('pause')" style="flex:1;" disabled>
+              <i data-lucide="pause" class="icon"></i> Pause
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-monitor-resume" onclick="controlMonitor('resume')" style="flex:1;" disabled>
+              <i data-lucide="play-circle" class="icon"></i> Resume
+            </button>
+            <button class="btn btn-destructive btn-sm" id="btn-monitor-stop" onclick="controlMonitor('stop')" style="flex:1;" disabled>
+              <i data-lucide="square" class="icon"></i> Stop
+            </button>
+          </div>
+        </div>
+
+        <!-- Telemetry Summary Bar -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 14px; background:var(--muted); border-radius:var(--radius); font-size:12px;">
+          <div>Engine State: <strong id="monitor-summary-state" style="color:var(--foreground);">Stopped</strong></div>
+          <div>Total Scans: <strong id="monitor-summary-scans" style="color:var(--foreground);">0</strong></div>
+          <div>Slots Discovered: <strong id="monitor-summary-slots" style="color:var(--foreground);">0</strong></div>
+          <div>Last Probed: <strong id="monitor-summary-last" style="color:var(--foreground);">Never</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Manual Slot Query Card ── -->
     <div class="card">
       <div class="card-header">
         <div>
           <div class="card-title">
-            <i data-lucide="search" class="icon"></i> Live GVC Greece Slot Inspector
+            <i data-lucide="search" class="icon"></i> Manual Single-Date Slot Query
           </div>
           <div class="card-desc">Execute authenticated live slot queries on GVC World via Pakistan residential proxies.</div>
         </div>
@@ -2452,6 +2544,7 @@ How can I help you today?</div>
     updateVisaDayRuleNotice();
     startLogStreamTimer();
     setInterval(refreshQueue, 5000);
+    setInterval(refreshTelemetry, 4000);
     setInterval(loadGvcAccounts, 8000);
     setInterval(loadGVCAuthStatus, 10000);
     setInterval(loadOtpStream, 10000);
@@ -3421,6 +3514,7 @@ How can I help you today?</div>
       } else if (tab.dataset.view === 'slot-search-view') {
         loadDiscoveredSlotsHistory();
         updateVisaDayRuleNotice();
+        refreshTelemetry();
       } else if (tab.dataset.view === 'proxy-view') {
         loadProxies();
       } else if (tab.dataset.view === 'otp-view') {
@@ -4286,22 +4380,52 @@ How can I help you today?</div>
   }
 
   // ── Monitor Controls & Telemetry ─────────────────────────────
-  async function toggleMonitor() {
-    if (!currentUser || currentUser.role !== 'admin') {
-      alert("⚠️ Administrator access is required to control the autonomous monitor.");
+  async function controlMonitor(action) {
+    if (!currentUser) {
+      showLogin();
       return;
     }
-    const btn = document.getElementById('btn-toggle-monitor');
-    const isRunning = btn.textContent.includes('Stop');
-    const action = isRunning ? 'stop' : 'start';
 
-    const resp = await fetch('/api/monitor/toggle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, interval_seconds: 45 }),
-    });
-    if (resp.status === 401) { showLogin(); return; }
-    refreshTelemetry();
+    const startDate = document.getElementById('monitor-date-from')?.value.trim() || undefined;
+    const endDate = document.getElementById('monitor-date-to')?.value.trim() || undefined;
+    const minDelay = parseFloat(document.getElementById('monitor-min-delay')?.value || '3.0');
+    const maxDelay = parseFloat(document.getElementById('monitor-max-delay')?.value || '12.0');
+    const interval = parseInt(document.getElementById('monitor-interval')?.value || '45');
+    const vacId = document.getElementById('monitor-vac')?.value || '138';
+    const visaType = document.getElementById('monitor-visa-type')?.value || '26';
+
+    try {
+      const resp = await fetch('/api/monitor/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: action,
+          start_date: startDate,
+          end_date: endDate,
+          min_delay: isNaN(minDelay) ? 3.0 : minDelay,
+          max_delay: isNaN(maxDelay) ? 12.0 : maxDelay,
+          interval_seconds: isNaN(interval) ? 45 : interval,
+          vac_id: vacId,
+          visa_type: visaType
+        })
+      });
+      if (resp.status === 401) { showLogin(); return; }
+      const res = await resp.json();
+      if (!resp.ok) {
+        alert(`⚠️ Monitor Notice: ${res.detail || 'Unable to update monitor state.'}`);
+      }
+      await refreshTelemetry();
+    } catch (e) {
+      console.error("Monitor control error:", e);
+      alert("❌ Communication error with monitor API.");
+    }
+  }
+
+  async function toggleMonitor() {
+    const btn = document.getElementById('btn-toggle-monitor');
+    const isRunning = btn && (btn.textContent.includes('Stop') || btn.textContent.includes('Pause'));
+    const action = isRunning ? 'stop' : 'start';
+    await controlMonitor(action);
   }
 
   async function refreshTelemetry() {
@@ -4315,25 +4439,81 @@ How can I help you today?</div>
       const dot = document.getElementById('dot-monitor');
       const hdrText = document.getElementById('hdr-monitor-text');
 
-      if (data.running) {
-        btn.innerHTML = `<i data-lucide="square" class="icon"></i> Stop Monitor`;
-        btn.className = 'btn btn-destructive btn-sm';
-        dot.className = 'status-dot active';
-        hdrText.textContent = `Monitor: Active (${data.interval_seconds}s)`;
+      const isRunning = data.running && !data.paused;
+      const isPaused = data.running && data.paused;
+      const isStopped = !data.running;
+
+      // Header telemetry pill
+      if (isRunning) {
+        if (dot) dot.className = 'status-dot active';
+        if (hdrText) hdrText.textContent = `Monitor: Active (${data.interval_seconds || 45}s)`;
+        if (btn) {
+          btn.innerHTML = `<i data-lucide="square" class="icon"></i> Stop Monitor`;
+          btn.className = 'btn btn-destructive btn-sm';
+        }
+      } else if (isPaused) {
+        if (dot) dot.className = 'status-dot warn';
+        if (hdrText) hdrText.textContent = `Monitor: Paused`;
+        if (btn) {
+          btn.innerHTML = `<i data-lucide="play" class="icon"></i> Resume Monitor`;
+          btn.className = 'btn btn-secondary btn-sm';
+        }
       } else {
-        btn.innerHTML = `<i data-lucide="play" class="icon"></i> Start Monitor`;
-        btn.className = 'btn btn-primary btn-sm';
-        dot.className = 'status-dot idle';
-        hdrText.textContent = 'Monitor: Idle';
+        if (dot) dot.className = 'status-dot idle';
+        if (hdrText) hdrText.textContent = 'Monitor: Idle';
+        if (btn) {
+          btn.innerHTML = `<i data-lucide="play" class="icon"></i> Start Monitor`;
+          btn.className = 'btn btn-primary btn-sm';
+        }
       }
 
-      document.getElementById('stat-scans').textContent = data.total_scans || 0;
-      document.getElementById('stat-slots-found').textContent = data.slots_found || 0;
+      // Slot search view monitor controls & telemetry badge
+      const badge = document.getElementById('monitor-status-badge');
+      const btnStart = document.getElementById('btn-monitor-start');
+      const btnPause = document.getElementById('btn-monitor-pause');
+      const btnResume = document.getElementById('btn-monitor-resume');
+      const btnStop = document.getElementById('btn-monitor-stop');
+      const sumState = document.getElementById('monitor-summary-state');
+      const sumScans = document.getElementById('monitor-summary-scans');
+      const sumSlots = document.getElementById('monitor-summary-slots');
+      const sumLast = document.getElementById('monitor-summary-last');
+
+      if (badge) {
+        if (isRunning) {
+          badge.className = 'badge badge-booked';
+          badge.innerHTML = `<i data-lucide="activity" class="icon"></i> RUNNING (Multi-Date)`;
+        } else if (isPaused) {
+          badge.className = 'badge badge-warn';
+          badge.innerHTML = `<i data-lucide="pause-circle" class="icon"></i> PAUSED`;
+        } else {
+          badge.className = 'badge badge-disabled';
+          badge.innerHTML = `<i data-lucide="circle-stop" class="icon"></i> STOPPED`;
+        }
+      }
+
+      if (btnStart) btnStart.disabled = isRunning || isPaused;
+      if (btnPause) btnPause.disabled = !isRunning;
+      if (btnResume) btnResume.disabled = !isPaused;
+      if (btnStop) btnStop.disabled = isStopped;
+
+      if (sumState) sumState.textContent = isRunning ? 'Running (Active)' : (isPaused ? 'Paused' : 'Stopped');
+      if (sumScans) sumScans.textContent = data.total_scans || 0;
+      const slotsCount = (data.slots_found !== undefined ? data.slots_found : data.total_slots_discovered) || 0;
+      if (sumSlots) sumSlots.textContent = slotsCount;
+      if (sumLast) sumLast.textContent = data.last_checked || 'Never';
+
+      // Live Telemetry stat cards (View 2)
+      const statScans = document.getElementById('stat-scans');
+      if (statScans) statScans.textContent = data.total_scans || 0;
+      const statSlotsFound = document.getElementById('stat-slots-found');
+      if (statSlotsFound) statSlotsFound.textContent = slotsCount;
 
       const logFeed = document.getElementById('log-feed');
-      if (data.logs && data.logs.length > 0) {
-        logFeed.innerHTML = data.logs.map(l => `<div class="log-item"><span class="log-time">[${l.time}]</span> ${escapeHtml(l.msg)}</div>`).join('');
+      const logs = data.recent_logs || data.logs || [];
+      if (logFeed && logs.length > 0) {
+        logFeed.innerHTML = logs.map(l => `<div class="log-item"><span class="log-time">[${escapeHtml(l.time || '')}]</span> ${escapeHtml(l.msg || '')}</div>`).join('');
       }
+
       renderIcons();
     } catch (err) {
       console.error("Telemetry error:", err);

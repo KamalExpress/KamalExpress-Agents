@@ -234,8 +234,14 @@ class AgentResponse(BaseModel):
 
 
 class MonitorToggleRequest(BaseModel):
-    action: str  # "start" or "stop"
+    action: str  # "start", "pause", "resume", "stop"
     interval_seconds: Optional[int] = 45
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    min_delay: Optional[float] = None
+    max_delay: Optional[float] = None
+    vac_id: Optional[str] = None
+    visa_type: Optional[str] = None
 
 
 class GVCSyncRequest(BaseModel):
@@ -1763,16 +1769,33 @@ async def monitor_status(user: dict = Depends(get_current_user)):
 
 
 @app.post("/api/monitor/toggle")
-async def toggle_monitor(req: MonitorToggleRequest, admin: dict = Depends(require_admin)):
-    """Start or stop the background slot monitor (Admin only)."""
-    if req.action.lower() == "start":
-        if req.interval_seconds:
-            slot_monitor.interval_seconds = max(10, req.interval_seconds)
+async def toggle_monitor(req: MonitorToggleRequest, user: dict = Depends(get_current_user)):
+    """Start, pause, resume, or stop the background slot monitor with configuration."""
+    act = req.action.lower()
+    slot_monitor.configure(
+        start_date=req.start_date,
+        end_date=req.end_date,
+        min_delay=req.min_delay,
+        max_delay=req.max_delay,
+        vac_id=req.vac_id,
+        visa_type=req.visa_type,
+        interval_seconds=req.interval_seconds,
+    )
+
+    if act == "start":
         res = slot_monitor.start()
-        return {"status": res["status"], "running": True, "interval": slot_monitor.interval_seconds}
-    else:
+        return {"status": res["status"], "running": True, "paused": False, "interval": slot_monitor.interval_seconds}
+    elif act == "pause":
+        res = slot_monitor.pause()
+        return {"status": res["status"], "running": slot_monitor.is_running(), "paused": True}
+    elif act == "resume":
+        res = slot_monitor.resume()
+        return {"status": res["status"], "running": True, "paused": False}
+    elif act == "stop":
         res = slot_monitor.stop()
-        return {"status": res["status"], "running": False}
+        return {"status": res["status"], "running": False, "paused": False}
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid action '{req.action}'. Expected: start, pause, resume, stop.")
 
 
 # ── OTP Ingestion & Event Bus Endpoints ───────────────────────────────────────────

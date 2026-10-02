@@ -32,13 +32,23 @@ class AutonomousSlotMonitor:
     def __init__(self, interval_seconds: int = 45):
         self.interval_seconds = interval_seconds
         self._running = False
+        self._paused = False
         self._thread: Optional[threading.Thread] = None
         self._gvc_driver = GVCPortalDriver()
         self._activity_logs: List[dict] = []
         self._max_logs = 100
         self._last_checked: Optional[str] = None
         self._total_scans = 0
+        self._total_slots_discovered = 0
         self._total_auto_booked = 0
+
+        # Proven operational parameters (synced from standalone worker findings)
+        self.start_date: Optional[str] = None
+        self.end_date: Optional[str] = None
+        self.min_delay: float = 3.0
+        self.max_delay: float = 12.0
+        self.target_vac_id: Optional[str] = None
+        self.target_visa_type: Optional[str] = None
 
     def log_event(self, message: str, level: str = "INFO", details: Optional[dict] = None) -> None:
         """Record an activity log entry for the UI dashboard and persistent system stream."""
@@ -58,36 +68,110 @@ class AutonomousSlotMonitor:
             self._activity_logs.pop()
         logger.info(f"[monitor] {message}")
 
+    def configure(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        min_delay: Optional[float] = None,
+        max_delay: Optional[float] = None,
+        vac_id: Optional[str] = None,
+        visa_type: Optional[str] = None,
+        interval_seconds: Optional[int] = None,
+    ) -> None:
+        """Configure worker operating parameters directly from UI."""
+        if start_date is not None:
+            self.start_date = start_date.strip() or None
+        if end_date is not None:
+            self.end_date = end_date.strip() or None
+        if min_delay is not None:
+            self.min_delay = float(min_delay)
+        if max_delay is not None:
+            self.max_delay = float(max_delay)
+        if self.min_delay > self.max_delay:
+            self.min_delay, self.max_delay = self.max_delay, self.min_delay
+        if vac_id is not None:
+            self.target_vac_id = str(vac_id).strip() or None
+        if visa_type is not None:
+            self.target_visa_type = str(visa_type).strip() or None
+        if interval_seconds is not None:
+            self.interval_seconds = max(10, int(interval_seconds))
+
     def start(self) -> dict:
-        """Start the background monitoring worker."""
+        """Start or resume the background monitoring worker."""
         if self._running:
+            if self._paused:
+                self._paused = False
+                self.log_event("Autonomous Slot Monitor resumed from pause.")
+                return {"status": "resumed", "interval": self.interval_seconds}
             return {"status": "already_running", "interval": self.interval_seconds}
 
         self._running = True
+        self._paused = False
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
-        self.log_event(f"Autonomous Slot Monitor started (polling every {self.interval_seconds}s).")
+        range_str = f"Range: {self.start_date or 'Auto'} to {self.end_date or 'Auto'}"
+        self.log_event(f"Autonomous Slot Monitor started ({range_str} | pacing: {self.min_delay}s-{self.max_delay}s | cycle: {self.interval_seconds}s).")
         return {"status": "started", "interval": self.interval_seconds}
 
+    def pause(self) -> dict:
+        """Pause the background monitoring worker without destroying session."""
+        if not self._running:
+            return {"status": "not_running"}
+        if self._paused:
+            return {"status": "already_paused"}
+
+        self._paused = True
+        self.log_event("Autonomous Slot Monitor paused by staff. Probing suspended.")
+        return {"status": "paused"}
+
+    def resume(self) -> dict:
+        """Resume the background monitoring worker."""
+        if not self._running:
+            return {"status": "not_running"}
+        if not self._paused:
+            return {"status": "not_paused"}
+
+        self._paused = False
+        self.log_event("Autonomous Slot Monitor resumed by staff.")
+        return {"status": "resumed"}
+
     def stop(self) -> dict:
-        """Stop the background monitoring worker."""
+        """Stop the background monitoring worker and release resources."""
         if not self._running:
             return {"status": "not_running"}
 
         self._running = False
-        self.log_event("Autonomous Slot Monitor stopped.")
+        self._paused = False
+        self.log_event("Autonomous Slot Monitor stopped by staff.")
         return {"status": "stopped"}
 
     def is_running(self) -> bool:
         return self._running
 
+    def is_paused(self) -> bool:
+        return self._paused
+
     def get_status(self) -> dict:
         """Return current monitoring telemetry."""
+        state = "stopped"
+        if self._running:
+            state = "paused" if self._paused else "running"
+
         return {
+            "status": state,
             "running": self._running,
+            "paused": self._paused,
             "interval_seconds": self.interval_seconds,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "min_delay": self.min_delay,
+            "max_delay": self.max_delay,
+            "target_vac_id": self.target_vac_id,
+            "target_visa_type": self.target_visa_type,
             "last_checked": self._last_checked,
             "total_scans": self._total_scans,
+            "slots_found": self._total_slots_discovered,
+            "total_slots_discovered": self._total_slots_discovered,
             "total_auto_booked": self._total_auto_booked,
             "cdp_connected": self._gvc_driver.cdp_connected,
             "recent_logs": self._activity_logs[:25],
@@ -98,15 +182,22 @@ class AutonomousSlotMonitor:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
+        import random
         while self._running:
-            try:
-                loop.run_until_complete(self._check_and_auto_book())
-            except Exception as e:
-                self.log_event(f"Error during monitor iteration: {e}", level="ERROR")
+            if not self._paused:
+                try:
+                    loop.run_until_complete(self._check_and_auto_book())
+                except Exception as e:
+                    self.log_event(f"Error during monitor iteration: {e}", level="ERROR")
+            else:
+                # Idle during paused state
+                time.sleep(1)
+                continue
 
-            # Sleep in small increments to allow rapid clean stop
-            for _ in range(self.interval_seconds):
-                if not self._running:
+            # Randomized poll cycle interval (e.g. interval ± 25% jitter)
+            jittered_cycle = max(5, int(self.interval_seconds * random.uniform(0.85, 1.35)))
+            for _ in range(jittered_cycle):
+                if not self._running or self._paused:
                     break
                 time.sleep(1)
 
@@ -149,17 +240,52 @@ class AutonomousSlotMonitor:
 
             if dest.lower() == "greece":
                 try:
-                    slots = await self._gvc_driver.search_slots(vac_id=vac_id, visa_type=visa_type)
-                    status_info = getattr(self._gvc_driver, "last_search_status", {})
+                    # Resolve candidate operational dates
+                    from standalone_workers.utils.calendar_loader import get_valid_dates_in_range, get_valid_dates_for_month
+                    candidate_dates = []
+                    if self.start_date and self.end_date:
+                        candidate_dates = get_valid_dates_in_range(self.start_date, self.end_date, visa_type)
+                    elif self.start_date:
+                        candidate_dates = [self.start_date]
+                    else:
+                        curr_m = datetime.now().strftime("%m/%Y")
+                        candidate_dates = get_valid_dates_for_month(curr_m, visa_type)
 
-                    if status_info.get("status") == "UNAUTHENTICATED":
-                        self.log_event(
-                            f"⚠️ [Scan #{self._total_scans}] GVC {vac_meta['name']} session expired/unauthenticated.",
-                            level="WARNING"
-                        )
-                        continue
+                    slots = []
+                    dates_to_scan = candidate_dates if (self.start_date and self.end_date) else candidate_dates[:8]
+                    # Check first available date or scan dates with safe pacing
+                    for d_idx, d_str in enumerate(dates_to_scan):
+                        if not self._running or self._paused:
+                            break
+
+                        slots = await self._gvc_driver.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=d_str)
+                        status_info = getattr(self._gvc_driver, "last_search_status", {})
+
+                        if status_info.get("status") == "UNAUTHENTICATED":
+                            self.log_event(
+                                f"⚠️ [Scan #{self._total_scans}] GVC {vac_meta['name']} session expired/unauthenticated.",
+                                level="WARNING"
+                            )
+                            break
+                        elif status_info.get("status") == "RATE_LIMITED":
+                            backoff = status_info.get("retry_after", 10) + random.uniform(1.0, 2.5)
+                            self.log_event(
+                                f"⚠️ [Scan #{self._total_scans}] Imperva rate limit hit on {d_str}. Backing off {backoff:.1f}s...",
+                                level="WARNING"
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
+
+                        if slots:
+                            break  # Open slots sighted!
+
+                        # Jittered pacing between probed dates
+                        if d_idx < len(dates_to_scan) - 1:
+                            pace = random.uniform(self.min_delay, self.max_delay)
+                            await asyncio.sleep(pace)
 
                     if slots:
+                        self._total_slots_discovered += len(slots)
                         self.log_event(
                             f"🚨 OPEN SLOTS DETECTED! Found {len(slots)} available slots on GVC ({vac_meta['name']}, {type_name}).",
                             level="SUCCESS"
