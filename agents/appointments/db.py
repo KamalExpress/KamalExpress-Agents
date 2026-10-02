@@ -2235,11 +2235,14 @@ def get_gvc_credentials(db_path: Path = DB_PATH) -> dict:
     }
 
 
-def set_gvc_credentials(email: str, password: str, interval_seconds: int = 300, db_path: Path = DB_PATH) -> None:
+def set_gvc_credentials(email: Optional[str] = None, password: Optional[str] = None, interval_seconds: int = 300, db_path: Path = DB_PATH) -> None:
     """Save GVC login credentials for auto-solver."""
-    set_setting("gvc_account_email", email.strip(), db_path=db_path)
-    set_setting("gvc_account_password", password.strip(), db_path=db_path)
-    set_setting("auto_solver_interval_seconds", str(max(60, interval_seconds)), db_path=db_path)
+    if email:
+        set_setting("gvc_account_email", email.strip(), db_path=db_path)
+    if password:
+        set_setting("gvc_account_password", password.strip(), db_path=db_path)
+    if interval_seconds:
+        set_setting("auto_solver_interval_seconds", str(max(60, interval_seconds)), db_path=db_path)
 
 
 def get_captcha_settings(db_path: Path = DB_PATH) -> dict:

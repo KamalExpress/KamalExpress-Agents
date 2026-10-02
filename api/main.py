@@ -256,9 +256,9 @@ class GVCModeRequest(BaseModel):
 
 
 class GVCCredentialsRequest(BaseModel):
-    email: str
-    password: str
-    interval_seconds: int = 300
+    email: Optional[str] = None
+    password: Optional[str] = None
+    interval_seconds: Optional[int] = 300
     captcha_provider: Optional[str] = "capsolver"
     captcha_api_key: Optional[str] = None
 
@@ -1399,8 +1399,8 @@ class GVCSolveNowRequest(BaseModel):
 @app.post("/api/gvc/auth/credentials")
 async def gvc_set_credentials_endpoint(req: GVCCredentialsRequest, user: dict = Depends(get_current_user)):
     """Store GVC account credentials and Captcha solver API key for autonomous login."""
-    set_gvc_credentials(req.email, req.password, req.interval_seconds)
-    if req.captcha_api_key:
+    set_gvc_credentials(req.email, req.password, req.interval_seconds or 300)
+    if req.captcha_api_key is not None:
         set_captcha_settings(req.captcha_provider or "capsolver", req.captcha_api_key)
     elif req.captcha_provider:
         set_captcha_settings(provider=req.captcha_provider)

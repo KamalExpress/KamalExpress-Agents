@@ -3476,12 +3476,10 @@ How can I help you today?</div>
 
     try {
       const payload = {
-        interval_seconds: interval,
+        interval_seconds: isNaN(interval) ? 300 : interval,
         captcha_provider: 'capsolver',
+        captcha_api_key: capsolverKey,
       };
-      if (capsolverKey) {
-        payload.captcha_api_key = capsolverKey;
-      }
 
       const resp = await fetch('/api/gvc/auth/credentials', {
         method: 'POST',
@@ -3489,11 +3487,21 @@ How can I help you today?</div>
         body: JSON.stringify(payload),
       });
       const data = await resp.json();
-      if (data.success) {
+      if (resp.ok && data.success) {
         alert('✅ CapSolver settings saved successfully.');
         loadGVCAuthStatus();
       } else {
-        alert('❌ Failed: ' + (data.detail || 'Error'));
+        let errMsg = 'Failed to save CapSolver settings.';
+        if (typeof data.detail === 'string') {
+          errMsg = data.detail;
+        } else if (Array.isArray(data.detail)) {
+          errMsg = data.detail.map(d => `${d.loc ? d.loc.join('.') + ': ' : ''}${d.msg || JSON.stringify(d)}`).join('\n');
+        } else if (data.detail && typeof data.detail === 'object') {
+          errMsg = JSON.stringify(data.detail);
+        } else if (data.message) {
+          errMsg = data.message;
+        }
+        alert('❌ Failed: ' + errMsg);
       }
     } catch (e) {
       alert('Error: ' + e.message);
