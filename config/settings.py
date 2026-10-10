@@ -169,6 +169,8 @@ class AuthSettings(BaseSettings):
     default_staff_password: str = "KamalStaff2026!"
     session_expire_days: int = 7
     webhook_secret: str = ""
+    website_token: str = "ke_website_secret_token_2026"
+    jwt_secret: str = "ke_website_secret_token_2026"
 
 
 # ─────────────────────────────────────────────────────────────

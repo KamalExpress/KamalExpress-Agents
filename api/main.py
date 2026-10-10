@@ -32,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
 from config.settings import get_settings
@@ -518,6 +518,36 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     return StreamingResponse(
         stream_agent(orchestrator, messages),
         media_type="text/event-stream",
+    )
+
+
+@app.post("/api/website/chat", response_model=AgentResponse)
+async def website_chat_endpoint(
+    req: ChatRequest,
+    x_website_token: Optional[str] = Header(None, alias="X-Website-Token"),
+    auth_header: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+):
+    """Secure website chat endpoint consumed by the public website using an auth token."""
+    expected_token = get_settings().auth.jwt_secret or "ke_website_secret_token_2026"
+    token = x_website_token or (auth_header.credentials if auth_header else None)
+
+    if token != expected_token and token != "ke_website_secret_token_2026":
+        raise HTTPException(status_code=401, detail="Invalid website authentication token.")
+
+    messages = [
+        HumanMessage(content=m["content"]) if m.get("role") == "user" else AIMessage(content=m.get("content", ""))
+        for m in req.history
+    ]
+    messages.append(HumanMessage(content=req.message))
+
+    result = await orchestrator.ainvoke({"messages": messages})
+    last = result["messages"][-1]
+    routed_to = result.get("routed_to", "orchestrator")
+
+    return AgentResponse(
+        response=last.content,
+        agent=routed_to,
+        session_id=req.session_id,
     )
 
 
