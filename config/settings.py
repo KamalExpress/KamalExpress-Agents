@@ -26,6 +26,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Sub-settings groups
 # ─────────────────────────────────────────────────────────────
 
+class CloudflareSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="CF_", env_file=".env", extra="ignore")
+
+    account_id: str = Field(default="", validation_alias="CF_ACCOUNT_ID")
+    worker_ai_token: str = Field(default="", validation_alias="CF_WORKER_AI_TOKEN")
+    gateway_id: str = "default"
+    use_gateway: bool = False
+    default_model: str = "@cf/meta/llama-3.1-8b-instruct-fast"
+    orchestrator_model: str = "@cf/meta/llama-3.1-8b-instruct-fast"
+    visa_model: str = "@cf/meta/llama-3.1-8b-instruct-fast"
+    appointments_model: str = "@cf/meta/llama-3.1-8b-instruct-fast"
+
+
 class GroqSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="GROQ_", env_file=".env", extra="ignore")
 
@@ -170,7 +183,6 @@ class AuthSettings(BaseSettings):
     session_expire_days: int = 7
     webhook_secret: str = ""
     website_token: str = "ke_website_secret_token_2026"
-    jwt_secret: str = "ke_website_secret_token_2026"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -181,7 +193,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Provider selector
-    ai_provider: Literal["groq", "sambanova", "bitnet", "ollama", "openai", "anthropic", "openrouter"] = "groq"
+    ai_provider: Literal["cloudflare", "groq", "sambanova", "ollama", "openai", "anthropic", "openrouter"] = "cloudflare"
 
     # API server
     api_host: str = "0.0.0.0"
@@ -195,6 +207,10 @@ class Settings(BaseSettings):
     langchain_project: str = "kamal-express"
 
     # Nested settings (instantiated on first access)
+    @property
+    def cloudflare(self) -> CloudflareSettings:
+        return CloudflareSettings()
+
     @property
     def groq(self) -> GroqSettings:
         return GroqSettings()

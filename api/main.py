@@ -489,17 +489,76 @@ async def import_admin_data_endpoint(
 # ── Streaming helper ──────────────────────────────────────────────────────────
 
 async def stream_agent(agent, messages: list) -> AsyncIterator[str]:
-    """Stream SSE events from LangGraph agent."""
-    async for event in agent.astream_events(
-        {"messages": messages}, version="v2"
-    ):
-        kind = event.get("event")
-        if kind == "on_chat_model_stream":
-            chunk = event["data"]["chunk"]
-            if hasattr(chunk, "content") and chunk.content:
-                yield f"data: {json.dumps({'delta': chunk.content})}\n\n"
-        elif kind == "on_chain_end":
-            yield f"data: {json.dumps({'done': True})}\n\n"
+    """
+    Stream SSE events from LangGraph agent with:
+    - Suppression of pre-tool chatter & tool call tokens
+    - Suppression of leaked pseudo-tool JSON envelopes
+    - Single, guaranteed final 'done' event only after full graph execution
+    - Clean real-time streaming of final user-facing responses
+    """
+    tool_invoked = False
+    turn_buffer: list[str] = []
+
+    try:
+        async for event in agent.astream_events(
+            {"messages": messages}, version="v2"
+        ):
+            kind = event.get("event")
+            data = event.get("data", {})
+
+            if kind == "on_tool_start":
+                # A tool was invoked; clear any preliminary chatter
+                tool_invoked = True
+                turn_buffer.clear()
+
+            elif kind == "on_chat_model_stream":
+                chunk = data.get("chunk")
+                if not chunk:
+                    continue
+
+                tool_chunks = getattr(chunk, "tool_call_chunks", None)
+                if tool_chunks:
+                    # Model is generating a tool call, not user-facing text
+                    tool_invoked = True
+                    turn_buffer.clear()
+                    continue
+
+                content = getattr(chunk, "content", "")
+                if content:
+                    # Filter out pseudo-tool JSON if leaked in stream
+                    if '{"name":' in content and '"parameters":' in content:
+                        continue
+
+                    if tool_invoked:
+                        # Post-tool response: this is the final answer! Stream immediately
+                        yield f"data: {json.dumps({'delta': content})}\n\n"
+                    else:
+                        # Pre-tool or direct response: buffer until we confirm no tool is called
+                        turn_buffer.append(content)
+                        if len("".join(turn_buffer)) > 120 and not tool_invoked:
+                            for buffered_chunk in turn_buffer:
+                                yield f"data: {json.dumps({'delta': buffered_chunk})}\n\n"
+                            turn_buffer.clear()
+
+            elif kind == "on_chat_model_end":
+                output = data.get("output")
+                tc = getattr(output, "tool_calls", None)
+                if tc and len(tc) > 0:
+                    tool_invoked = True
+                    turn_buffer.clear()
+                else:
+                    if turn_buffer:
+                        for buffered_chunk in turn_buffer:
+                            yield f"data: {json.dumps({'delta': buffered_chunk})}\n\n"
+                        turn_buffer.clear()
+
+        # Emit completion only once after the entire agent graph terminates
+        yield f"data: {json.dumps({'done': True})}\n\n"
+
+    except Exception as e:
+        logger.error(f"[stream_agent] Streaming exception: {e}", exc_info=True)
+        yield f"data: {json.dumps({'delta': f'⚠️ AI service temporarily unavailable: {str(e)}'})}\n\n"
+        yield f"data: {json.dumps({'done': True})}\n\n"
 
 
 # ── Chat Endpoints ────────────────────────────────────────────────────────────
@@ -528,10 +587,10 @@ async def website_chat_endpoint(
     auth_header: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
 ):
     """Secure website chat endpoint consumed by the public website using an auth token."""
-    expected_token = get_settings().auth.jwt_secret or "ke_website_secret_token_2026"
+    expected_token = get_settings().auth.website_token
     token = x_website_token or (auth_header.credentials if auth_header else None)
 
-    if token != expected_token and token != "ke_website_secret_token_2026":
+    if not expected_token or token != expected_token:
         raise HTTPException(status_code=401, detail="Invalid website authentication token.")
 
     messages = [

@@ -10,27 +10,25 @@ version: "3.8"
 
 services:
   kamal-agents:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: kamalexpress-agents-api:latest
     container_name: kamal-express-agents
     restart: unless-stopped
     ports:
-      - "${HOST_PORT:-8085}:8080"
+      - "${HOST_PORT:-8080}:8000"
     environment:
       # API Server
       - API_HOST=0.0.0.0
       - API_PORT=8080
       - API_RELOAD=false
       
-      # AI Provider (groq | sambanova | bitnet | openrouter | openai | anthropic)
-      - AI_PROVIDER=${AI_PROVIDER:-groq}
+      # AI Provider (cloudflare | groq | sambanova | openrouter | openai | anthropic)
+      - AI_PROVIDER=${AI_PROVIDER:-cloudflare}
+      - CF_ACCOUNT_ID=${CF_ACCOUNT_ID:-}
+      - CF_WORKER_AI_TOKEN=${CF_WORKER_AI_TOKEN:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_DEFAULT_MODEL=${GROQ_DEFAULT_MODEL:-qwen/qwen3.8-27b}
+      - GROQ_DEFAULT_MODEL=${GROQ_DEFAULT_MODEL:-openai/gpt-oss-20b}
       - SAMBANOVA_API_KEY=${SAMBANOVA_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - BITNET_SERVER_URL=${BITNET_SERVER_URL:-https://ai.alamiaconnect.com/v1}
-      - BITNET_API_KEY=${BITNET_API_KEY:-51129693340}
 
       # Authentication & RBAC
       - AUTH_ENABLED=${AUTH_ENABLED:-true}
@@ -53,10 +51,11 @@ services:
       # Logging
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
+      - .:/app
       - kamal_data:/app/data
       - browser_profiles:/app/browser_profiles
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

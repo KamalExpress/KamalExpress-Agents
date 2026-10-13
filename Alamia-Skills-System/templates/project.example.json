@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "project_name": "example-project",
+  "stack": {
+    "primary_language": "typescript",
+    "languages": ["typescript", "javascript"],
+    "frameworks": ["nextjs", "react"],
+    "package_manager": "pnpm"
+  },
+  "testing": {
+    "runner": "vitest",
+    "command": "pnpm test",
+    "test_dirs": ["tests", "__tests__"]
+  },
+  "memory": {
+    "has_memory_system": true,
+    "handoff_dir": "docs/handoffs",
+    "architecture_dir": "docs/architecture"
+  },
+  "lifecycle": {
+    "groups": ["bootstrap", "implement", "qa", "architecture-review", "session-end"]
+  }
+}

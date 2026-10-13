@@ -105,11 +105,13 @@ def calculate_umrah_package(
     Returns:
         dict with hotels, per-person cost in PKR/SAR, and total group cost.
     """
-    tier = tier.lower()
+    tier = str(tier).lower()
+    if len(tier) > 30:  # If model passed an entire conversational prompt into tier
+        tier = "4_star"
     sharing = room_sharing.lower()
 
     # Base hotel pricing per night per room (PKR)
-    if "5" in tier or "vip" in tier:
+    if "5" in tier or "vip" in tier or "luxury" in tier:
         makkah_hotel = "Fairmont Clock Royal Tower / Swissotel Al Maqam (5★, 0m to Haram)"
         madinah_hotel = "The Oberoi / Dar Al Taqwa (5★, 0-20m from Prophet's Mosque)"
         makkah_room_night = 68000
@@ -259,12 +261,27 @@ def should_continue(state: UmrahState) -> str:
     return "tools" if getattr(last, "tool_calls", None) else END
 
 
+def sanitize_ai_content(content: str) -> str:
+    """Strip any pseudo-tool call JSON wrappers if a model leaks tool arguments into message content."""
+    if not content or not isinstance(content, str):
+        return content or ""
+    import re
+    pattern = r'\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"parameters"\s*:\s*\{"[^"]+"\s*:\s*"'
+    if re.search(pattern, content):
+        content = re.sub(pattern, '', content)
+        content = re.sub(r'"\s*\}\s*\}\s*$', '', content)
+        content = re.sub(r'\}\s*\}\s*$', '', content)
+    return content.strip()
+
+
 def call_model(state: UmrahState) -> dict:
     llm = get_provider().get_llm("appointments").bind_tools(TOOLS)
     messages = state["messages"]
     if not any(isinstance(m, SystemMessage) for m in messages):
         messages = [SystemMessage(content=UMRAH_SYSTEM_PROMPT)] + messages
     response = llm.invoke(messages)
+    if isinstance(response, AIMessage) and response.content:
+        response.content = sanitize_ai_content(response.content)
     return {"messages": [response]}
 
 

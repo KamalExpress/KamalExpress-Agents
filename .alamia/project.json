@@ -1,0 +1,49 @@
+{
+  "version": "0.1.0",
+  "project_name": "KamalExpress-Agents",
+  "stack": {
+    "primary_language": "python",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [
+      "fastapi",
+      "langgraph",
+      "langchain"
+    ],
+    "package_managers": [
+      "pip"
+    ],
+    "manifests": [
+      "requirements.txt"
+    ],
+    "containers": [
+      "docker",
+      "docker-compose"
+    ]
+  },
+  "testing": {
+    "runner": "pytest",
+    "command": "pytest",
+    "test_dirs": [
+      "tests"
+    ],
+    "has_tests": true
+  },
+  "memory": {
+    "has_memory_system": true,
+    "handoff_dir": ".ai/transient/handoffs",
+    "architecture_dir": ".ai/permanent/architecture",
+    "worklogs": [],
+    "latest_handoff_file": ".ai/transient/handoffs/08-session-handoff-cloudflare-ai-streaming-and-package-hardening.md"
+  },
+  "lifecycle": {
+    "groups": [
+      "bootstrap",
+      "implement",
+      "qa",
+      "architecture-review",
+      "session-end"
+    ]
+  }
+}

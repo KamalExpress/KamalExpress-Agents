@@ -44,7 +44,7 @@ class GroqProvider(AIServiceProvider):
         *,
         temperature: float = 0.2,
         streaming: bool = True,
-        max_tokens: int = 500,
+        max_tokens: int = 2048,
         **kwargs: Any,
     ) -> ChatOpenAI:
         cfg = get_settings().groq
