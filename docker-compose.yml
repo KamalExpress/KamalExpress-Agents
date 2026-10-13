@@ -10,6 +10,9 @@ version: "3.8"
 
 services:
   kamal-agents:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: kamalexpress-agents-api:latest
     container_name: kamal-express-agents
     restart: unless-stopped
