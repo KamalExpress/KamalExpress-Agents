@@ -21,9 +21,12 @@ RUN playwright install --with-deps chromium
 # Copy application source code
 COPY . .
 
+# Set Python path so /app modules are always discoverable
+ENV PYTHONPATH=/app
+
 # Ensure data and cache directories exist
 RUN mkdir -p data browser_profiles rag/documents rag/chroma_db
 
-EXPOSE 8080
+EXPOSE 8000
 
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
