@@ -2413,6 +2413,10 @@ How can I help you today?</div>
           <i data-lucide="save" class="icon"></i> Sync Token to Account
         </button>
       </div>
+    </form>
+  </div>
+</div>
+
 <!-- ── RAW CONFIRMATION AUDIT MODAL ── -->
 <div class="modal" id="raw-confirmation-modal">
   <div class="modal-content" style="width: 720px; max-width: 95%;">
@@ -5512,11 +5516,11 @@ How can I help you today?</div>
     const confirmPass = document.getElementById('cp-confirm').value;
 
     if (newPass !== confirmPass) {
-      alert("❌ New password and confirmation do not match.");
+      alert("[ERROR] New password and confirmation do not match.");
       return;
     }
     if (newPass.length < 4) {
-      alert("❌ New password must be at least 4 characters long.");
+      alert("[ERROR] New password must be at least 4 characters long.");
       return;
     }
 
@@ -5531,10 +5535,10 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert("✅ " + data.message);
+        alert("[SUCCESS] " + data.message);
         closeChangePasswordModal();
       } else {
-        alert("❌ Failed: " + (data.detail || "Could not update password."));
+        alert("[ERROR] Failed: " + (data.detail || "Could not update password."));
       }
     } catch (e) {
       alert("Error: " + e.message);
@@ -5561,7 +5565,7 @@ How can I help you today?</div>
     const newPass = document.getElementById('admin-rp-new-pass').value;
 
     if (newPass.length < 4) {
-      alert("❌ New password must be at least 4 characters long.");
+      alert("[ERROR] New password must be at least 4 characters long.");
       return;
     }
 
@@ -5576,11 +5580,11 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert("✅ " + data.message);
+        alert("[SUCCESS] " + data.message);
         closeAdminResetPasswordModal();
         loadUsers();
       } else {
-        alert("❌ Reset failed: " + (data.detail || "Error"));
+        alert("[ERROR] Reset failed: " + (data.detail || "Error"));
       }
     } catch (e) {
       alert("Error: " + e.message);
