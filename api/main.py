@@ -1795,6 +1795,25 @@ async def update_worker_accounting_settings_endpoint(
 
 # ── System Activity Stream & Logging REST Endpoints ─────────────────────────
 
+def _is_spam_log_entry(entry: dict) -> bool:
+    """Check if a system log entry is carrier spam / non-GVC SMS noise."""
+    cat = (entry.get("category") or "").upper()
+    if cat == "OTP":
+        details = entry.get("details") or {}
+        if isinstance(details, str):
+            try:
+                import json
+                details = json.loads(details)
+            except Exception:
+                details = {}
+        if details.get("is_gvc") is False:
+            return True
+        msg = entry.get("message") or ""
+        if msg.startswith("Received general SMS") or msg.startswith("Filtered non-GVC SMS"):
+            return True
+    return False
+
+
 @app.get("/api/logs/stream")
 async def get_logs_stream_endpoint(
     limit: int = Query(100, ge=1, le=500),
@@ -1802,8 +1821,11 @@ async def get_logs_stream_endpoint(
     category: Optional[str] = Query(None),
     user: dict = Depends(get_current_user),
 ):
-    """Retrieve recent structured activity stream logs."""
+    """Retrieve recent structured activity stream logs (filtered for non-admin staff)."""
     logs = get_recent_system_logs(limit=limit, level=level, category=category)
+    # Admin retains full raw logs; non-admin staff has carrier spam filtered out
+    if user.get("role") != "admin":
+        logs = [l for l in logs if not _is_spam_log_entry(l)]
     return {"total": len(logs), "logs": logs}
 
 
@@ -1812,10 +1834,13 @@ async def export_logs_endpoint(
     format: str = Query("txt", description="Export format: 'txt' or 'json'"),
     user: dict = Depends(get_current_user),
 ):
-    """Export persistent system activity logs as a downloadable file."""
+    """Export persistent system activity logs as a downloadable file (filtered for non-admin staff)."""
     from datetime import datetime as dt_now
     timestamp_str = dt_now.utcnow().strftime("%Y%m%d_%H%M%S")
     logs = get_recent_system_logs(limit=1000)
+    # Admin retains full raw logs; non-admin staff has carrier spam filtered out
+    if user.get("role") != "admin":
+        logs = [l for l in logs if not _is_spam_log_entry(l)]
 
     if format.lower() == "json":
         content = json.dumps(logs, indent=2, ensure_ascii=False)
