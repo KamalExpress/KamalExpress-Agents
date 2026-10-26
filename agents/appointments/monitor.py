@@ -208,6 +208,14 @@ class AutonomousSlotMonitor:
         self._total_scans += 1
         self._last_checked = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+        # ── SINGLE-GATE ENTRY: Service Guard (CapSolver balance & Proxy quota) ──
+        from .service_guard import service_guard
+        can_run, halt_reason = service_guard.can_proceed()
+        if not can_run:
+            if self._total_scans == 1 or self._total_scans % 4 == 0:
+                self.log_event(f" Slot check & booking halted: {halt_reason}", level="WARNING")
+            return
+
         # 1. Fetch currently QUEUED clients
         queued_clients = get_all_clients(status="QUEUED")
         if not queued_clients:
@@ -221,9 +229,9 @@ class AutonomousSlotMonitor:
             from .db import get_gvc_auth_mode
             auth_mode = get_gvc_auth_mode()
             if auth_mode == "auto_solver":
-                msg = f"⚠️ [Scan #{self._total_scans}] GVC session unauthenticated. Auto-Solver is renewing session in the background..."
+                msg = f"️ [Scan #{self._total_scans}] GVC session unauthenticated. Auto-Solver is renewing session in the background..."
             else:
-                msg = f"⚠️ [Scan #{self._total_scans}] GVC session unauthenticated. Please sync token via Bookmarklet (Option 1) or switch to Auto-Solver (Option 3)."
+                msg = f"️ [Scan #{self._total_scans}] GVC session unauthenticated. Please sync token via Bookmarklet (Option 1) or switch to Auto-Solver (Option 3)."
             self.log_event(msg, level="WARNING")
             return
 
@@ -263,14 +271,14 @@ class AutonomousSlotMonitor:
 
                         if status_info.get("status") == "UNAUTHENTICATED":
                             self.log_event(
-                                f"⚠️ [Scan #{self._total_scans}] GVC {vac_meta['name']} session expired/unauthenticated.",
+                                f"️ [Scan #{self._total_scans}] GVC {vac_meta['name']} session expired/unauthenticated.",
                                 level="WARNING"
                             )
                             break
                         elif status_info.get("status") == "RATE_LIMITED":
                             backoff = status_info.get("retry_after", 10) + random.uniform(1.0, 2.5)
                             self.log_event(
-                                f"⚠️ [Scan #{self._total_scans}] Imperva rate limit hit on {d_str}. Backing off {backoff:.1f}s...",
+                                f"️ [Scan #{self._total_scans}] Imperva rate limit hit on {d_str}. Backing off {backoff:.1f}s...",
                                 level="WARNING"
                             )
                             await asyncio.sleep(backoff)
@@ -287,7 +295,7 @@ class AutonomousSlotMonitor:
                     if slots:
                         self._total_slots_discovered += len(slots)
                         self.log_event(
-                            f"🚨 OPEN SLOTS DETECTED! Found {len(slots)} available slots on GVC ({vac_meta['name']}, {type_name}).",
+                            f" OPEN SLOTS DETECTED! Found {len(slots)} available slots on GVC ({vac_meta['name']}, {type_name}).",
                             level="SUCCESS"
                         )
 
@@ -315,12 +323,12 @@ class AutonomousSlotMonitor:
                             otp_trigger_res = await self._gvc_driver.trigger_booking_otp(phone_number=client.phone_number)
                             if not otp_trigger_res.get("success"):
                                 self.log_event(
-                                    f"⚠️ OTP trigger returned note for {client.passport_number} (+92-{client.phone_number}): {otp_trigger_res.get('message') or otp_trigger_res.get('error')}",
+                                    f"️ OTP trigger returned note for {client.passport_number} (+92-{client.phone_number}): {otp_trigger_res.get('message') or otp_trigger_res.get('error')}",
                                     level="WARNING"
                                 )
                             else:
                                 self.log_event(
-                                    f"📱 OTP dispatched to +92-{client.phone_number}. Awaiting SMS forwarder / staff input (up to 75s)...",
+                                    f" OTP dispatched to +92-{client.phone_number}. Awaiting SMS forwarder / staff input (up to 75s)...",
                                     level="INFO"
                                 )
 
@@ -334,13 +342,13 @@ class AutonomousSlotMonitor:
                                     notes="Auto-booking aborted: OTP verification code timed out after 75s."
                                 )
                                 self.log_event(
-                                    f"❌ Auto-booking aborted for {client.passport_number}: No OTP received within 75s.",
+                                    f" Auto-booking aborted for {client.passport_number}: No OTP received within 75s.",
                                     level="WARNING"
                                 )
                                 continue
 
                             self.log_event(
-                                f"⚡ OTP '{otp_code}' intercepted for +92-{client.phone_number}! Submitting final booking to GVC...",
+                                f" OTP '{otp_code}' intercepted for +92-{client.phone_number}! Submitting final booking to GVC...",
                                 level="SUCCESS"
                             )
 
@@ -365,7 +373,7 @@ class AutonomousSlotMonitor:
                                     notes=f"Auto-booked via Slot Monitor at {result.vac_city}."
                                 )
                                 self.log_event(
-                                    f"✅ AUTO-BOOKING SUCCESSFUL for {client.first_name} {client.last_name}! Reference: {result.reference_number}",
+                                    f" AUTO-BOOKING SUCCESSFUL for {client.first_name} {client.last_name}! Reference: {result.reference_number}",
                                     level="SUCCESS",
                                     details={"arn": result.reference_number, "client": client.passport_number}
                                 )
@@ -377,12 +385,12 @@ class AutonomousSlotMonitor:
                                     notes=f"Auto-booking failed: {result.message}"
                                 )
                                 self.log_event(
-                                    f"❌ Auto-booking attempt failed for {client.passport_number}: {result.message}",
+                                    f" Auto-booking attempt failed for {client.passport_number}: {result.message}",
                                     level="WARNING"
                                 )
                     else:
                         self.log_event(
-                            f"🔍 [Scan #{self._total_scans}] Polled {vac_meta['name']} ({type_name}) — 0 slots open. (Next scan in {self.interval_seconds}s)"
+                            f" [Scan #{self._total_scans}] Polled {vac_meta['name']} ({type_name}) — 0 slots open. (Next scan in {self.interval_seconds}s)"
                         )
                 except Exception as e:
                     self.log_event(f"Error querying GVC slots ({vac_meta['name']}, {type_name}): {e}", level="ERROR")

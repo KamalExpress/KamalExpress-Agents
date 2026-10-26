@@ -215,6 +215,15 @@ class AccountWorkerInstance:
                     await asyncio.sleep(5)
                     continue
 
+                # ── SINGLE-GATE ENTRY: Service Guard (CapSolver balance & Proxy quota) ──
+                from .service_guard import service_guard
+                can_run, halt_reason = service_guard.can_proceed()
+                if not can_run:
+                    self._last_status = "HALTED (Insufficient Balance/Quota)"
+                    self._last_error = halt_reason
+                    await asyncio.sleep(10)
+                    continue
+
                 role = acc.get("account_role", "HYBRID").upper()
                 persona = acc.get("worker_persona_name") or get_next_persona_name(self.account_id)
 

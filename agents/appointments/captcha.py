@@ -250,6 +250,11 @@ class CaptchaSolver:
                         logger.error(f"[capsolver] CapSolver creation failed (Code: {err_code}): {err_desc}")
                         if err_code == "ERROR_ZERO_BALANCE":
                             logger.error("[capsolver] CRITICAL: CapSolver service balance is ZERO (ERROR_ZERO_BALANCE). Top-up required immediately!")
+                            try:
+                                from .service_guard import service_guard
+                                service_guard.mark_capsolver_failed("CapSolver service balance is ZERO (ERROR_ZERO_BALANCE). Top-up required immediately.")
+                            except Exception:
+                                pass
                         return None
                     task_id = data.get("taskId")
 

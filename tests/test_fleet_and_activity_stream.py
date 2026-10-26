@@ -176,8 +176,9 @@ def test_fleet_pre_stage_and_reschedule_endpoints():
 def test_manual_client_booking_trigger():
     headers = get_auth_headers("admin")
     from agents.appointments.schemas import ClientProfile, AvailableSlot
-    from agents.appointments.db import add_client, delete_client, get_client_by_id
+    from agents.appointments.db import add_client, delete_client, get_client_by_id, set_system_setting
     from agents.appointments.fleet_manager import slot_cache
+    set_system_setting("require_slot_availability_check", "true")
 
     # 1. 404 for non-existent client
     resp_404 = client.post("/api/clients/999999/trigger-booking", headers=headers)
@@ -201,14 +202,20 @@ def test_manual_client_booking_trigger():
     cid = add_client(c_obj)
 
     try:
-        # Clear slot cache for VAC 138 / Type 26 to test NO_SLOTS scenario
-        slot_cache._cache.pop("138:26", None)
-
-        # Trigger booking without slots in cache (it will search or report NO_SLOTS/UNAUTHENTICATED)
-        resp_trigger = client.post(f"/api/clients/{cid}/trigger-booking", headers=headers)
-        assert resp_trigger.status_code == 200
-        data = resp_trigger.json()
-        assert "status" in data or "success" in data
+        # Mock network login & search so unit test does not wait on external proxy network
+        from unittest.mock import patch, AsyncMock
+        with patch("agents.appointments.portals.gvc_auth.gvc_auth_solver.login_with_credentials", new_callable=AsyncMock) as mock_login:
+            mock_login.return_value = {"success": False, "error": "Mocked test unauthenticated"}
+            from agents.appointments.service_guard import service_guard
+            prev_halted = service_guard._is_halted
+            service_guard._is_halted = False
+            try:
+                resp_trigger = client.post(f"/api/clients/{cid}/trigger-booking", headers=headers)
+                assert resp_trigger.status_code == 200
+                data = resp_trigger.json()
+                assert "status" in data or "success" in data
+            finally:
+                service_guard._is_halted = prev_halted
 
     finally:
         delete_client(cid)
@@ -246,8 +253,14 @@ def test_quick_book_slot_endpoint():
             "vac_id": "138",
             "visa_type": "26",
         }
-        resp = client.post("/api/slots/quick-book", json=payload, headers=headers)
-        assert resp.status_code == 200
+        from agents.appointments.service_guard import service_guard
+        prev_halted = service_guard._is_halted
+        service_guard._is_halted = False
+        try:
+            resp = client.post("/api/slots/quick-book", json=payload, headers=headers)
+            assert resp.status_code == 200
+        finally:
+            service_guard._is_halted = prev_halted
         data = resp.json()
         assert "status" in data or "success" in data
     finally:
@@ -367,14 +380,21 @@ def test_blitz_queue_booking_endpoint():
     )
     cid = add_client(c1)
 
-    try:
-        resp = client.post("/api/queue/blitz-book", headers=headers)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["success"] is True
-        assert data["total_clients"] >= 1
-    finally:
-        delete_client(cid)
+    from agents.appointments.service_guard import service_guard
+    from unittest.mock import patch, AsyncMock
+    with patch("agents.appointments.portals.gvc_auth.gvc_auth_solver.login_with_credentials", new_callable=AsyncMock) as mock_login:
+        mock_login.return_value = {"success": False, "error": "Mocked test unauthenticated"}
+        prev_halted = service_guard._is_halted
+        service_guard._is_halted = False
+        try:
+            resp = client.post("/api/queue/blitz-book", headers=headers)
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["success"] is True
+            assert data["total_clients"] >= 1
+        finally:
+            service_guard._is_halted = prev_halted
+            delete_client(cid)
 
 
 def test_requeue_failed_and_single_client_endpoints():

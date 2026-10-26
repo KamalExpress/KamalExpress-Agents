@@ -92,6 +92,12 @@ class ProxyManager:
             )
             clean = proxy_url.split("@")[-1]
             logger.warning(f"[proxy] ⚠️ Proxy {clean} marked failed in SQLite (quarantined 5m).")
+            if error and ("407" in str(error) or "traffic limit" in str(error).lower() or "access denied" in str(error).lower()):
+                try:
+                    from .service_guard import service_guard
+                    service_guard.mark_proxy_failed(f"Residential proxy traffic quota reached ({error})")
+                except Exception:
+                    pass
             if log_event:
                 from .db import log_system_event
                 active_proxies = len(get_active_proxies())

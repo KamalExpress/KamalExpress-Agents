@@ -518,6 +518,10 @@ def add_client(client: ClientProfile, db_path: Path = DB_PATH) -> int:
                     client.notes, client.created_at or datetime.utcnow().isoformat()
                 ))
                 client_id = cursor.lastrowid
+                if not client_id:
+                    r_id = conn.execute("SELECT id FROM client_queue WHERE passport_number = ?", (client.passport_number.upper().strip(),)).fetchone()
+                    if r_id:
+                        client_id = r_id["id"]
                 logger.info(f"[db] Added/updated client #{client_id}: {client.first_name} {client.last_name} ({client.passport_number})")
                 return client_id
         finally:

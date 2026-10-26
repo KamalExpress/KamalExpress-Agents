@@ -117,9 +117,12 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("[api] Initializing background solver worker and GVC fleet manager...")
+    logger.info("[api] Initializing background solver worker, GVC fleet manager, and service guard...")
     solver_worker.start()
     fleet_manager.start()
+    from agents.appointments.service_guard import service_guard
+    service_guard.start_background_loop()
+    asyncio.create_task(service_guard.verify_services())
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -1074,6 +1077,11 @@ async def remove_client(client_id: int, user: dict = Depends(get_current_user)):
 @app.post("/api/clients/{client_id}/trigger-booking")
 async def trigger_client_booking_endpoint(client_id: int, user: dict = Depends(get_current_user)):
     """Manually trigger the autonomous booking workflow for a specific queued applicant."""
+    from agents.appointments.service_guard import service_guard
+    can_run, halt_reason = service_guard.can_proceed()
+    if not can_run:
+        raise HTTPException(status_code=422, detail=halt_reason)
+
     try:
         client = get_client_by_id(client_id)
         if not client:
@@ -1117,6 +1125,11 @@ async def blitz_queue_booking_endpoint(
     Strikes GVC directly using optional target VAC, visa type, and date/time parameters.
     If none specified, runs autonomously across all queued clients using individual preferences.
     """
+    from agents.appointments.service_guard import service_guard
+    can_run, halt_reason = service_guard.can_proceed()
+    if not can_run:
+        raise HTTPException(status_code=422, detail=halt_reason)
+
     try:
         username = user.get("username", "staff")
         vac_id = req.target_vac_id if req else None
@@ -1288,6 +1301,11 @@ async def quick_book_slot_endpoint(
     user: dict = Depends(get_current_user),
 ):
     """Instantly claim a discovered slot and book an applicant, bypassing date filters."""
+    from agents.appointments.service_guard import service_guard
+    can_run, halt_reason = service_guard.can_proceed()
+    if not can_run:
+        raise HTTPException(status_code=422, detail=halt_reason)
+
     try:
         username = user.get("username", "staff")
         res = await fleet_manager.quick_book_slot(
@@ -1502,6 +1520,11 @@ async def gvc_solve_now_endpoint(
     user: dict = Depends(get_current_user),
 ):
     """Trigger an immediate CapSolver login attempt."""
+    from agents.appointments.service_guard import service_guard
+    can_run, halt_reason = service_guard.can_proceed()
+    if not can_run:
+        return JSONResponse(status_code=422, content={"success": False, "error": halt_reason})
+
     email = req.email if req else None
     password = req.password if req else None
     if req:
@@ -1652,6 +1675,11 @@ async def toggle_account_worker_endpoint(account_id: int, user: dict = Depends(g
 @app.post("/api/gvc/accounts/{account_id}/login")
 async def login_account_endpoint(account_id: int, user: dict = Depends(get_current_user)):
     """Trigger an immediate CapSolver auto-login for a specific GVC account."""
+    from agents.appointments.service_guard import service_guard
+    can_run, halt_reason = service_guard.can_proceed()
+    if not can_run:
+        return JSONResponse(status_code=422, content={"success": False, "error": halt_reason})
+
     acc = get_gvc_portal_account_by_id(account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Account not found.")
@@ -1875,6 +1903,23 @@ async def clear_logs_endpoint(user: dict = Depends(get_current_user)):
         category="SYSTEM",
     )
     return {"success": True, "cleared_count": cleared, "message": "Activity stream logs cleared."}
+
+
+# ── Operational Service Guard & Cost-Safe Execution Gate ─────────────────────
+
+@app.get("/api/system/service-guard")
+async def get_service_guard_status(user: dict = Depends(get_current_user)):
+    """Get live status of CapSolver balance and Residential Proxy quota."""
+    from agents.appointments.service_guard import service_guard
+    return service_guard.get_status()
+
+
+@app.post("/api/system/service-guard/verify")
+async def verify_service_guard_status(user: dict = Depends(get_current_user)):
+    """Trigger on-demand check of CapSolver balance and proxy quota (Verify & Resume)."""
+    from agents.appointments.service_guard import service_guard
+    res = await service_guard.verify_services(force=True)
+    return res
 
 
 @app.get("/api/monitor/status")

@@ -627,6 +627,33 @@
   </div>
 </div>
 
+<!-- ── Prominent Service Guard Alert Banner ── -->
+<div id="service-guard-banner" style="display:none; margin: 14px 24px 0 24px; padding: 14px 18px; border-radius: 8px; background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.35); box-shadow: 0 4px 12px rgba(220, 38, 38, 0.08);">
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div style="display:flex; align-items:flex-start; gap:12px;">
+      <i data-lucide="shield-alert" class="icon" style="width:24px; height:24px; color:#dc2626; flex-shrink:0; margin-top:2px;"></i>
+      <div>
+        <div style="font-size:13.5px; font-weight:700; color:#dc2626; letter-spacing:0.3px; display:flex; align-items:center; gap:8px;">
+          <span>OPERATIONS HALTED: CRITICAL SERVICE BALANCE / QUOTA EXHAUSTED</span>
+          <span class="badge badge-destructive" style="font-size:10.5px; font-weight:700;">HALTED</span>
+        </div>
+        <div id="service-guard-reasons-list" style="margin-top:6px; font-size:12.5px; color:var(--foreground); display:flex; flex-direction:column; gap:4px;">
+          <!-- Dynamically populated -->
+        </div>
+        <div style="margin-top:8px; font-size:11.5px; color:var(--muted-foreground);">
+          All autonomous slot checking, session renewal, and booking operations are paused to protect against portal bans and wasted attempts. Add balance/traffic to the affected services and click the verification button to resume.
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px; margin-top:4px;">
+      <button id="btn-verify-service-guard" class="btn btn-destructive btn-sm" onclick="triggerServiceGuardVerification()" style="font-weight:600; padding:8px 14px; font-size:12px; display:flex; align-items:center; gap:6px;">
+        <i data-lucide="refresh-cw" class="icon" id="ico-verify-guard" style="width:14px; height:14px;"></i>
+        <span id="txt-verify-guard">Verify &amp; Resume Operations</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ── VIEW 1: CHAT VIEW ── -->
 <div class="view-container active" id="chat-view">
   <div class="agent-sub-bar">
@@ -2550,6 +2577,7 @@ How can I help you today?</div>
     checkAuth();
     loadOperationalMode();
     loadGvcAccounts();
+    loadServiceGuardStatus();
     loadOtpStream();
     loadActivityLogsStream();
     loadDiscoveredSlotsHistory();
@@ -2557,6 +2585,7 @@ How can I help you today?</div>
     startLogStreamTimer();
     setInterval(refreshQueue, 5000);
     setInterval(refreshTelemetry, 4000);
+    setInterval(loadServiceGuardStatus, 10000);
     setInterval(loadGvcAccounts, 8000);
     setInterval(loadGVCAuthStatus, 10000);
     setInterval(loadOtpStream, 10000);
@@ -2584,6 +2613,99 @@ How can I help you today?</div>
     }
   }
 
+  // ── Service Guard (CapSolver & Proxy Balance) Handlers ─────────
+  let cachedServiceGuard = null;
+
+  async function loadServiceGuardStatus() {
+    if (!currentUser) return;
+    try {
+      const resp = await fetch('/api/system/service-guard');
+      if (resp.status === 401) return;
+      const data = await resp.json();
+      cachedServiceGuard = data;
+      renderServiceGuardBanner(data);
+    } catch (err) {
+      console.warn('Failed to load service guard status:', err);
+    }
+  }
+
+  function renderServiceGuardBanner(data) {
+    const banner = document.getElementById('service-guard-banner');
+    const reasonsContainer = document.getElementById('service-guard-reasons-list');
+    if (!banner || !reasonsContainer) return;
+
+    if (!data || !data.is_halted) {
+      banner.style.display = 'none';
+      return;
+    }
+
+    banner.style.display = 'block';
+    let html = '';
+
+    if (!data.capsolver?.ok) {
+      const bal = (data.capsolver?.balance !== undefined) ? `$${data.capsolver.balance.toFixed(2)}` : '$0.00';
+      html += `
+        <div style="display:flex; align-items:center; gap:8px;">
+          <i data-lucide="zap-off" class="icon" style="width:14px; height:14px; color:#dc2626;"></i>
+          <span><b>CapSolver Balance:</b> ${data.capsolver?.reason || `Current balance is ${bal}. Autonomous reCAPTCHA solving is suspended.`}</span>
+          <a href="https://dashboard.capsolver.com" target="_blank" rel="noopener noreferrer" style="color:#0284c7; text-decoration:underline; font-size:12px; margin-left:4px; display:inline-flex; align-items:center; gap:2px;">
+            Top Up CapSolver <i data-lucide="external-link" class="icon" style="width:11px; height:11px;"></i>
+          </a>
+        </div>
+      `;
+    }
+
+    if (!data.proxy?.ok) {
+      html += `
+        <div style="display:flex; align-items:center; gap:8px;">
+          <i data-lucide="globe-2" class="icon" style="width:14px; height:14px; color:#dc2626;"></i>
+          <span><b>Residential Proxy Quota:</b> ${data.proxy?.reason || 'Decodo proxies returned HTTP 407 (traffic limit reached).'}</span>
+          <a href="https://dashboard.decodo.com" target="_blank" rel="noopener noreferrer" style="color:#0284c7; text-decoration:underline; font-size:12px; margin-left:4px; display:inline-flex; align-items:center; gap:2px;">
+            Purchase Decodo Traffic <i data-lucide="external-link" class="icon" style="width:11px; height:11px;"></i>
+          </a>
+        </div>
+      `;
+    }
+
+    reasonsContainer.innerHTML = html;
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+      lucide.createIcons();
+    }
+  }
+
+  async function triggerServiceGuardVerification() {
+    const btn = document.getElementById('btn-verify-service-guard');
+    const ico = document.getElementById('ico-verify-guard');
+    const txt = document.getElementById('txt-verify-guard');
+
+    if (btn) btn.disabled = true;
+    if (ico) ico.classList.add('spinning');
+    if (txt) txt.textContent = 'Verifying Services...';
+
+    try {
+      const resp = await fetch('/api/system/service-guard/verify', { method: 'POST' });
+      const data = await resp.json();
+      cachedServiceGuard = data;
+      renderServiceGuardBanner(data);
+
+      if (data && !data.is_halted) {
+        alert('[SUCCESS] Verification complete: CapSolver balance and Residential Proxies verified operational. System resumed normal operations.');
+      } else {
+        const reason = data.halt_reason || 'Balance or proxy traffic is still exhausted.';
+        alert(`[WARNING] Verification result: Operations remain HALTED.\n\n${reason}\n\nPlease ensure payment has been confirmed on the respective dashboards before re-verifying.`);
+      }
+    } catch (e) {
+      alert(`[ERROR] Verification request failed: ${e.message}`);
+    } finally {
+      if (btn) btn.disabled = false;
+      if (ico) ico.classList.remove('spinning');
+      if (txt) txt.textContent = 'Verify & Resume Operations';
+      if (typeof lucide !== 'undefined' && lucide.createIcons) {
+        lucide.createIcons();
+      }
+    }
+  }
+
   function renderUserInterface() {
     if (!currentUser) return;
     document.getElementById('login-modal').classList.remove('active');
@@ -2604,6 +2726,7 @@ How can I help you today?</div>
     refreshTelemetry();
     loadProxies();
     loadGVCAuthStatus();
+    loadServiceGuardStatus();
     loadActivityLogsStream();
     renderIcons();
   }
