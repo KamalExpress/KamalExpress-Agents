@@ -55,6 +55,7 @@ session_cache.json
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+data/*.json
 !data/ips-list-pk.txt
 !data/logo.jpeg
 
