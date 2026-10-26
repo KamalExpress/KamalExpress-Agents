@@ -1515,6 +1515,18 @@ How can I help you today?</div>
         </div>
       </div>
 
+      <!-- Admin Tab Selector: GVC Appointments vs Filtered / Spam -->
+      <div id="otp-tabs-container" style="display:none; padding: 0 16px 12px; border-bottom: 1px solid var(--border);">
+        <div style="display:flex; gap:8px;">
+          <button id="otp-tab-gvc" class="btn btn-sm btn-primary" onclick="switchOtpTab('gvc')" style="font-weight:600;">
+            <i data-lucide="shield-check" class="icon" style="width:14px; height:14px;"></i> GVC Appointments (<span id="otp-gvc-count">0</span>)
+          </button>
+          <button id="otp-tab-spam" class="btn btn-sm btn-outline" onclick="switchOtpTab('spam')" style="font-weight:600; color:var(--muted-foreground);">
+            <i data-lucide="filter" class="icon" style="width:14px; height:14px;"></i> Spam / Filtered (<span id="otp-spam-count">0</span>)
+          </button>
+        </div>
+      </div>
+
       <div class="queue-table-wrap" style="max-height:380px;">
         <table>
           <thead>
@@ -4935,6 +4947,27 @@ How can I help you today?</div>
 
   let latestOtpList = [];
   let activeModalOtpId = null;
+  let activeOtpTab = 'gvc';
+
+  function switchOtpTab(tab) {
+    activeOtpTab = tab;
+    const tabGvc = document.getElementById('otp-tab-gvc');
+    const tabSpam = document.getElementById('otp-tab-spam');
+    if (tabGvc && tabSpam) {
+      if (tab === 'gvc') {
+        tabGvc.className = 'btn btn-sm btn-primary';
+        tabGvc.style.fontWeight = '600';
+        tabSpam.className = 'btn btn-sm btn-outline';
+        tabSpam.style.fontWeight = '500';
+      } else {
+        tabGvc.className = 'btn btn-sm btn-outline';
+        tabGvc.style.fontWeight = '500';
+        tabSpam.className = 'btn btn-sm btn-destructive';
+        tabSpam.style.fontWeight = '600';
+      }
+    }
+    renderOtpTable();
+  }
 
   async function loadOtpStream() {
     try {
@@ -4945,46 +4978,87 @@ How can I help you today?</div>
       const urlInput = document.getElementById('otp-webhook-url-input');
       if (urlInput) urlInput.value = window.location.origin + '/api/otp/webhook';
 
-      const tbody = document.getElementById('otp-stream-tbody');
-      if (!tbody) return;
-      tbody.innerHTML = '';
+      const tabsContainer = document.getElementById('otp-tabs-container');
+      const gvcCountSpan = document.getElementById('otp-gvc-count');
+      const spamCountSpan = document.getElementById('otp-spam-count');
 
-      latestOtpList = data.recent_otps || [];
-
-      if (!latestOtpList || latestOtpList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--muted-foreground); padding:20px;">No OTPs in cache. Incoming SMS OTPs will appear here in real-time.</td></tr>`;
-        return;
+      if (data.is_admin) {
+        if (tabsContainer) tabsContainer.style.display = 'block';
+        if (gvcCountSpan) gvcCountSpan.textContent = data.counts ? data.counts.gvc : 0;
+        if (spamCountSpan) spamCountSpan.textContent = data.counts ? data.counts.spam : 0;
+      } else {
+        if (tabsContainer) tabsContainer.style.display = 'none';
+        activeOtpTab = 'gvc';
       }
 
-      latestOtpList.forEach((item, idx) => {
-        const tr = document.createElement('tr');
-        const isFresh = item.age_seconds <= 180;
-        const isOtp = item.is_otp !== false && item.code !== 'TEST_MSG';
-        const badgeClass = isOtp ? (isFresh ? 'badge-booked' : 'badge-disabled') : 'badge-in_progress';
-        const codeDisplay = isOtp ? escapeHtml(item.code) : `<span style="font-size:11px; font-weight:600;">(Test SMS)</span>`;
-
-        tr.innerHTML = `
-          <td><span style="font-family:monospace; font-size:11px;">${item.created_at || 'Just now'}</span></td>
-          <td><b>+92-${escapeHtml(item.phone || 'UNKNOWN')}</b></td>
-          <td><span class="badge ${badgeClass}" style="font-size:${isOtp ? '13px' : '11px'}; font-weight:700; letter-spacing:1px; font-family:monospace;">${codeDisplay}</span></td>
-          <td><span class="badge badge-active">${escapeHtml(item.sender || 'SMS_FORWARDER')}</span></td>
-          <td><span style="font-size:11.5px; color:${isFresh ? 'var(--success)' : 'var(--muted-foreground)'};">${item.age_seconds}s ago</span></td>
-          <td style="font-size:11.5px; color:var(--muted-foreground); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(item.raw_message || '')}">${escapeHtml(item.raw_message || '—')}</td>
-          <td style="text-align:right; white-space:nowrap;">
-            <button class="btn btn-outline btn-sm" onclick="showOtpDetailsModal(${idx})" title="Inspect Full Payload" style="padding:3px 8px; font-size:11.5px;">
-              <i data-lucide="eye" class="icon" style="width:12px; height:12px;"></i> View
-            </button>
-            <button class="btn btn-destructive btn-sm" onclick="deleteOtpItem('${item.id}')" title="Delete Record" style="padding:3px 7px; font-size:11.5px; margin-left:4px;">
-              <i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i>
-            </button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-      renderIcons();
+      latestOtpList = data.recent_otps || [];
+      renderOtpTable();
     } catch (err) {
       console.error("Failed to load OTP stream:", err);
     }
+  }
+
+  function renderOtpTable() {
+    const tbody = document.getElementById('otp-stream-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    // Filter by active tab (Staff only receives verified GVC messages from backend anyway)
+    const filteredList = latestOtpList.filter(item => {
+      const isGvc = item.is_gvc !== false;
+      return activeOtpTab === 'gvc' ? isGvc : !isGvc;
+    });
+
+    if (!filteredList || filteredList.length === 0) {
+      const emptyMsg = activeOtpTab === 'gvc'
+        ? "No GVC OTPs in cache. Incoming GVC appointment verification SMS will appear here in real-time."
+        : "No filtered spam or general SMS messages.";
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--muted-foreground); padding:20px;">${emptyMsg}</td></tr>`;
+      return;
+    }
+
+    filteredList.forEach((item) => {
+      const tr = document.createElement('tr');
+      const isFresh = item.age_seconds <= 180;
+      const isOtp = item.is_otp !== false && item.code !== 'TEST_MSG';
+      const isGvc = item.is_gvc !== false;
+
+      let badgeClass = 'badge-disabled';
+      let codeDisplay = '';
+
+      if (isGvc) {
+        badgeClass = isOtp ? (isFresh ? 'badge-booked' : 'badge-disabled') : 'badge-in_progress';
+        codeDisplay = isOtp ? escapeHtml(item.code) : `<span style="font-size:11px; font-weight:600;">(Test SMS)</span>`;
+      } else {
+        badgeClass = 'badge-quarantined';
+        codeDisplay = `<span style="font-size:10.5px; font-weight:700;">SPAM ${isOtp ? escapeHtml(item.code) : ''}</span>`;
+      }
+
+      const senderBadge = isGvc 
+        ? `<span class="badge badge-active">${escapeHtml(item.sender || 'GERRYS')}</span>`
+        : `<span class="badge badge-quarantined" style="opacity:0.85;">${escapeHtml(item.sender || 'UNKNOWN')}</span>`;
+
+      const realIdx = latestOtpList.indexOf(item);
+
+      tr.innerHTML = `
+        <td><span style="font-family:monospace; font-size:11px;">${item.created_at || 'Just now'}</span></td>
+        <td><b>+92-${escapeHtml(item.phone || 'UNKNOWN')}</b></td>
+        <td><span class="badge ${badgeClass}" style="font-size:${isOtp ? '13px' : '11px'}; font-weight:700; letter-spacing:1px; font-family:monospace;">${codeDisplay}</span></td>
+        <td>${senderBadge}</td>
+        <td><span style="font-size:11.5px; color:${isFresh ? 'var(--success)' : 'var(--muted-foreground)'};">${item.age_seconds}s ago</span></td>
+        <td style="font-size:11.5px; color:var(--muted-foreground); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(item.raw_message || '')}">${escapeHtml(item.raw_message || '—')}</td>
+        <td style="text-align:right; white-space:nowrap;">
+          <button class="btn btn-outline btn-sm" onclick="showOtpDetailsModal(${realIdx})" title="Inspect Full Payload" style="padding:3px 8px; font-size:11.5px;">
+            <i data-lucide="eye" class="icon" style="width:12px; height:12px;"></i> View
+          </button>
+          <button class="btn btn-destructive btn-sm" onclick="deleteOtpItem('${item.id}')" title="Delete Record" style="padding:3px 7px; font-size:11.5px; margin-left:4px;">
+            <i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i>
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+    renderIcons();
   }
 
   function showOtpDetailsModal(idx) {
@@ -4993,9 +5067,14 @@ How can I help you today?</div>
     activeModalOtpId = item.id;
 
     const isOtp = item.is_otp !== false && item.code !== 'TEST_MSG';
+    const isGvc = item.is_gvc !== false;
+    const gvcBadge = isGvc 
+      ? `<span class="badge badge-booked" style="margin-left:8px;">GVC APPOINTMENT</span>`
+      : `<span class="badge badge-quarantined" style="margin-left:8px;">FILTERED / SPAM</span>`;
+
     document.getElementById('otp-modal-code').innerHTML = isOtp 
-      ? `<span style="color:var(--success); font-size:18px;">${escapeHtml(item.code)}</span> <span class="badge badge-booked" style="margin-left:8px;">VALID OTP</span>`
-      : `<span style="color:var(--muted-foreground); font-size:13px;">(No OTP code detected)</span> <span class="badge badge-in_progress" style="margin-left:8px;">TEST SMS</span>`;
+      ? `<span style="color:var(--success); font-size:18px;">${escapeHtml(item.code)}</span> ${gvcBadge}`
+      : `<span style="color:var(--muted-foreground); font-size:13px;">(No OTP code detected)</span> ${gvcBadge}`;
     
     document.getElementById('otp-modal-phone').textContent = `+92-${item.phone || 'UNKNOWN'}`;
     document.getElementById('otp-modal-sender').textContent = `${item.sender || 'SMS_FORWARDER'} ${item.raw_phone ? `(From: ${item.raw_phone})` : ''}`;

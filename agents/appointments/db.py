@@ -264,12 +264,24 @@ def init_db(db_path: Path = DB_PATH) -> None:
                         raw_payload TEXT DEFAULT '',
                         client_ip TEXT DEFAULT '',
                         sender TEXT DEFAULT 'SMS_FORWARDER',
+                        is_gvc INTEGER DEFAULT 0,
+                        category TEXT DEFAULT 'spam',
                         timestamp REAL NOT NULL,
                         created_at TEXT NOT NULL
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_otp_phone_ts ON otp_records(phone, timestamp DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_otp_ts ON otp_records(timestamp DESC);")
+
+                # Column migrations for existing databases
+                try:
+                    conn.execute("ALTER TABLE otp_records ADD COLUMN is_gvc INTEGER DEFAULT 0;")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE otp_records ADD COLUMN category TEXT DEFAULT 'spam';")
+                except Exception:
+                    pass
 
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS gvc_portal_accounts (
@@ -2430,14 +2442,16 @@ def save_persisted_otp(record: dict, db_path: Path = DB_PATH) -> None:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO otp_records (
-                        id, code, is_otp, phone, raw_phone, raw_message, raw_payload,
+                        id, code, is_otp, is_gvc, category, phone, raw_phone, raw_message, raw_payload,
                         client_ip, sender, timestamp, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record.get("id"),
                         record.get("code", ""),
                         1 if record.get("is_otp") else 0,
+                        1 if record.get("is_gvc") else 0,
+                        record.get("category", "gvc" if record.get("is_gvc") else "spam"),
                         record.get("phone", ""),
                         record.get("raw_phone", ""),
                         record.get("raw_message", ""),
@@ -2449,7 +2463,32 @@ def save_persisted_otp(record: dict, db_path: Path = DB_PATH) -> None:
                     ),
                 )
         except Exception as e:
-            logger.error(f"[db] Failed to persist OTP record {record.get('id')}: {e}", exc_info=True)
+            # Fallback in case columns do not exist yet in target database
+            try:
+                with conn:
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO otp_records (
+                            id, code, is_otp, phone, raw_phone, raw_message, raw_payload,
+                            client_ip, sender, timestamp, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            record.get("id"),
+                            record.get("code", ""),
+                            1 if record.get("is_otp") else 0,
+                            record.get("phone", ""),
+                            record.get("raw_phone", ""),
+                            record.get("raw_message", ""),
+                            record.get("raw_payload", ""),
+                            record.get("client_ip", ""),
+                            record.get("sender", "SMS_FORWARDER"),
+                            float(record.get("timestamp", time.time())),
+                            record.get("created_at", dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                        ),
+                    )
+            except Exception as e2:
+                logger.error(f"[db] Failed to persist OTP record {record.get('id')}: {e2}", exc_info=True)
         finally:
             conn.close()
 
@@ -2460,8 +2499,7 @@ def get_persisted_otps(limit: int = 100, db_path: Path = DB_PATH) -> List[dict]:
     try:
         cur = conn.execute(
             """
-            SELECT id, code, is_otp, phone, raw_phone, raw_message, raw_payload,
-                   client_ip, sender, timestamp, created_at
+            SELECT *
             FROM otp_records
             ORDER BY timestamp DESC
             LIMIT ?
@@ -2471,16 +2509,31 @@ def get_persisted_otps(limit: int = 100, db_path: Path = DB_PATH) -> List[dict]:
         rows = cur.fetchall()
         results = []
         for r in rows:
+            keys = r.keys()
+            raw_msg = r["raw_message"] or ""
+            sender = r["sender"] or "SMS_FORWARDER"
+            if "is_gvc" in keys and r["is_gvc"] is not None:
+                is_gvc_val = bool(r["is_gvc"])
+            else:
+                # Dynamic fallback check
+                msg_u = raw_msg.upper()
+                snd_u = sender.upper()
+                is_gvc_val = any(k in snd_u for k in ["GERRYS", "GVCW", "GVC", "GERRY"]) or any(k in msg_u for k in ["GVCW", "GVC", "GERRYS", "GERRY'S"]) or ("MANUAL_ENTRY" in snd_u) or ("SIMULAT" in snd_u)
+
+            cat_val = r["category"] if ("category" in keys and r["category"]) else ("gvc" if is_gvc_val else "spam")
+
             results.append({
                 "id": r["id"],
                 "code": r["code"],
                 "is_otp": bool(r["is_otp"]),
+                "is_gvc": is_gvc_val,
+                "category": cat_val,
                 "phone": r["phone"],
                 "raw_phone": r["raw_phone"] or "",
-                "raw_message": r["raw_message"] or "",
+                "raw_message": raw_msg,
                 "raw_payload": r["raw_payload"] or "",
                 "client_ip": r["client_ip"] or "",
-                "sender": r["sender"] or "SMS_FORWARDER",
+                "sender": sender,
                 "timestamp": float(r["timestamp"]),
                 "created_at": r["created_at"],
             })

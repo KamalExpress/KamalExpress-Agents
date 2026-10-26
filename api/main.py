@@ -151,7 +151,7 @@ async def get_current_user(
     if not auth_cfg.enabled:
         return {"id": 1, "username": "admin", "role": "admin", "full_name": "Admin", "is_active": True}
 
-    token = session_token or (auth_header.credentials if auth_header else None)
+    token = (auth_header.credentials if auth_header else None) or session_token
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -172,7 +172,7 @@ async def get_optional_user(
     auth_header: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
 ) -> Optional[dict]:
     """Optional session validation for bookmarklets and third-party ingestion."""
-    token = session_token or (auth_header.credentials if auth_header else None)
+    token = (auth_header.credentials if auth_header else None) or session_token
     if not token:
         return None
     return get_user_by_session(token)
@@ -302,7 +302,7 @@ async def logout_endpoint(
     auth_header: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
 ):
     """Log out current user and invalidate session."""
-    token = session_token or (auth_header.credentials if auth_header else None)
+    token = (auth_header.credentials if auth_header else None) or session_token
     if token:
         delete_session(token)
     response.delete_cookie("session_token")
@@ -2110,13 +2110,30 @@ async def get_latest_otp(phone: Optional[str] = Query(None), user: dict = Depend
 
 @app.get("/api/otp/status")
 async def get_otp_system_status(user: dict = Depends(get_current_user)):
-    """Return OTP event bus telemetry and webhook configuration info."""
+    """Return OTP event bus telemetry and webhook configuration info with role-based filtering."""
     auth_cfg = get_settings().auth
+    all_otps = get_all_cached_otps()
+
+    is_admin = user.get("role") == "admin"
+    gvc_otps = [o for o in all_otps if o.get("is_gvc", True)]
+    spam_otps = [o for o in all_otps if not o.get("is_gvc", True)]
+
+    # Staff only receives verified GVC OTP messages; non-GVC spam is restricted to Admin
+    visible_otps = all_otps if is_admin else gvc_otps
+
     return {
         "webhook_url": "/api/otp/webhook",
         "webhook_secret_configured": bool(auth_cfg.webhook_secret),
-        "total_cached": len(get_all_cached_otps()),
-        "recent_otps": get_all_cached_otps()[:50],
+        "is_admin": is_admin,
+        "counts": {
+            "total": len(visible_otps),
+            "gvc": len(gvc_otps),
+            "spam": len(spam_otps) if is_admin else 0,
+        },
+        "total_cached": len(visible_otps),
+        "recent_otps": visible_otps[:50],
+        "gvc_otps": gvc_otps[:50],
+        "spam_otps": spam_otps[:50] if is_admin else [],
     }
 
 

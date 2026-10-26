@@ -36,15 +36,47 @@ RECENT_SMS_STREAM: List[dict] = []
 OTP_WAITERS: Dict[str, List[asyncio.Future]] = {}
 
 
+def is_gvc_sms(raw_message: Optional[str], sender: Optional[str] = "") -> bool:
+    """
+    Determine if an incoming SMS is genuinely from GVC World / Gerrys for appointment booking.
+
+    Sample GVC SMS:
+    'GERRYS - This OTP number is valid for 5 mins. Please do not share this with anyone. The OTP for your GVCW Appointment is: 99910'
+    """
+    msg = (raw_message or "").upper()
+    snd = (sender or "").upper()
+
+    # 1. Sender tag contains Gerrys / GVC aliases
+    if any(k in snd for k in ["GERRYS", "GVCW", "GVC", "GERRY"]):
+        return True
+
+    # 2. Message body contains distinct GVC appointment terms
+    gvc_terms = ["GVCW", "GVC", "GERRYS", "GERRY'S"]
+    if any(term in msg for term in gvc_terms):
+        return True
+
+    # 3. Manual entry or test simulation from trusted dashboard
+    if "MANUAL_ENTRY" in snd or "SIMULAT" in snd:
+        return True
+
+    return False
+
+
 def _init_from_persistence() -> None:
     """Load persistent OTP records from SQLite into active in-memory cache on startup."""
     global RECENT_SMS_STREAM, OTP_STORE
     try:
         persisted = get_persisted_otps(limit=100)
         RECENT_SMS_STREAM.clear()
-        RECENT_SMS_STREAM.extend(persisted)
-        for rec in reversed(persisted):
-            if rec.get("is_otp") and rec.get("phone"):
+        for rec in persisted:
+            # Ensure is_gvc and category are tagged
+            if "is_gvc" not in rec or rec.get("is_gvc") is None:
+                rec["is_gvc"] = is_gvc_sms(rec.get("raw_message"), rec.get("sender"))
+            rec["category"] = "gvc" if rec["is_gvc"] else "spam"
+            RECENT_SMS_STREAM.append(rec)
+
+        for rec in reversed(RECENT_SMS_STREAM):
+            if rec.get("is_otp") and rec.get("phone") and rec.get("is_gvc"):
                 OTP_STORE[rec["phone"]] = rec
                 OTP_STORE["latest"] = rec
         if persisted:
@@ -128,10 +160,15 @@ def record_incoming_otp(
     import secrets
     record_id = f"otp_{int(time.time()*1000)}_{secrets.token_hex(2)}"
 
+    is_gvc = is_gvc_sms(raw_message, sender)
+    category = "gvc" if is_gvc else "spam"
+
     record = {
         "id": record_id,
         "code": display_code,
         "is_otp": has_valid_otp,
+        "is_gvc": is_gvc,
+        "category": category,
         "phone": clean_phone,
         "raw_phone": phone or "",
         "raw_message": raw_message or "",
@@ -142,7 +179,8 @@ def record_incoming_otp(
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    if has_valid_otp:
+    # Only cache in active OTP_STORE if it is a valid GVC OTP
+    if has_valid_otp and is_gvc:
         if clean_phone:
             OTP_STORE[clean_phone] = record
         OTP_STORE["latest"] = record
@@ -158,9 +196,9 @@ def record_incoming_otp(
     except Exception as err:
         logger.error(f"[otp] Failed to persist record to SQLite: {err}")
 
-    # Wake up any waiting coroutines only if a real numeric OTP exists
+    # Wake up any waiting coroutines only if a real numeric OTP exists AND is GVC / trusted
     notified_count = 0
-    if has_valid_otp:
+    if has_valid_otp and is_gvc:
         keys_to_notify = [clean_phone, "latest", "any"] if clean_phone else ["latest", "any"]
         for key in keys_to_notify:
             if key in OTP_WAITERS:
@@ -173,19 +211,26 @@ def record_incoming_otp(
 
     # Log to unified persistent system stream
     masked_phone = mask_phone_pii(clean_phone)
-    if has_valid_otp:
+    if has_valid_otp and is_gvc:
         log_system_event(
             level="SUCCESS",
             category="OTP",
-            message=f"Intercepted SMS from '{sender}' for SIM {masked_phone}: Extracted verification OTP '{display_code}'. (Dispatched to {notified_count} waiting booking task(s))",
-            details={"phone_masked": masked_phone, "sender": sender, "is_otp": True, "notified_tasks": notified_count},
+            message=f"Intercepted GVC Appointment SMS from '{sender}' for SIM {masked_phone}: Extracted verification OTP '{display_code}'. (Dispatched to {notified_count} waiting booking task(s))",
+            details={"phone_masked": masked_phone, "sender": sender, "is_otp": True, "is_gvc": True, "notified_tasks": notified_count},
+        )
+    elif has_valid_otp and not is_gvc:
+        log_system_event(
+            level="INFO",
+            category="OTP",
+            message=f"Filtered non-GVC SMS / Spam with code '{display_code}' from '{sender}' on SIM {masked_phone}.",
+            details={"phone_masked": masked_phone, "sender": sender, "is_otp": True, "is_gvc": False},
         )
     else:
         log_system_event(
             level="INFO",
             category="OTP",
-            message=f"Received general SMS from '{sender}' on SIM {masked_phone}: {raw_message[:90]}",
-            details={"phone_masked": masked_phone, "sender": sender, "is_otp": False},
+            message=f"Received general SMS from '{sender}' on SIM {masked_phone}: {raw_message[:90] if raw_message else ''}",
+            details={"phone_masked": masked_phone, "sender": sender, "is_otp": False, "is_gvc": is_gvc},
         )
 
     logger.info(
