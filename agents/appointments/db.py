@@ -3105,15 +3105,11 @@ def import_all_system_data(backup_data: dict, db_path: Path = DB_PATH) -> dict:
                         pwd_hash = u.get("password_hash")
                         if not salt or not pwd_hash:
                             pwd_hash, salt = hash_password("Admin123!", salt)
+                        # Clean conflicting rows by username or id to prevent UNIQUE collisions
+                        conn.execute("DELETE FROM users WHERE username = ? OR id = ?", (u.get("username"), u.get("id")))
                         conn.execute("""
                             INSERT INTO users (id, username, password_hash, salt, role, full_name, is_active, created_at, last_login_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(username) DO UPDATE SET
-                                password_hash=excluded.password_hash,
-                                salt=excluded.salt,
-                                role=excluded.role,
-                                full_name=excluded.full_name,
-                                is_active=excluded.is_active
                         """, (
                             u.get("id"),
                             u.get("username"),
@@ -3258,6 +3254,7 @@ def import_all_system_data(backup_data: dict, db_path: Path = DB_PATH) -> dict:
                 for c in clients:
                     p_num = (c.get("passport_number") or "").upper().strip()
                     if p_num:
+                        conn.execute("DELETE FROM client_queue WHERE passport_number = ? OR id = ?", (p_num, c.get("id")))
                         conn.execute("""
                             INSERT INTO client_queue (
                                 id, first_name, last_name, dob, passport_number, passport_expiry,
@@ -3336,20 +3333,29 @@ def import_all_system_data(backup_data: dict, db_path: Path = DB_PATH) -> dict:
                 # 6. OTP Messages
                 otps = backup_data.get("otp_messages_log") or []
                 for o in otps:
-                    if o.get("otp_code") and o.get("phone_number"):
+                    o_id = o.get("id")
+                    code = o.get("code") or o.get("otp_code")
+                    phone = o.get("phone") or o.get("phone_number")
+                    if o_id and (code or phone):
                         conn.execute("""
-                            INSERT INTO otp_records (id, phone_number, sender, otp_code, raw_message, timestamp, status, claimed_by)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(id) DO NOTHING
+                            INSERT OR REPLACE INTO otp_records (
+                                id, code, is_otp, is_gvc, category, phone, raw_phone, raw_message, raw_payload,
+                                client_ip, sender, timestamp, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
-                            o.get("id"),
-                            o.get("phone_number"),
-                            o.get("sender", "GVC"),
-                            o.get("otp_code"),
+                            o_id,
+                            code or "",
+                            1 if o.get("is_otp", True) else 0,
+                            1 if o.get("is_gvc", True) else 0,
+                            o.get("category", "gvc" if o.get("is_gvc", True) else "spam"),
+                            phone or "",
+                            o.get("raw_phone", ""),
                             o.get("raw_message", ""),
-                            o.get("timestamp") or datetime.utcnow().isoformat(),
-                            o.get("status", "RECEIVED"),
-                            o.get("claimed_by"),
+                            o.get("raw_payload", ""),
+                            o.get("client_ip", ""),
+                            o.get("sender", "SMS_FORWARDER"),
+                            float(o.get("timestamp") or time.time()),
+                            o.get("created_at") or datetime.utcnow().isoformat(),
                         ))
                         imported_counts["otp_records"] += 1
 
