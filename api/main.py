@@ -2112,11 +2112,17 @@ async def get_latest_otp(phone: Optional[str] = Query(None), user: dict = Depend
 async def get_otp_system_status(user: dict = Depends(get_current_user)):
     """Return OTP event bus telemetry and webhook configuration info with role-based filtering."""
     auth_cfg = get_settings().auth
+    from agents.appointments.otp import is_gvc_sms
     all_otps = get_all_cached_otps()
 
+    # Re-evaluate is_gvc strictly on message text & sender to guarantee zero leakage
+    for o in all_otps:
+        o["is_gvc"] = is_gvc_sms(o.get("raw_message"), o.get("sender"))
+        o["category"] = "gvc" if o["is_gvc"] else "spam"
+
     is_admin = user.get("role") == "admin"
-    gvc_otps = [o for o in all_otps if o.get("is_gvc", True)]
-    spam_otps = [o for o in all_otps if not o.get("is_gvc", True)]
+    gvc_otps = [o for o in all_otps if o.get("is_gvc")]
+    spam_otps = [o for o in all_otps if not o.get("is_gvc")]
 
     # Staff only receives verified GVC OTP messages; non-GVC spam is restricted to Admin
     visible_otps = all_otps if is_admin else gvc_otps

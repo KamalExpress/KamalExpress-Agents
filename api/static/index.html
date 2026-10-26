@@ -5005,7 +5005,7 @@ How can I help you today?</div>
 
     // Filter by active tab (Staff only receives verified GVC messages from backend anyway)
     const filteredList = latestOtpList.filter(item => {
-      const isGvc = item.is_gvc !== false;
+      const isGvc = Boolean(item.is_gvc) === true;
       return activeOtpTab === 'gvc' ? isGvc : !isGvc;
     });
 
@@ -5021,7 +5021,7 @@ How can I help you today?</div>
       const tr = document.createElement('tr');
       const isFresh = item.age_seconds <= 180;
       const isOtp = item.is_otp !== false && item.code !== 'TEST_MSG';
-      const isGvc = item.is_gvc !== false;
+      const isGvc = Boolean(item.is_gvc) === true;
 
       let badgeClass = 'badge-disabled';
       let codeDisplay = '';
@@ -5067,7 +5067,7 @@ How can I help you today?</div>
     activeModalOtpId = item.id;
 
     const isOtp = item.is_otp !== false && item.code !== 'TEST_MSG';
-    const isGvc = item.is_gvc !== false;
+    const isGvc = Boolean(item.is_gvc) === true;
     const gvcBadge = isGvc 
       ? `<span class="badge badge-booked" style="margin-left:8px;">GVC APPOINTMENT</span>`
       : `<span class="badge badge-quarantined" style="margin-left:8px;">FILTERED / SPAM</span>`;

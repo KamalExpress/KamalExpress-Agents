@@ -3336,7 +3336,16 @@ def import_all_system_data(backup_data: dict, db_path: Path = DB_PATH) -> dict:
                     o_id = o.get("id")
                     code = o.get("code") or o.get("otp_code")
                     phone = o.get("phone") or o.get("phone_number")
+                    raw_msg = o.get("raw_message") or ""
+                    sender = o.get("sender") or "SMS_FORWARDER"
                     if o_id and (code or phone):
+                        if "is_gvc" in o and o.get("is_gvc") is not None:
+                            is_gvc_val = bool(o["is_gvc"])
+                        else:
+                            from .otp import is_gvc_sms
+                            is_gvc_val = is_gvc_sms(raw_msg, sender)
+                        cat_val = o.get("category") or ("gvc" if is_gvc_val else "spam")
+
                         conn.execute("""
                             INSERT OR REPLACE INTO otp_records (
                                 id, code, is_otp, is_gvc, category, phone, raw_phone, raw_message, raw_payload,
@@ -3346,8 +3355,8 @@ def import_all_system_data(backup_data: dict, db_path: Path = DB_PATH) -> dict:
                             o_id,
                             code or "",
                             1 if o.get("is_otp", True) else 0,
-                            1 if o.get("is_gvc", True) else 0,
-                            o.get("category", "gvc" if o.get("is_gvc", True) else "spam"),
+                            1 if is_gvc_val else 0,
+                            cat_val,
                             phone or "",
                             o.get("raw_phone", ""),
                             o.get("raw_message", ""),
