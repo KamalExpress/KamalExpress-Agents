@@ -18,7 +18,10 @@ from .db import (
     get_active_gvc_session,
     get_gvc_auth_mode,
     get_gvc_credentials,
+    get_next_available_gvc_account,
+    set_gvc_account_status,
     invalidate_gvc_session,
+    log_system_event,
 )
 from .portals.gvc_auth import gvc_auth_solver
 
@@ -27,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class GVCSolverWorker:
     """
-    Background worker that manages Option 3 autonomous session renewal.
+    Background worker that manages Option 3 autonomous session renewal with multi-account pool governance.
     """
 
     def __init__(self) -> None:
@@ -37,6 +40,7 @@ class GVCSolverWorker:
         self._last_status: str = "IDLE"
         self._last_error: Optional[str] = None
         self._total_solves: int = 0
+        self._current_account_persona: Optional[str] = None
 
     @property
     def is_running(self) -> bool:
@@ -59,7 +63,7 @@ class GVCSolverWorker:
         logger.info("[solver_worker] GVCSolverWorker background task stopped.")
 
     async def _worker_loop(self) -> None:
-        """Main autonomous maintenance loop with cost guard."""
+        """Main autonomous maintenance loop with cost guard and account pool governance."""
         logger.info("[solver_worker] Loop entered. Waiting for active jobs...")
         while self._running:
             try:
@@ -90,25 +94,53 @@ class GVCSolverWorker:
 
                 if not active_session:
                     needs_login = True
-                    logger.info("[solver_worker] No active GVC session found in DB. Triggering auto-login...")
+                    logger.info("[solver_worker] No active GVC session found in DB. Selecting next available account from pool...")
                 elif active_session.get("is_expired") or not active_session.get("is_valid"):
                     needs_login = True
-                    logger.info("[solver_worker] Active GVC session is expired or invalid. Triggering renewal...")
+                    logger.info("[solver_worker] Active GVC session is expired or invalid. Selecting next available account for renewal...")
 
                 if needs_login:
-                    self._last_status = "LOGGING_IN"
-                    res = await gvc_auth_solver.login_with_credentials()
+                    # Select next available ACTIVE account not in COOLDOWN/PAUSED/DISABLED
+                    candidate = get_next_available_gvc_account()
+                    if not candidate:
+                        self._last_status = "STANDBY (All Accounts Inactive/Cooldown)"
+                        self._last_error = "All GVC accounts in pool are in non-operating states (PAUSED, DISABLED, BLOCKED, or COOLDOWN). Zero network/CapSolver spend."
+                        logger.warning(f"[solver_worker] [STANDBY] {self._last_error}")
+                        log_system_event(
+                            level="WARNING",
+                            category="GOVERNANCE",
+                            message="[STANDBY] All GVC portal accounts in pool are in non-operating states. Solver worker standing down. Zero network/CapSolver spend.",
+                        )
+                        # Stand down safely without hammering network or CapSolver
+                        await asyncio.sleep(30)
+                        continue
+
+                    acc_id = candidate["id"]
+                    acc_email = candidate["email"]
+                    acc_pwd = candidate["password"]
+                    persona = candidate.get("worker_persona_name") or f"Operator #{acc_id}"
+                    self._current_account_persona = persona
+
+                    self._last_status = f"LOGGING_IN ({persona}: {acc_email})"
+                    logger.info(f"[solver_worker] Attempting login with account #{acc_id}: '{persona}' ({acc_email})...")
+
+                    res = await gvc_auth_solver.login_with_credentials(
+                        email=acc_email,
+                        password=acc_pwd,
+                        account_id=acc_id,
+                    )
+
                     if res.get("success"):
                         self._total_solves += 1
-                        self._last_status = "AUTHENTICATED"
+                        self._last_status = f"AUTHENTICATED ({persona})"
                         self._last_error = None
-                        logger.info(f"[solver_worker] ✓ Auto-solver login successful. Total solves: {self._total_solves}")
+                        logger.info(f"[solver_worker] [SUCCESS] Auto-solver login successful for {persona} ({acc_email}). Total solves: {self._total_solves}")
                     else:
-                        self._last_status = "ERROR"
+                        self._last_status = f"ERROR ({persona})"
                         self._last_error = res.get("error", "Unknown login failure")
-                        logger.warning(f"[solver_worker] Auto-solver login failed: {self._last_error}")
-                        # Sleep 30s before retrying upon failure
-                        await asyncio.sleep(30)
+                        logger.warning(f"[solver_worker] [ROTATION] Auto-solver login failed for {persona} ({acc_email}): {self._last_error}. Account placed in cooldown; rotating to next eligible account...")
+                        # Brief jitter sleep before picking next candidate in pool
+                        await asyncio.sleep(5)
                         continue
 
                 creds = get_gvc_credentials()
@@ -138,6 +170,7 @@ class GVCSolverWorker:
             "last_run_at": self._last_run_at,
             "last_error": self._last_error,
             "total_solves": self._total_solves,
+            "current_account": self._current_account_persona,
             "active_session": {
                 "has_token": bool(active_sess and active_sess.get("auth_token")),
                 "source": active_sess.get("source") if active_sess else None,

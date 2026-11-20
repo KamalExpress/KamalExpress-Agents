@@ -67,6 +67,92 @@ class GVCAuthSolver:
             "Sec-Fetch-Site": "same-origin",
         }
 
+    def _preflight_waf_probe_sync(self, proxy: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Phase 1: Pre-flight probe to verify proxy connectivity and Imperva Incapsula clearance
+        BEFORE invoking or paying for CapSolver tokens. Cost: $0.00.
+        """
+        try:
+            from playwright.sync_api import sync_playwright
+            from playwright_stealth import Stealth
+            from urllib.parse import urlparse
+
+            proxy_dict = None
+            if proxy:
+                p = urlparse(proxy)
+                if p.hostname:
+                    proxy_dict = {"server": f"http://{p.hostname}:{p.port}"}
+                    if p.username:
+                        proxy_dict["username"] = p.username
+                        proxy_dict["password"] = p.password
+
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                    ]
+                )
+                ctx_kwargs = {
+                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "viewport": {"width": 1280, "height": 720},
+                    "extra_http_headers": {
+                        "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                        "sec-ch-ua-mobile": "?0",
+                        "sec-ch-ua-platform": '"Windows"',
+                    }
+                }
+                if proxy_dict:
+                    ctx_kwargs["proxy"] = proxy_dict
+
+                context = browser.new_context(**ctx_kwargs)
+                page = context.new_page()
+
+                try:
+                    Stealth().apply_stealth_sync(page)
+                except Exception:
+                    pass
+
+                target_url = f"{self.base_url}/?lang=en_US"
+                clean_proxy = proxy.split("@")[-1] if proxy else "direct"
+                logger.info(f"[gvc_auth] [PRE-FLIGHT] Probing proxy {clean_proxy} on {target_url} (Zero CapSolver spend)...")
+                try:
+                    page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+                    page.wait_for_timeout(2000)
+                except Exception as net_err:
+                    browser.close()
+                    err_msg = str(net_err)
+                    logger.warning(f"[gvc_auth] [PRE-FLIGHT FAILED] Proxy {clean_proxy} connection error: {err_msg}")
+                    return {
+                        "clear": False,
+                        "is_waf": False,
+                        "error": err_msg,
+                        "quarantine_seconds": 900,
+                    }
+
+                # Check for Incapsula anti-bot challenge
+                page_html = page.content().lower()
+                has_incap_iframe = page.locator("iframe#main-iframe").count() > 0
+                if has_incap_iframe or "_incapsula_resource" in page_html or "error title" in page_html:
+                    browser.close()
+                    logger.warning(f"[gvc_auth] [PRE-FLIGHT BLOCKED] Imperva Incapsula WAF challenge detected on proxy {clean_proxy}. Quarantining 60m.")
+                    return {
+                        "clear": False,
+                        "is_waf": True,
+                        "error": "Imperva Incapsula anti-bot challenge on target origin",
+                        "quarantine_seconds": 3600,
+                    }
+
+                browser.close()
+                logger.info(f"[gvc_auth] [PRE-FLIGHT PASSED] Target origin is clean on {clean_proxy}! Proceeding to CAPTCHA solve.")
+                return {"clear": True}
+        except Exception as e:
+            logger.error(f"[gvc_auth] Pre-flight exception on proxy {proxy}: {e}")
+            return {"clear": False, "is_waf": False, "error": str(e), "quarantine_seconds": 900}
+
     def _browser_login_sync(
         self,
         email: str,
@@ -203,9 +289,10 @@ class GVCAuthSolver:
         password: Optional[str] = None,
         max_retries: int = 3,
         proxy: Optional[str] = None,
+        account_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Execute automated login via CapSolver + GVC REST API.
+        Execute automated login via CapSolver + GVC REST API with Pre-Flight Quota Protection.
         Directly matches operator-agent/main_operator.py login mechanics.
         """
         creds = get_gvc_credentials()
@@ -226,7 +313,7 @@ class GVCAuthSolver:
             }
 
         login_url = f"{self.base_url}/api/v1/auth/login"
-        logger.info(f"[gvc_auth] Initiating autonomous GVC login for account: {email}...")
+        logger.info(f"[gvc_auth] Initiating autonomous GVC login for account: {email} (Account ID: {account_id or 'Standalone'})...")
 
         last_error = None
         for attempt in range(1, max_retries + 1):
@@ -240,8 +327,27 @@ class GVCAuthSolver:
 
             logger.info(f"[gvc_auth] Attempt {attempt}/{max_retries} via proxy {chosen_proxy or 'direct'}...")
 
+            # ── PRE-FLIGHT QUOTA GUARD (Phase 1) ──────────────────────────────────
+            # Probe target origin without calling CapSolver ($0 spend on blocked/dead proxies)
+            probe_res = await asyncio.to_thread(self._preflight_waf_probe_sync, chosen_proxy)
+            if not probe_res.get("clear"):
+                err_msg = probe_res.get("error", "Pre-flight probe failed")
+                quarantine_s = probe_res.get("quarantine_seconds", 900)
+                is_waf = probe_res.get("is_waf", False)
+                last_error = f"Pre-flight failed: {err_msg}"
+                logger.warning(f"[gvc_auth] [PRE-FLIGHT BLOCKED] {err_msg} on {chosen_proxy or 'direct'}. Skipping CapSolver solve ($0 spent).")
+                if chosen_proxy:
+                    self.proxy_manager.mark_proxy_failed(chosen_proxy, error=err_msg, quarantine_seconds=quarantine_s, account_id=account_id)
+                log_system_event(
+                    level="WARNING",
+                    category="PROXY",
+                    message=f"[PRE-FLIGHT BLOCKED] Proxy {chosen_proxy or 'direct'} failed pre-flight: {err_msg}. Quarantined ({quarantine_s}s). CapSolver spared.",
+                    details={"account_id": account_id, "proxy": chosen_proxy, "is_waf": is_waf, "error": err_msg},
+                )
+                continue
+
             try:
-                # 1. Solve reCAPTCHA v2 on the login page via CapSolver
+                # 1. Origin is clean; solve reCAPTCHA v2 on the login page via CapSolver
                 page_url = f"{self.base_url}/login"
                 captcha_token = await self.captcha_solver.solve_recaptcha_v2(self.sitekey, page_url)
                 if not captcha_token:
@@ -282,7 +388,7 @@ class GVCAuthSolver:
                     last_error = f"Imperva WAF challenge HTML returned on {chosen_proxy or 'direct'}"
                     logger.warning(f"[gvc_auth] Login hit WAF challenge HTML on proxy {chosen_proxy}. Quarantining and rotating...")
                     if chosen_proxy:
-                        self.proxy_manager.mark_proxy_failed(chosen_proxy, error="Imperva WAF challenge on login", log_event=False)
+                        self.proxy_manager.mark_proxy_failed(chosen_proxy, error="Imperva WAF challenge on login", quarantine_seconds=3600, account_id=account_id, log_event=False)
                     clean_proxy = chosen_proxy.split("@")[-1] if chosen_proxy else "direct"
                     next_proxy = self.proxy_manager.get_proxy_url()
                     clean_next = next_proxy.split("@")[-1] if next_proxy else "default"
@@ -292,7 +398,7 @@ class GVCAuthSolver:
                     log_system_event(
                         level="WARNING",
                         category="PROXY",
-                        message=f"Imperva WAF challenge on login for '{email}'. Quarantined proxy {clean_proxy} (5m). Rotated to residential proxy {clean_next} ({active_count}/{total_count} active in pool).",
+                        message=f"Imperva WAF challenge on login for '{email}'. Quarantined proxy {clean_proxy} (60m). Rotated to residential proxy {clean_next} ({active_count}/{total_count} active in pool).",
                         details={"email": email, "quarantined_proxy": clean_proxy, "next_proxy": clean_next, "active_pool": active_count, "total_pool": total_count},
                     )
                     continue
@@ -330,12 +436,24 @@ class GVCAuthSolver:
                             synced_by="auto_solver",
                             notes=f"Autonomous login successful for {email}",
                         )
+                        if account_id:
+                            import json
+                            from ..db import update_gvc_account_session, set_gvc_account_status
+                            update_gvc_account_session(
+                                account_id=account_id,
+                                auth_token=token,
+                                bearer_token=token,
+                                cookies_json=json.dumps(session_cookies),
+                                is_authenticated=True,
+                            )
+                            set_gvc_account_status(account_id, "ACTIVE", reason="Authenticated successfully")
+
                         logger.info(f"[gvc_auth] Successfully authenticated GVC session (ID: {saved['id']}) for {email}!")
                         log_system_event(
                             level="SUCCESS",
                             category="AUTH",
                             message=f"Autonomous login successful for account '{email}'. Session token synced and active.",
-                            details={"email": email, "session_id": saved["id"]},
+                            details={"email": email, "session_id": saved["id"], "account_id": account_id},
                         )
                         return {
                             "success": True,
@@ -353,6 +471,9 @@ class GVCAuthSolver:
                 elif status_code == 401:
                     logger.warning(f"[gvc_auth] Login rejected (HTTP 401 Invalid Credentials): {body_text[:200]}")
                     last_error = "Invalid username or password on GVC portal"
+                    if account_id:
+                        from ..db import set_gvc_account_status
+                        set_gvc_account_status(account_id, "BLOCKED", reason="HTTP 401: Invalid credentials")
                     break
                 else:
                     if chosen_proxy:
@@ -371,8 +492,12 @@ class GVCAuthSolver:
             level="ERROR",
             category="AUTH",
             message=f"Autonomous login failed for account '{email}' after {max_retries} attempts. Last error: {last_error}",
-            details={"email": email, "last_error": last_error},
+            details={"email": email, "last_error": last_error, "account_id": account_id},
         )
+        if account_id:
+            from ..db import set_gvc_account_status
+            set_gvc_account_status(account_id, "COOLDOWN", reason=last_error)
+
         is_waf = "waf" in (last_error or "").lower() or "incapsula" in (last_error or "").lower()
         return {
             "success": False,

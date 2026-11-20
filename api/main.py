@@ -83,6 +83,11 @@ from agents.appointments.db import (
     delete_gvc_portal_account,
     update_gvc_account_session,
     toggle_gvc_account_worker,
+    set_gvc_account_status,
+    clear_gvc_account_cooldown,
+    pause_all_gvc_accounts,
+    resume_all_gvc_accounts,
+    get_gvc_accounts_telemetry_summary,
     export_all_system_data,
     import_all_system_data,
     log_system_event,
@@ -1553,6 +1558,7 @@ class GVCAccountCreateRequest(BaseModel):
     worker_persona_name: Optional[str] = None
     assigned_proxy_url: Optional[str] = None
     auth_mode: Optional[str] = "auto_solver"
+    status: Optional[str] = "ACTIVE"
 
 
 class GVCAccountUpdateRequest(BaseModel):
@@ -1568,6 +1574,7 @@ class GVCAccountUpdateRequest(BaseModel):
     assigned_proxy_url: Optional[str] = None
     auth_mode: Optional[str] = None
     is_worker_active: Optional[bool] = None
+    status: Optional[str] = None
 
 
 class GVCAccountSyncTokenRequest(BaseModel):
@@ -1576,17 +1583,47 @@ class GVCAccountSyncTokenRequest(BaseModel):
     cookies: Optional[Union[dict, str]] = None
 
 
+class GVCAccountStatusRequest(BaseModel):
+    status: str
+    reason: Optional[str] = None
+
+
+class GVCMasterControlRequest(BaseModel):
+    action: str  # "pause_all" | "resume_all"
+
+
 @app.get("/api/gvc/accounts")
 async def list_gvc_portal_accounts(user: dict = Depends(get_current_user)):
     """List GVC portal accounts (staff sees their own accounts, admin sees all)."""
     is_admin = user.get("role") == "admin"
     username = user.get("username", "staff")
     accounts = get_gvc_portal_accounts(owner_username=username, is_admin=is_admin)
+    telemetry = get_gvc_accounts_telemetry_summary(owner_username=username, is_admin=is_admin)
     return {
         "is_admin": is_admin,
         "total_accounts": len(accounts),
         "accounts": accounts,
+        "telemetry": telemetry,
     }
+
+
+@app.post("/api/gvc/accounts/master-control")
+async def master_control_gvc_accounts(req: GVCMasterControlRequest, user: dict = Depends(get_current_user)):
+    """Emergency Master Control: pause_all or resume_all across the fleet."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    owner = None if is_admin else username
+
+    if req.action == "pause_all":
+        count = pause_all_gvc_accounts(owner_username=owner)
+        fleet_manager.refresh_workers()
+        return {"success": True, "action": "pause_all", "affected_count": count, "message": f"Paused {count} accounts across fleet."}
+    elif req.action == "resume_all":
+        count = resume_all_gvc_accounts(owner_username=owner)
+        fleet_manager.refresh_workers()
+        return {"success": True, "action": "resume_all", "affected_count": count, "message": f"Resumed {count} accounts across fleet."}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action. Must be 'pause_all' or 'resume_all'.")
 
 
 @app.post("/api/gvc/accounts")
@@ -1654,6 +1691,49 @@ async def remove_gvc_portal_account(account_id: int, user: dict = Depends(get_cu
     return {"success": deleted, "message": f"Account #{account_id} removed from fleet."}
 
 
+@app.post("/api/gvc/accounts/{account_id}/status")
+async def set_account_status_endpoint(account_id: int, req: GVCAccountStatusRequest, user: dict = Depends(get_current_user)):
+    """Change GVC portal account lifecycle state (ACTIVE, PAUSED, DISABLED)."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    acc = get_gvc_portal_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="GVC Account not found.")
+    if not is_admin and acc["owner_username"] != username:
+        raise HTTPException(status_code=403, detail="Unauthorized.")
+
+    try:
+        updated = set_gvc_account_status(account_id=account_id, status=req.status, reason=req.reason)
+        fleet_manager.refresh_workers()
+        return {
+            "success": updated,
+            "status": req.status.upper(),
+            "message": f"Account #{account_id} status updated to {req.status.upper()}.",
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+@app.post("/api/gvc/accounts/{account_id}/clear-cooldown")
+async def clear_account_cooldown_endpoint(account_id: int, user: dict = Depends(get_current_user)):
+    """Clear cooldown timer and restore account to ACTIVE state."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    acc = get_gvc_portal_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="GVC Account not found.")
+    if not is_admin and acc["owner_username"] != username:
+        raise HTTPException(status_code=403, detail="Unauthorized.")
+
+    cleared = clear_gvc_account_cooldown(account_id=account_id)
+    fleet_manager.refresh_workers()
+    return {
+        "success": cleared,
+        "status": "ACTIVE",
+        "message": f"Cooldown cleared for account #{account_id}. Returned to ACTIVE.",
+    }
+
+
 @app.post("/api/gvc/accounts/{account_id}/toggle-worker")
 async def toggle_account_worker_endpoint(account_id: int, user: dict = Depends(get_current_user)):
     """Toggle background worker for a specific GVC account."""
@@ -1671,6 +1751,7 @@ async def toggle_account_worker_endpoint(account_id: int, user: dict = Depends(g
     return {
         "success": True,
         "is_worker_active": updated.get("is_worker_active") if updated else False,
+        "status": updated.get("status") if updated else "UNKNOWN",
         "message": f"Worker for #{account_id} {'started' if updated and updated.get('is_worker_active') else 'paused'}.",
     }
 
@@ -1690,27 +1771,13 @@ async def login_account_endpoint(account_id: int, user: dict = Depends(get_curre
     res = await gvc_auth_solver.login_with_credentials(
         email=acc["email"],
         password=acc["password"],
-        proxy=acc.get("assigned_proxy_url")
+        proxy=acc.get("assigned_proxy_url"),
+        account_id=account_id,
     )
+    fleet_manager.refresh_workers()
     if res.get("success"):
-        update_gvc_account_session(
-            account_id=account_id,
-            auth_token=res.get("auth_token", ""),
-            bearer_token=res.get("bearer_token", ""),
-            cookies_json=str(res.get("cookies", {})),
-            is_authenticated=True,
-        )
-        fleet_manager.refresh_workers()
         return {"success": True, "message": f"Account #{account_id} ({acc['email']}) logged in successfully!"}
     else:
-        update_gvc_account_session(
-            account_id=account_id,
-            auth_token="",
-            bearer_token="",
-            cookies_json="{}",
-            is_authenticated=False,
-            last_error=res.get("error", "Login failed"),
-        )
         return {"success": False, "error": res.get("error", "Login failed")}
 
 
@@ -1767,7 +1834,9 @@ async def get_fleet_status_endpoint(user: dict = Depends(get_current_user)):
     """Get aggregated or staff-scoped telemetry of the GVC Worker Fleet."""
     is_admin = user.get("role") == "admin"
     username = user.get("username", "staff")
-    return fleet_manager.get_telemetry(owner_username=username, is_admin=is_admin)
+    telemetry = fleet_manager.get_telemetry(owner_username=username, is_admin=is_admin)
+    telemetry["governance"] = get_gvc_accounts_telemetry_summary(owner_username=username, is_admin=is_admin)
+    return telemetry
 
 
 @app.post("/api/gvc/fleet/pre-stage")

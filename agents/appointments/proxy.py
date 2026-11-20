@@ -79,19 +79,22 @@ class ProxyManager:
         worker_name: Optional[str] = None,
         account_id: Optional[int] = None,
         log_event: bool = True,
+        quarantine_seconds: Optional[int] = None,
     ) -> None:
-        """Mark a proxy as failed in SQLite and quarantine it for 5 minutes."""
+        """Mark a proxy as failed in SQLite and quarantine it (default 5m or custom)."""
         if not proxy_url:
             return
         try:
+            q_secs = int(quarantine_seconds) if quarantine_seconds is not None else int(self._cooldown_seconds)
             record_proxy_result(
                 proxy_url=proxy_url,
                 success=False,
                 error=error or "Imperva WAF / Timeout Block",
-                quarantine_seconds=int(self._cooldown_seconds),
+                quarantine_seconds=q_secs,
             )
             clean = proxy_url.split("@")[-1]
-            logger.warning(f"[proxy] [FAILED] Proxy {clean} marked failed in SQLite (quarantined 5m).")
+            mins = max(1, q_secs // 60)
+            logger.warning(f"[proxy] [FAILED] Proxy {clean} marked failed in SQLite (quarantined {mins}m).")
             if error and ("407" in str(error) or "traffic limit" in str(error).lower() or "access denied" in str(error).lower()):
                 try:
                     from .service_guard import service_guard
@@ -105,10 +108,10 @@ class ProxyManager:
                 log_system_event(
                     level="WARNING",
                     category="PROXY",
-                    message=f"Quarantined residential proxy {clean} for 5m due to {error or 'WAF challenge'}. Active pool: {active_proxies}/{total} healthy proxies available.",
+                    message=f"Quarantined residential proxy {clean} for {mins}m due to {error or 'WAF challenge'}. Active pool: {active_proxies}/{total} healthy proxies available.",
                     account_id=account_id,
                     worker_name=worker_name or "",
-                    details={"quarantined_proxy": clean, "error": error, "active_pool": active_proxies, "total_pool": total},
+                    details={"quarantined_proxy": clean, "error": error, "active_pool": active_proxies, "total_pool": total, "quarantine_seconds": q_secs},
                 )
         except Exception as e:
             logger.error(f"[proxy] Failed to record proxy failure in DB: {e}")

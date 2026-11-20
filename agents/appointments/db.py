@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import secrets
 import sqlite3
@@ -303,6 +304,10 @@ def init_db(db_path: Path = DB_PATH) -> None:
                         cookies_json TEXT DEFAULT '{}',
                         is_authenticated INTEGER DEFAULT 0,
                         is_worker_active INTEGER DEFAULT 1,
+                        status TEXT DEFAULT 'ACTIVE',
+                        cooldown_until TEXT DEFAULT NULL,
+                        consecutive_failures INTEGER DEFAULT 0,
+                        last_failure_reason TEXT DEFAULT NULL,
                         last_login_at TEXT,
                         last_checked_at TEXT,
                         last_error TEXT,
@@ -313,6 +318,36 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_gvc_accounts_owner ON gvc_portal_accounts(owner_username);")
+                # Column migrations for existing databases
+                try:
+                    conn.execute("ALTER TABLE gvc_portal_accounts ADD COLUMN status TEXT DEFAULT 'ACTIVE';")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE gvc_portal_accounts ADD COLUMN cooldown_until TEXT DEFAULT NULL;")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE gvc_portal_accounts ADD COLUMN consecutive_failures INTEGER DEFAULT 0;")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE gvc_portal_accounts ADD COLUMN last_failure_reason TEXT DEFAULT NULL;")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_gvc_accounts_status ON gvc_portal_accounts(status, cooldown_until);")
+                except Exception:
+                    pass
+
+                # Purge mock/dummy proxies from active database pool
+                conn.execute("""
+                    DELETE FROM proxies
+                    WHERE proxy_url LIKE '%test.proxy.io%'
+                       OR proxy_url LIKE '%1.2.3.4%'
+                       OR proxy_url LIKE '%5.6.7.8%'
+                       OR host IN ('test.proxy.io', '1.2.3.4', '5.6.7.8');
+                """)
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS system_logs (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2639,8 +2674,9 @@ def add_gvc_portal_account(account_data: dict, db_path: Path = DB_PATH) -> int:
                         target_vac_id, target_visa_type, assigned_proxy_url, auth_mode,
                         account_role, worker_persona_name, target_date_from,
                         auth_token, bearer_token, cookies_json, is_authenticated,
-                        is_worker_active, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        is_worker_active, status, cooldown_until, consecutive_failures,
+                        last_failure_reason, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         account_data.get("account_label") or f"{persona} ({account_data.get('email', '')[:10]})",
@@ -2660,6 +2696,10 @@ def add_gvc_portal_account(account_data: dict, db_path: Path = DB_PATH) -> int:
                         account_data.get("cookies_json", "{}"),
                         1 if account_data.get("is_authenticated") else 0,
                         1 if account_data.get("is_worker_active", True) else 0,
+                        account_data.get("status", "ACTIVE").upper(),
+                        account_data.get("cooldown_until"),
+                        account_data.get("consecutive_failures", 0),
+                        account_data.get("last_failure_reason"),
                         now_str,
                     ),
                 )
@@ -2688,8 +2728,24 @@ def get_gvc_portal_accounts(owner_username: Optional[str] = None, is_admin: bool
         
         rows = cur.fetchall()
         results = []
+        now_utc = datetime.utcnow()
         for r in rows:
             persona = r["worker_persona_name"] if "worker_persona_name" in r.keys() and r["worker_persona_name"] else get_next_persona_name(r["id"])
+            raw_status = r["status"] if "status" in r.keys() and r["status"] else ("ACTIVE" if r["is_worker_active"] else "PAUSED")
+            cooldown_until = r["cooldown_until"] if "cooldown_until" in r.keys() else None
+            is_cooldown = False
+            cooldown_remaining_sec = 0
+            if cooldown_until:
+                try:
+                    cd_dt = datetime.fromisoformat(cooldown_until)
+                    if cd_dt > now_utc:
+                        is_cooldown = True
+                        cooldown_remaining_sec = max(0, int((cd_dt - now_utc).total_seconds()))
+                except Exception:
+                    pass
+
+            computed_status = "COOLDOWN" if is_cooldown and raw_status not in ("PAUSED", "DISABLED", "BLOCKED") else raw_status
+
             results.append({
                 "id": r["id"],
                 "account_label": r["account_label"],
@@ -2710,7 +2766,14 @@ def get_gvc_portal_accounts(owner_username: Optional[str] = None, is_admin: bool
                 "bearer_token": r["bearer_token"] or "",
                 "cookies_json": r["cookies_json"] or "{}",
                 "is_authenticated": bool(r["is_authenticated"]),
-                "is_worker_active": bool(r["is_worker_active"]),
+                "is_worker_active": bool(r["is_worker_active"]) and computed_status == "ACTIVE",
+                "status": computed_status,
+                "raw_status": raw_status,
+                "is_in_cooldown": is_cooldown,
+                "cooldown_until": cooldown_until,
+                "cooldown_remaining_seconds": cooldown_remaining_sec,
+                "consecutive_failures": r["consecutive_failures"] if "consecutive_failures" in r.keys() else 0,
+                "last_failure_reason": r["last_failure_reason"] if "last_failure_reason" in r.keys() else None,
                 "last_login_at": r["last_login_at"],
                 "last_checked_at": r["last_checked_at"],
                 "last_error": r["last_error"],
@@ -2731,6 +2794,22 @@ def get_gvc_portal_account_by_id(account_id: int, db_path: Path = DB_PATH) -> Op
         if not r:
             return None
         persona = r["worker_persona_name"] if "worker_persona_name" in r.keys() and r["worker_persona_name"] else get_next_persona_name(r["id"])
+        now_utc = datetime.utcnow()
+        raw_status = r["status"] if "status" in r.keys() and r["status"] else ("ACTIVE" if r["is_worker_active"] else "PAUSED")
+        cooldown_until = r["cooldown_until"] if "cooldown_until" in r.keys() else None
+        is_cooldown = False
+        cooldown_remaining_sec = 0
+        if cooldown_until:
+            try:
+                cd_dt = datetime.fromisoformat(cooldown_until)
+                if cd_dt > now_utc:
+                    is_cooldown = True
+                    cooldown_remaining_sec = max(0, int((cd_dt - now_utc).total_seconds()))
+            except Exception:
+                pass
+
+        computed_status = "COOLDOWN" if is_cooldown and raw_status not in ("PAUSED", "DISABLED", "BLOCKED") else raw_status
+
         return {
             "id": r["id"],
             "account_label": r["account_label"],
@@ -2751,7 +2830,14 @@ def get_gvc_portal_account_by_id(account_id: int, db_path: Path = DB_PATH) -> Op
             "bearer_token": r["bearer_token"] or "",
             "cookies_json": r["cookies_json"] or "{}",
             "is_authenticated": bool(r["is_authenticated"]),
-            "is_worker_active": bool(r["is_worker_active"]),
+            "is_worker_active": bool(r["is_worker_active"]) and computed_status == "ACTIVE",
+            "status": computed_status,
+            "raw_status": raw_status,
+            "is_in_cooldown": is_cooldown,
+            "cooldown_until": cooldown_until,
+            "cooldown_remaining_seconds": cooldown_remaining_sec,
+            "consecutive_failures": r["consecutive_failures"] if "consecutive_failures" in r.keys() else 0,
+            "last_failure_reason": r["last_failure_reason"] if "last_failure_reason" in r.keys() else None,
             "last_login_at": r["last_login_at"],
             "last_checked_at": r["last_checked_at"],
             "last_error": r["last_error"],
@@ -2767,13 +2853,24 @@ def update_gvc_portal_account(account_id: int, update_data: dict, db_path: Path 
     allowed = {
         "account_label", "email", "password", "otp_phone_number",
         "target_vac_id", "target_visa_type", "assigned_proxy_url",
-        "auth_mode", "is_worker_active", "account_role", "worker_persona_name", "target_date_from"
+        "auth_mode", "is_worker_active", "account_role", "worker_persona_name", "target_date_from",
+        "status", "cooldown_until", "consecutive_failures", "last_failure_reason"
     }
     fields = []
     values = []
     for k, v in update_data.items():
         if k in allowed:
             if k == "password" and (v is None or not str(v).strip()):
+                continue
+            if k == "status":
+                v_clean = str(v).upper()
+                fields.append("status = ?")
+                values.append(v_clean)
+                if v_clean == "ACTIVE":
+                    fields.append("is_worker_active = 1")
+                    fields.append("cooldown_until = NULL")
+                elif v_clean in ("PAUSED", "DISABLED", "BLOCKED"):
+                    fields.append("is_worker_active = 0")
                 continue
             fields.append(f"{k} = ?")
             values.append(v)
@@ -2801,6 +2898,226 @@ def delete_gvc_portal_account(account_id: int, db_path: Path = DB_PATH) -> bool:
                 return cur.rowcount > 0
         finally:
             conn.close()
+
+
+def get_next_available_gvc_account(exclude_ids: Optional[List[int]] = None, db_path: Path = DB_PATH) -> Optional[dict]:
+    """
+    Retrieve the next ACTIVE GVC portal account eligible for auto-login or slot checking.
+    Strictly excludes PAUSED, DISABLED, BLOCKED accounts, and accounts currently in COOLDOWN.
+    Orders by least recently used (last_login_at ASC) for fair round-robin rotation.
+    """
+    exclude_ids = exclude_ids or []
+    now_utc = datetime.utcnow().isoformat()
+    conn = get_connection(db_path)
+    try:
+        query = """
+            SELECT * FROM gvc_portal_accounts
+            WHERE status = 'ACTIVE'
+              AND is_worker_active = 1
+              AND (cooldown_until IS NULL OR cooldown_until <= ?)
+        """
+        params: list = [now_utc]
+        if exclude_ids:
+            placeholders = ",".join("?" for _ in exclude_ids)
+            query += f" AND id NOT IN ({placeholders})"
+            params.extend(exclude_ids)
+        query += " ORDER BY COALESCE(last_login_at, '1970-01-01') ASC LIMIT 1"
+        cur = conn.execute(query, params)
+        row = cur.fetchone()
+        if not row:
+            return None
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def set_gvc_account_status(
+    account_id: int,
+    status: str,
+    cooldown_seconds: Optional[int] = None,
+    reason: Optional[str] = None,
+    db_path: Path = DB_PATH,
+) -> bool:
+    """
+    Atomically transition a GVC portal account's governance lifecycle state.
+    Valid states: 'ACTIVE', 'PAUSED', 'DISABLED', 'COOLDOWN', 'BLOCKED'.
+    """
+    status_upper = status.strip().upper()
+    valid_statuses = {"ACTIVE", "PAUSED", "DISABLED", "COOLDOWN", "BLOCKED"}
+    if status_upper not in valid_statuses:
+        raise ValueError(f"Invalid GVC account status: {status}. Must be one of {valid_statuses}")
+
+    now_utc = datetime.utcnow()
+    cooldown_until_str = None
+
+    if status_upper == "COOLDOWN":
+        # Anti-fingerprinting: randomize cooldown duration between 180 and 300 seconds if not specified
+        cd_secs = cooldown_seconds if cooldown_seconds is not None else random.randint(180, 300)
+        cooldown_dt = now_utc + timedelta(seconds=cd_secs)
+        cooldown_until_str = cooldown_dt.isoformat()
+        reason_text = reason or f"Transient error. Cooldown for {cd_secs}s with anti-bot jitter."
+    elif status_upper == "ACTIVE":
+        reason_text = reason or "Operational and Active"
+    else:
+        reason_text = reason or f"Status set to {status_upper}"
+
+    event_info = None
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                acc = conn.execute("SELECT worker_persona_name, email, consecutive_failures FROM gvc_portal_accounts WHERE id = ?", (account_id,)).fetchone()
+                if not acc:
+                    return False
+
+                persona = acc["worker_persona_name"] or f"Operator #{account_id}"
+                email = acc["email"]
+
+                if status_upper == "COOLDOWN":
+                    failures = (acc["consecutive_failures"] or 0) + 1
+                    conn.execute("""
+                        UPDATE gvc_portal_accounts
+                        SET status = ?, is_worker_active = 0, cooldown_until = ?, consecutive_failures = ?, last_failure_reason = ?
+                        WHERE id = ?
+                    """, (status_upper, cooldown_until_str, failures, reason_text, account_id))
+                    event_info = ("WARNING", f"[COOLDOWN] Operator '{persona}' ({email}) placed in COOLDOWN until {cooldown_until_str[:19]} ({cd_secs}s jitter). Reason: {reason_text}", persona)
+                elif status_upper == "ACTIVE":
+                    conn.execute("""
+                        UPDATE gvc_portal_accounts
+                        SET status = 'ACTIVE', is_worker_active = 1, cooldown_until = NULL, consecutive_failures = 0, last_failure_reason = NULL
+                        WHERE id = ?
+                    """, (account_id,))
+                    event_info = ("INFO", f"[RESUMED] Operator '{persona}' ({email}) status set to ACTIVE.", persona)
+                else:
+                    conn.execute("""
+                        UPDATE gvc_portal_accounts
+                        SET status = ?, is_worker_active = 0, cooldown_until = NULL, last_failure_reason = ?
+                        WHERE id = ?
+                    """, (status_upper, reason_text, account_id))
+                    event_info = ("INFO" if status_upper == "PAUSED" else "WARNING", f"[{status_upper}] Operator '{persona}' ({email}) status set to {status_upper}. Reason: {reason_text}", persona)
+        finally:
+            conn.close()
+
+    if event_info:
+        level, msg, persona = event_info
+        log_system_event(
+            level=level,
+            category="GOVERNANCE",
+            message=msg,
+            account_id=account_id,
+            worker_name=persona,
+            db_path=db_path,
+        )
+    return True
+
+
+def clear_gvc_account_cooldown(account_id: int, db_path: Path = DB_PATH) -> bool:
+    """Manually clear cooldown for an account, returning it immediately to ACTIVE status."""
+    return set_gvc_account_status(account_id=account_id, status="ACTIVE", reason="Cooldown cleared manually by operator", db_path=db_path)
+
+
+def pause_all_gvc_accounts(owner_username: Optional[str] = None, db_path: Path = DB_PATH) -> int:
+    """
+    Emergency Master Switch: Atomically pause all accounts.
+    Puts the entire fleet into a safe, non-operating state with zero quota spend.
+    """
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                reason = "Manually paused via Fleet Master Control"
+                if owner_username:
+                    cur = conn.execute("""
+                        UPDATE gvc_portal_accounts
+                        SET status = 'PAUSED', is_worker_active = 0, last_failure_reason = ?
+                        WHERE owner_username = ? AND status != 'DISABLED'
+                    """, (reason, owner_username))
+                else:
+                    cur = conn.execute("""
+                        UPDATE gvc_portal_accounts
+                        SET status = 'PAUSED', is_worker_active = 0, last_failure_reason = ?
+                        WHERE status != 'DISABLED'
+                    """, (reason,))
+                count = cur.rowcount
+        finally:
+            conn.close()
+
+    log_system_event(
+        level="WARNING",
+        category="GOVERNANCE",
+        message=f"[MASTER PAUSE] Paused {count} GVC portal accounts across the fleet.",
+        db_path=db_path,
+    )
+    return count
+
+
+def resume_all_gvc_accounts(owner_username: Optional[str] = None, db_path: Path = DB_PATH) -> int:
+    """
+    Emergency Master Switch: Atomically resume all paused accounts.
+    Clears cooldowns and returns paused accounts to ACTIVE. Does not un-disable explicitly DISABLED accounts.
+    """
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                if owner_username:
+                    cur = conn.execute("""
+                        UPDATE gvc_portal_accounts
+                        SET status = 'ACTIVE', is_worker_active = 1, cooldown_until = NULL, consecutive_failures = 0, last_failure_reason = NULL
+                        WHERE owner_username = ? AND status IN ('PAUSED', 'COOLDOWN')
+                    """, (owner_username,))
+                else:
+                    cur = conn.execute("""
+                        UPDATE gvc_portal_accounts
+                        SET status = 'ACTIVE', is_worker_active = 1, cooldown_until = NULL, consecutive_failures = 0, last_failure_reason = NULL
+                        WHERE status IN ('PAUSED', 'COOLDOWN')
+                    """)
+                count = cur.rowcount
+        finally:
+            conn.close()
+
+    log_system_event(
+        level="INFO",
+        category="GOVERNANCE",
+        message=f"[MASTER RESUME] Resumed {count} GVC portal accounts to ACTIVE.",
+        db_path=db_path,
+    )
+    return count
+
+
+def get_gvc_accounts_telemetry_summary(owner_username: Optional[str] = None, is_admin: bool = False, db_path: Path = DB_PATH) -> dict:
+    """
+    Compute real-time governance summary across all accounts for the Dashboard Standby Banner.
+    """
+    accounts = get_gvc_portal_accounts(owner_username=owner_username, is_admin=is_admin, db_path=db_path)
+    total = len(accounts)
+    active = sum(1 for a in accounts if a["status"] == "ACTIVE")
+    paused = sum(1 for a in accounts if a["status"] == "PAUSED")
+    disabled = sum(1 for a in accounts if a["status"] == "DISABLED")
+    cooldown = sum(1 for a in accounts if a["status"] == "COOLDOWN")
+    blocked = sum(1 for a in accounts if a["status"] == "BLOCKED")
+    authenticated = sum(1 for a in accounts if a["is_authenticated"])
+
+    all_inactive = (total > 0 and active == 0)
+    summary_parts = []
+    if paused: summary_parts.append(f"{paused} Paused")
+    if cooldown: summary_parts.append(f"{cooldown} Cooldown")
+    if disabled: summary_parts.append(f"{disabled} Disabled")
+    if blocked: summary_parts.append(f"{blocked} Blocked")
+
+    summary_text = ", ".join(summary_parts) if summary_parts else "All Accounts Operational"
+
+    return {
+        "total_accounts": total,
+        "active_accounts": active,
+        "paused_accounts": paused,
+        "disabled_accounts": disabled,
+        "cooldown_accounts": cooldown,
+        "blocked_accounts": blocked,
+        "authenticated_accounts": authenticated,
+        "all_inactive": all_inactive,
+        "summary_text": summary_text,
+    }
 
 
 # ── Unified Persistent System Activity Logger ────────────────────────────────
@@ -2964,15 +3281,23 @@ def update_gvc_account_session(
 
 
 def toggle_gvc_account_worker(account_id: int, is_active: Optional[bool] = None, db_path: Path = DB_PATH) -> bool:
-    """Enable or disable the booker worker for a specific account."""
+    """Enable or disable the booker worker for a specific account, keeping status synchronized."""
     with _lock:
         conn = get_connection(db_path)
         try:
             with conn:
-                if is_active is None:
-                    conn.execute("UPDATE gvc_portal_accounts SET is_worker_active = 1 - is_worker_active WHERE id = ?", (account_id,))
-                else:
-                    conn.execute("UPDATE gvc_portal_accounts SET is_worker_active = ? WHERE id = ?", (1 if is_active else 0, account_id))
+                acc = conn.execute("SELECT is_worker_active, status FROM gvc_portal_accounts WHERE id = ?", (account_id,)).fetchone()
+                if not acc:
+                    return False
+                curr_active = bool(acc["is_worker_active"])
+                target_active = (not curr_active) if is_active is None else bool(is_active)
+                target_status = "ACTIVE" if target_active else "PAUSED"
+                
+                conn.execute("""
+                    UPDATE gvc_portal_accounts
+                    SET is_worker_active = ?, status = ?, cooldown_until = CASE WHEN ? = 1 THEN NULL ELSE cooldown_until END
+                    WHERE id = ?
+                """, (1 if target_active else 0, target_status, 1 if target_active else 0, account_id))
                 return True
         finally:
             conn.close()

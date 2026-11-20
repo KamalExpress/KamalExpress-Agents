@@ -1,9 +1,13 @@
+import sys
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from agents.appointments.db import init_db, add_proxies_bulk, record_proxy_result, get_active_proxies, get_all_proxies, get_proxy_stats, get_connection
 import datetime as dt
 
-def run_test():
+def test_proxy_quarantine():
     tmp = Path(tempfile.mktemp(suffix='.db'))
     try:
         init_db(tmp)

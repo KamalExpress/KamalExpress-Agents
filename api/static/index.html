@@ -1180,7 +1180,7 @@ How can I help you today?</div>
             </div>
           </div>
           <div style="margin-top:4px; font-size:11.5px; color:var(--muted-foreground); line-height:1.4; border-top:1px solid var(--border); padding-top:6px;">
-            ℹ️ When open slots are discovered, active bookers immediately claim applicants in parallel waves. Checkers automatically halt to prevent redundant requests.
+            [INFO] When open slots are discovered, active bookers immediately claim applicants in parallel waves. Checkers automatically halt to prevent redundant requests.
           </div>
         </div>
       </div>
@@ -1195,7 +1195,13 @@ How can I help you today?</div>
           </div>
           <div class="card-desc">Staff can register multiple GVC portal accounts with dedicated roles (Booker vs Slot Checker) and SIM numbers.</div>
         </div>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" onclick="pauseAllGvcAccounts()" title="Emergency Master Switch: Pause all accounts immediately" style="color:#ef4444; border-color:rgba(239,68,68,0.4);">
+            <i data-lucide="pause-circle" class="icon" style="color:#ef4444;"></i> Pause All
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="resumeAllGvcAccounts()" title="Resume all paused and cooldown accounts" style="color:#10b981; border-color:rgba(16,185,129,0.4);">
+            <i data-lucide="play-circle" class="icon" style="color:#10b981;"></i> Resume All
+          </button>
           <button class="btn btn-outline btn-sm" onclick="loadGvcAccounts()">
             <i data-lucide="rotate-cw" class="icon"></i> Refresh Fleet
           </button>
@@ -1203,6 +1209,20 @@ How can I help you today?</div>
             <i data-lucide="plus-circle" class="icon"></i> + Add GVC Account
           </button>
         </div>
+      </div>
+
+      <!-- Emergency Standby Banner (Shows when all accounts are paused, disabled, or in cooldown) -->
+      <div id="gvc-fleet-standby-banner" style="display:none; margin:10px 16px 0; padding:10px 14px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:6px; font-size:12.5px; color:#ef4444; align-items:center; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <i data-lucide="alert-triangle" class="icon" style="width:16px; height:16px; flex-shrink:0;"></i>
+          <div>
+            <span style="font-weight:700;">[ALL ACCOUNTS INACTIVE]</span>
+            <span id="gvc-fleet-standby-text">Fleet operations standing down: all accounts are in non-operating states. Zero network/CapSolver spend.</span>
+          </div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="resumeAllGvcAccounts()" style="border-color:#ef4444; color:#ef4444; white-space:nowrap; padding:2px 8px; font-size:11px;">
+          <i data-lucide="play" class="icon" style="width:12px; height:12px;"></i> Resume All
+        </button>
       </div>
 
       <div class="queue-table-wrap" style="max-height:420px;">
@@ -1216,8 +1236,8 @@ How can I help you today?</div>
               <th>OTP SIM (PII)</th>
               <th>Target Center & Visa</th>
               <th>Session Auth</th>
-              <th>Worker Status</th>
-              <th style="text-align:right; min-width:160px;">Actions</th>
+              <th>Lifecycle & Status</th>
+              <th style="text-align:right; min-width:180px;">Actions</th>
             </tr>
           </thead>
           <tbody id="gvc-accounts-table-body">
@@ -2112,13 +2132,20 @@ How can I help you today?</div>
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1.2fr 1fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1.2fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Lifecycle Status *</label>
+          <select id="gvc-new-status">
+            <option value="ACTIVE">ACTIVE (Operational)</option>
+            <option value="PAUSED">PAUSED (Standby)</option>
+            <option value="DISABLED">DISABLED (Hard Stop)</option>
+          </select>
+        </div>
         <div class="form-group" style="margin-bottom:0;">
           <label>Target VAC Center *</label>
           <select id="gvc-new-vac">
-            <option value="138">Islamabad (138)</option>
-            <option value="137">Karachi (137)</option>
-            <option value="139">Lahore (139)</option>
+            <option value="137">Islamabad (137)</option>
+            <option value="138">Lahore (138)</option>
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
@@ -2204,13 +2231,20 @@ How can I help you today?</div>
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1.2fr 1fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1.2fr 1fr; gap:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Lifecycle Status *</label>
+          <select id="gvc-edit-status">
+            <option value="ACTIVE">ACTIVE (Operational)</option>
+            <option value="PAUSED">PAUSED (Standby)</option>
+            <option value="DISABLED">DISABLED (Hard Stop)</option>
+          </select>
+        </div>
         <div class="form-group" style="margin-bottom:0;">
           <label>Target VAC Center *</label>
           <select id="gvc-edit-vac">
-            <option value="138">Islamabad (138)</option>
-            <option value="137">Karachi (137)</option>
-            <option value="139">Lahore (139)</option>
+            <option value="137">Islamabad (137)</option>
+            <option value="138">Lahore (138)</option>
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
@@ -2936,6 +2970,21 @@ How can I help you today?</div>
       // Update Operations Coordinator Readiness Checklist & Wave Plan
       updateOperationsPlan(fleetData);
 
+      // Update Standby Banner
+      const banner = document.getElementById('gvc-fleet-standby-banner');
+      const bannerText = document.getElementById('gvc-fleet-standby-text');
+      const telem = data.telemetry || (fleetData ? fleetData.governance : null);
+      if (banner && telem) {
+        if (telem.all_inactive) {
+          banner.style.display = 'flex';
+          if (bannerText) {
+            bannerText.textContent = `Fleet operations standing down: ${telem.summary_text}. Solver worker idle (Zero network/CapSolver spend).`;
+          }
+        } else {
+          banner.style.display = 'none';
+        }
+      }
+
       const tbody = document.getElementById('gvc-accounts-table-body');
       if (!tbody) return;
       tbody.innerHTML = '';
@@ -2963,10 +3012,39 @@ How can I help you today?</div>
         }
 
         const isWorkerActive = acc.is_worker_active;
-        const workerBadgeClass = isWorkerActive ? (acc.last_status && acc.last_status.includes('PRE_STAGED') ? 'badge-booked' : 'badge-active') : 'badge-disabled';
-        const workerBadgeText = isWorkerActive ? (acc.last_status || 'ACTIVE (Monitoring)') : 'PAUSED';
+        const status = (acc.status || (isWorkerActive ? 'ACTIVE' : 'PAUSED')).toUpperCase();
+        let statusBadgeClass = 'badge-active';
+        let statusBadgeText = status;
+        let isCooldown = false;
 
-        const vacName = acc.target_vac_id === '138' ? 'ISB (138)' : (acc.target_vac_id === '137' ? 'KHI (137)' : 'LHE (139)');
+        if (status === 'COOLDOWN') {
+          statusBadgeClass = 'badge-warn';
+          if (acc.cooldown_until) {
+            const cdSecs = Math.max(0, Math.round((new Date(acc.cooldown_until).getTime() - Date.now()) / 1000));
+            if (cdSecs > 0) {
+              statusBadgeText = `COOLDOWN (${cdSecs}s)`;
+              isCooldown = true;
+            } else {
+              statusBadgeText = 'COOLDOWN (Expired)';
+            }
+          } else {
+            statusBadgeText = 'COOLDOWN';
+          }
+        } else if (status === 'PAUSED') {
+          statusBadgeClass = 'badge-disabled';
+          statusBadgeText = 'PAUSED';
+        } else if (status === 'DISABLED') {
+          statusBadgeClass = 'badge-disabled';
+          statusBadgeText = 'DISABLED';
+        } else if (status === 'BLOCKED') {
+          statusBadgeClass = 'badge-failed';
+          statusBadgeText = 'BLOCKED (401)';
+        } else if (status === 'ACTIVE') {
+          statusBadgeClass = 'badge-booked';
+          statusBadgeText = isWorkerActive ? (acc.last_status || 'ACTIVE') : 'ACTIVE (Idle)';
+        }
+
+        const vacName = acc.target_vac_id === '137' ? 'ISB (137)' : (acc.target_vac_id === '138' ? 'LHE (138)' : `VAC (${acc.target_vac_id})`);
         const visaTypeLabels = {
           '26': 'Type 26 (Seasonal/Work)',
           '0': 'Type 0 (Schengen C)',
@@ -2977,11 +3055,13 @@ How can I help you today?</div>
         const visaTypeName = visaTypeLabels[String(acc.target_visa_type)] || `Type ${acc.target_visa_type}`;
         const personaName = acc.worker_persona_name || `Operator #${acc.id}`;
         const isOwner = currentUser && (currentUser.username === acc.owner_username || currentUser.role === 'admin');
+        const reasonHtml = acc.last_failure_reason ? `<div style="font-size:10.5px; color:var(--muted-foreground); margin-top:2px;" title="${escapeHtml(acc.last_failure_reason)}">${escapeHtml(acc.last_failure_reason.length > 38 ? acc.last_failure_reason.substring(0, 38) + '...' : acc.last_failure_reason)}</div>` : '';
 
         tr.innerHTML = `
           <td>
             <b>${escapeHtml(personaName)}</b><br>
             <small style="color:var(--muted-foreground); font-size:11px;">#${acc.id} ${escapeHtml(acc.account_label)}</small>
+            ${reasonHtml}
           </td>
           <td><span class="badge ${roleBadgeClass}">${roleBadgeText}</span></td>
           <td><span class="badge badge-in_progress" style="font-size:11px;">${escapeHtml(acc.owner_username)}</span></td>
@@ -2993,30 +3073,50 @@ How can I help you today?</div>
           </td>
           <td><b>${vacName}</b><br><small style="color:var(--muted-foreground); font-size:11px;">${visaTypeName}${acc.target_date_from ? ` | &gt;=${acc.target_date_from}` : ''}</small></td>
           <td><span class="badge ${authBadgeClass}">${authBadgeText}</span></td>
-          <td><span class="badge ${workerBadgeClass}">${workerBadgeText}</span></td>
+          <td><span class="badge ${statusBadgeClass}">${statusBadgeText}</span></td>
           <td style="text-align:right; white-space:nowrap;">
+            ${isCooldown ? `
+              <button class="btn btn-outline btn-sm" onclick="clearGvcAccountCooldown(${acc.id})" title="Clear Cooldown and return to ACTIVE" style="padding:3px 7px; font-size:11.5px; color:var(--accent); border-color:var(--accent);">
+                <i data-lucide="refresh-cw" class="icon" style="width:12px; height:12px;"></i> Clear CD
+              </button>
+            ` : ''}
+            ${status === 'ACTIVE' ? `
+              <button class="btn btn-outline btn-sm" onclick="setGvcAccountStatus(${acc.id}, 'PAUSED')" title="Pause Account" style="padding:3px 7px; font-size:11.5px; margin-left:2px;">
+                <i data-lucide="pause" class="icon" style="width:12px; height:12px;"></i>
+              </button>
+            ` : (status === 'PAUSED' ? `
+              <button class="btn btn-outline btn-sm" onclick="setGvcAccountStatus(${acc.id}, 'ACTIVE')" title="Resume Account" style="padding:3px 7px; font-size:11.5px; margin-left:2px; color:var(--success); border-color:var(--success);">
+                <i data-lucide="play" class="icon" style="width:12px; height:12px;"></i>
+              </button>
+            ` : (status === 'DISABLED' ? `
+              <button class="btn btn-outline btn-sm" onclick="setGvcAccountStatus(${acc.id}, 'ACTIVE')" title="Enable Account" style="padding:3px 7px; font-size:11.5px; margin-left:2px; color:var(--success); border-color:var(--success);">
+                <i data-lucide="check-circle" class="icon" style="width:12px; height:12px;"></i>
+              </button>
+            ` : ''))}
+            ${status !== 'DISABLED' ? `
+              <button class="btn btn-outline btn-sm" onclick="setGvcAccountStatus(${acc.id}, 'DISABLED')" title="Disable Account (Hard Stop)" style="padding:3px 7px; font-size:11.5px; margin-left:2px; color:#ef4444; border-color:rgba(239,68,68,0.3);">
+                <i data-lucide="slash" class="icon" style="width:12px; height:12px;"></i>
+              </button>
+            ` : ''}
             ${isAuth ? `
-              <button class="btn btn-outline btn-sm" onclick="logoutGvcAccount(${acc.id})" title="Log Out Session" style="padding:3px 7px; font-size:11.5px; color:#b91c1c; border-color:#fecaca;">
-                <i data-lucide="log-out" class="icon" style="width:12px; height:12px; color:#b91c1c;"></i> Logout
+              <button class="btn btn-outline btn-sm" onclick="logoutGvcAccount(${acc.id})" title="Log Out Session" style="padding:3px 7px; font-size:11.5px; color:#b91c1c; border-color:#fecaca; margin-left:2px;">
+                <i data-lucide="log-out" class="icon" style="width:12px; height:12px; color:#b91c1c;"></i>
               </button>
             ` : `
-              <button class="btn btn-outline btn-sm" onclick="loginGvcAccount(${acc.id})" title="Auto-Login with CapSolver" style="padding:3px 7px; font-size:11.5px;">
-                <i data-lucide="zap" class="icon" style="width:12px; height:12px; color:var(--accent);"></i> Login
+              <button class="btn btn-outline btn-sm" onclick="loginGvcAccount(${acc.id})" title="Auto-Login with CapSolver" style="padding:3px 7px; font-size:11.5px; margin-left:2px;">
+                <i data-lucide="zap" class="icon" style="width:12px; height:12px; color:var(--accent);"></i>
               </button>
             `}
-            <button class="btn btn-outline btn-sm" onclick="toggleGvcAccountWorker(${acc.id})" title="${isWorkerActive ? 'Pause Worker' : 'Start Worker'}" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
-              <i data-lucide="${isWorkerActive ? 'pause' : 'play'}" class="icon" style="width:12px; height:12px;"></i>
-            </button>
             ${isOwner ? `
-              <button class="btn btn-outline btn-sm" onclick="openEditGvcAccountModal(${acc.id})" title="Edit Account Settings & Role" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
+              <button class="btn btn-outline btn-sm" onclick="openEditGvcAccountModal(${acc.id})" title="Edit Account Settings & Role" style="padding:3px 7px; font-size:11.5px; margin-left:2px;">
                 <i data-lucide="edit-3" class="icon" style="width:12px; height:12px;"></i>
               </button>
             ` : ''}
-            <button class="btn btn-outline btn-sm" onclick="openSyncAccountTokenModal(${acc.id}, '${escapeHtml(acc.account_label)}')" title="Manual Token Sync" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
+            <button class="btn btn-outline btn-sm" onclick="openSyncAccountTokenModal(${acc.id}, '${escapeHtml(acc.account_label)}')" title="Manual Token Sync" style="padding:3px 7px; font-size:11.5px; margin-left:2px;">
               <i data-lucide="key" class="icon" style="width:12px; height:12px;"></i>
             </button>
             ${isOwner ? `
-              <button class="btn btn-destructive btn-sm" onclick="deleteGvcAccount(${acc.id})" title="Delete Account" style="padding:3px 7px; font-size:11.5px; margin-left:3px;">
+              <button class="btn btn-destructive btn-sm" onclick="deleteGvcAccount(${acc.id})" title="Delete Account" style="padding:3px 7px; font-size:11.5px; margin-left:2px;">
                 <i data-lucide="trash-2" class="icon" style="width:12px; height:12px;"></i>
               </button>
             ` : ''}
@@ -3369,7 +3469,8 @@ How can I help you today?</div>
     document.getElementById('gvc-edit-phone').value = acc.otp_phone_number || '';
     document.getElementById('gvc-edit-role').value = acc.account_role || 'HYBRID';
     document.getElementById('gvc-edit-authmode').value = acc.auth_mode || 'auto_solver';
-    document.getElementById('gvc-edit-vac').value = acc.target_vac_id || '138';
+    document.getElementById('gvc-edit-status').value = acc.status || 'ACTIVE';
+    document.getElementById('gvc-edit-vac').value = acc.target_vac_id || '137';
     document.getElementById('gvc-edit-visatype').value = acc.target_visa_type || '26';
     document.getElementById('gvc-edit-datefrom').value = acc.target_date_from || '';
 
@@ -3390,6 +3491,7 @@ How can I help you today?</div>
       otp_phone_number: document.getElementById('gvc-edit-phone').value.trim(),
       account_role: document.getElementById('gvc-edit-role').value,
       auth_mode: document.getElementById('gvc-edit-authmode').value,
+      status: document.getElementById('gvc-edit-status').value,
       target_vac_id: document.getElementById('gvc-edit-vac').value,
       target_visa_type: document.getElementById('gvc-edit-visatype').value,
       target_date_from: document.getElementById('gvc-edit-datefrom').value.trim() || null,
@@ -3447,6 +3549,7 @@ How can I help you today?</div>
       otp_phone_number: document.getElementById('gvc-new-phone').value.trim(),
       account_role: document.getElementById('gvc-new-role').value,
       auth_mode: document.getElementById('gvc-new-authmode').value,
+      status: document.getElementById('gvc-new-status').value,
       target_vac_id: document.getElementById('gvc-new-vac').value,
       target_visa_type: document.getElementById('gvc-new-visatype').value,
       target_date_from: document.getElementById('gvc-new-datefrom').value.trim() || null,
@@ -3521,6 +3624,76 @@ How can I help you today?</div>
       }
     } catch (e) {
       alert(`Error: ${e.message}`);
+    }
+  }
+
+  async function setGvcAccountStatus(id, status, reason = null) {
+    try {
+      const resp = await fetch(`/api/gvc/accounts/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: status, reason: reason }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        loadGvcAccounts();
+      } else {
+        alert(`[ERROR] Failed to set status: ${data.detail || data.error || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    }
+  }
+
+  async function clearGvcAccountCooldown(id) {
+    try {
+      const resp = await fetch(`/api/gvc/accounts/${id}/clear-cooldown`, { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        loadGvcAccounts();
+      } else {
+        alert(`[ERROR] Failed to clear cooldown: ${data.detail || data.error || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    }
+  }
+
+  async function pauseAllGvcAccounts() {
+    if (!confirm("Are you sure you want to PAUSE ALL GVC accounts across the fleet? (All workers will stand down with zero quota spend)")) return;
+    try {
+      const resp = await fetch('/api/gvc/accounts/master-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'pause_all' }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        loadGvcAccounts();
+      } else {
+        alert(`[ERROR] Master pause failed: ${data.detail || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    }
+  }
+
+  async function resumeAllGvcAccounts() {
+    if (!confirm("Resume all paused and cooldown GVC accounts across the fleet?")) return;
+    try {
+      const resp = await fetch('/api/gvc/accounts/master-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resume_all' }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        loadGvcAccounts();
+      } else {
+        alert(`[ERROR] Master resume failed: ${data.detail || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
     }
   }
 
