@@ -1,4 +1,4 @@
-# 🛠️ Developer Guide: Fix for `/api/chat` Timeout & Fallback Response Issue
+#  Developer Guide: Fix for `/api/chat` Timeout & Fallback Response Issue
 
 > **Documented for:** Kamal Express Engineering Team & `KamalExpress-Agents` Developers  
 > **Date:** October 10, 2026  
@@ -6,7 +6,7 @@
 
 ---
 
-## 📌 1. Symptom & Problem Statement
+##  1. Symptom & Problem Statement
 
 When users interacted with the AI Support Chatbot on the website or staff portal, the chatbot consistently returned the fallback message:
 
@@ -16,7 +16,7 @@ Network inspection showed that HTTP `POST /api/chat` requests were timing out af
 
 ---
 
-## 🔍 2. Root Cause Analysis
+##  2. Root Cause Analysis
 
 Investigations identified two primary root causes in the API entrypoint layer:
 
@@ -31,7 +31,7 @@ On every incoming API request, the bootstrap script executed an un-cached Eloque
 
 ---
 
-## 💡 3. Solution & Code Fixes
+##  3. Solution & Code Fixes
 
 ### Fix 1: Non-Blocking Resilient Database Connection
 Update the Eloquent ORM / PDO initialization to set a **2-second connection timeout** and wrap auto-migrations in a safety check. If MySQL is offline, non-DB routes continue responding instantly.
@@ -145,11 +145,11 @@ $app->post('/chat', function ($request, $response) {
     if (empty($reply)) {
         $q = strtolower($userQuery);
         if (str_contains($q, 'greece') || str_contains($q, 'type 26') || str_contains($q, 'work visa') || str_contains($q, 'schengen')) {
-            $reply = "### 🛂 Greece & Schengen Visa Guidance\n\n**Kamal Express** is Pakistan's premier consultancy for **Greece National Work Visas (Type 26)** and **Schengen C Visas**.\n\n- Valid Passport & PCC with MOFA apostille\n- Certified Medical Fitness Certificate\n- Gerrys / GVC World appointment verification";
+            $reply = "###  Greece & Schengen Visa Guidance\n\n**Kamal Express** is Pakistan's premier consultancy for **Greece National Work Visas (Type 26)** and **Schengen C Visas**.\n\n- Valid Passport & PCC with MOFA apostille\n- Certified Medical Fitness Certificate\n- Gerrys / GVC World appointment verification";
         } elseif (str_contains($q, 'umrah') || str_contains($q, 'hajj') || str_contains($q, 'makkah')) {
-            $reply = "### 🕋 Hajj & Umrah Packages 2026\n\nBoutique **3-Star, 4-Star, and 5-Star Haram Clock Tower** plans including Makkah/Madinah hotel lodging, Nusuk Rawdah permits, VIP GMC transport, and guided Ziyarat.";
+            $reply = "###  Hajj & Umrah Packages 2026\n\nBoutique **3-Star, 4-Star, and 5-Star Haram Clock Tower** plans including Makkah/Madinah hotel lodging, Nusuk Rawdah permits, VIP GMC transport, and guided Ziyarat.";
         } else {
-            $reply = "### Welcome to Kamal Express AI Support! 👋\n\nHow can we assist your journey today?\n- 🛂 **Visa Consultancy** (Greece Type 26, Schengen, UK, Saudi, UAE)\n- 🎓 **Study Visas** (Europe, UK, Australia)\n- 🕋 **Hajj & Umrah Caravans**\n- ✈️ **Discount Air Tickets**";
+            $reply = "### Welcome to Kamal Express AI Support! \n\nHow can we assist your journey today?\n-  **Visa Consultancy** (Greece Type 26, Schengen, UK, Saudi, UAE)\n-  **Study Visas** (Europe, UK, Australia)\n-  **Hajj & Umrah Caravans**\n-  **Discount Air Tickets**";
         }
     }
 
@@ -160,7 +160,7 @@ $app->post('/chat', function ($request, $response) {
 
 ---
 
-## 🚀 4. Instructions for `KamalExpress-Agents` Developers
+##  4. Instructions for `KamalExpress-Agents` Developers
 
 To apply this fix in the `KamalExpress-Agents` repository (`E:\Alamia\KamalExpress-Agents`):
 

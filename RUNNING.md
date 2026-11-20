@@ -1,10 +1,10 @@
-# 🚀 Kamal Express AI Platform — Operating & Execution Guide
+#  Kamal Express AI Platform  Operating & Execution Guide
 
 Complete, step-by-step operating guide for running the **Kamal Express Autonomous Visa & Appointment Platform**.
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 1. [Prerequisites](#1-prerequisites)
 2. [One-Time Setup & Configuration](#2-one-time-setup--configuration)
 3. [Step 1: Start the Backend Server](#3-step-1-start-the-backend-server)
@@ -95,11 +95,11 @@ Open a second PowerShell terminal and run:
 ## 6. Step 4: Open and Use the Web Dashboard
 
 Open your browser and navigate to:
-👉 **[http://localhost:8080](http://localhost:8080)**
+ **[http://localhost:8080](http://localhost:8080)**
 
 ### Dashboard Features:
 
-### 💬 1. Conversational AI Tab
+###  1. Conversational AI Tab
 Chat directly with the autonomous multi-agent team:
 - **Intake client:**
   > *"Intake applicant Ali Ahmed, DOB 15/08/1992, Passport PK1234567, Expiry 10/05/2032, Phone 3001234567, Email ali@example.com for Greece Type 26 Islamabad"*
@@ -110,13 +110,13 @@ Chat directly with the autonomous multi-agent team:
 - **Control monitor:**
   > *"Start autonomous slot monitor"*
 
-### 📋 2. Multi-Client Queue & Auto-Booker Tab
+###  2. Multi-Client Queue & Auto-Booker Tab
 - View all queued, in-progress, and booked applicants.
 - Click **"+ Add Client to Queue"** to insert new clients into the database.
 - Click **"Start Monitor"** to activate the background auto-booker.
-- Watch live scans in the **📡 Live Event Activity Feed**.
+- Watch live scans in the ** Live Event Activity Feed**.
 
-### 🔍 3. GVC Greece Slot Inspector Tab
+###  3. GVC Greece Slot Inspector Tab
 - Select Location: **Islamabad (138)**, **Karachi (137)**, or **Lahore (139)**.
 - Select Appointment Type: **Type 26 (Seasonal/Work)**, **Type 0 (Schengen C)**, or **Type 2 (National D)**.
 - Click **"Search Live Slots"** to perform real-time queries against the portal.
@@ -133,13 +133,13 @@ To verify all database, driver, and tool integrations in one command:
 
 Expected output:
 ```text
-════════════════════════════════════════════════════════════
+
   1. Testing Multi-Client Persistent SQLite Queue   -> [PASSED]
   2. Testing Greece GVC World Portal Driver        -> [PASSED]
   3. Testing Autonomous Background Slot Monitor    -> [PASSED]
   4. Testing LangGraph Appointments Agent Tools    -> [PASSED]
-  🎉 ALL END-TO-END VERIFICATION TESTS PASSED SUCCESSFULLY!
-════════════════════════════════════════════════════════════
+   ALL END-TO-END VERIFICATION TESTS PASSED SUCCESSFULLY!
+
 ```
 
 ---

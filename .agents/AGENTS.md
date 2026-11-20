@@ -1,0 +1,42 @@
+# AI Workspace Instructions (AGENTS.md)
+
+This file contains the foundational rules for all AI agents working in this repository. It is automatically injected into the context of every new conversation.
+
+---
+
+## 1. The AI Bootstrap Sequence (Strict Rule)
+If you are entering a fresh conversation and do not have full context of this project, you **MUST NOT** immediately inspect the source code or reverse engineer the repository. 
+
+Instead, you must strictly follow this read order:
+1. Read `docs/README.md` (Master Index & Invariant Map)
+2. Read `docs/transient/sprint/00-current-state.md` (Current State & Active Objectives)
+3. Read `docs/permanent/architecture/01-system-architecture.md` (System Design & Invariants)
+4. Read `docs/indexes/repository.md` (Concept-to-Code Map)
+5. Only then may you inspect the source code.
+
+---
+
+## 2. Documentation Ownership & Live Sync Rule
+* **Single Source of Truth:** The documentation in `docs/` is the single source of truth for both humans and AI agents. Never create separate documentation silos for AI agents.
+* **Automatic Documentation Sync:** Every time you add, modify, or refactor any code or documentation in this repository, you **MUST** run:
+  ```powershell
+  python scripts/sync_docs.py
+  ```
+  This immediately refreshes `docs/docs_data.js` and ensures the in-browser viewer (`docs/index.html`) stays 100% synchronized in real time.
+
+---
+
+## 3. Professional Standards (Zero Emojis)
+* **Never use emoji characters anywhere:**
+  * No emojis in frontend markup (`api/static/index.html`, `docs/index.html`).
+  * No emojis in log output (`logger.info`, `logger.warning`, `print`).
+  * No emojis in tooltips, alerts, exceptions, or documentation.
+* **Standard Replacements:** Use Lucide SVG icons in UI and uppercase bracketed status tags (`[SUCCESS]`, `[ERROR]`, `[WARNING]`, `[INFO]`, `[HALTED]`, `[SLOTS FOUND]`) in terminal and log output.
+
+---
+
+## 4. Consular & Portal Invariants
+* **Center Invariants:** Official Pakistan GVC center IDs are `137` (Islamabad) and `138` (Lahore). A Karachi center **does not exist** for Greece GVC World.
+* **Weekday Invariants:** Visa Type 26 (Work/Seasonal) is active strictly Mon–Fri. Saturday and Sunday are never queried.
+* **Genuine Slots Rule:** An appointment slot is genuine if and only if `id > 0`, `isavailable == true`, and `numofavailableslots > 0`. Discard null or 0 availability entries to prevent false reporting.
+* **WAF Protection:** Never burn CapSolver balance against proxy IPs that are blocked by an Incapsula anti-bot challenge (`iframe#main-iframe`). Detect early, quarantine the proxy, and use imported session tokens.

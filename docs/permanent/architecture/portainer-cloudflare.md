@@ -1,4 +1,4 @@
-# 🚢 Kamal Express AI Platform — Portainer & Cloudflare Tunnel Deployment
+#  Kamal Express AI Platform  Portainer & Cloudflare Tunnel Deployment
 
 This guide explains how to deploy **Kamal Express AI Platform** directly from GitHub into **Portainer** on your Hetzner VPS and connect it to your Cloudflare Tunnel (`kesys.alamiaconnect.com`).
 
@@ -55,7 +55,7 @@ Instead of managing manual text files on the host, staff can manage Pakistan res
 1. Log in to `https://kesys.alamiaconnect.com` as Admin or Staff.
 2. Go to **Settings & Proxies** tab.
 3. Paste IP:Port or full proxy strings (10, 30, 50, etc.) into the bulk paste box.
-4. Click **Import Proxies** — proxies are saved to the persistent SQLite database and dynamically assigned to headless workers.
+4. Click **Import Proxies**  proxies are saved to the persistent SQLite database and dynamically assigned to headless workers.
 
 ---
 

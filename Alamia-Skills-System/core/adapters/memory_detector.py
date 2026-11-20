@@ -18,6 +18,7 @@ class MemoryDetector(BaseDetector):
 
         # 1. Discover session handoff directory
         potential_handoff_dirs = [
+            project_root / "docs" / "transient" / "handoffs",
             project_root / ".ai" / "transient" / "handoffs",
             project_root / ".ai" / "handoffs",
             project_root / "docs" / "handoffs",
@@ -34,6 +35,7 @@ class MemoryDetector(BaseDetector):
 
         # 2. Discover architecture directory
         potential_arch_dirs = [
+            project_root / "docs" / "permanent" / "architecture",
             project_root / ".ai" / "permanent" / "architecture",
             project_root / ".ai" / "architecture",
             project_root / "docs" / "architecture",

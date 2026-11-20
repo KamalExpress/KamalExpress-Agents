@@ -1,10 +1,10 @@
-# 🖥️ Kamal Express AI Platform — Windows Server VPS Deployment Guide
+#  Kamal Express AI Platform  Windows Server VPS Deployment Guide
 
 This guide covers deploying and operating the **Kamal Express Autonomous Visa & Appointment Platform** on a **Windows Server VPS** (e.g. AWS EC2, Azure VM, Hetzner, Contabo, DigitalOcean Windows Server).
 
 ---
 
-## ❓ Do We Need Docker on the Windows Server VPS?
+##  Do We Need Docker on the Windows Server VPS?
 
 ### **Short Answer: NO, Docker is NOT needed (and Native is Recommended).**
 
@@ -16,7 +16,7 @@ This guide covers deploying and operating the **Kamal Express Autonomous Visa & 
 
 ---
 
-## 🚀 Step-by-Step Deployment (5 Minutes)
+##  Step-by-Step Deployment (5 Minutes)
 
 ```mermaid
 flowchart TD
@@ -30,7 +30,7 @@ flowchart TD
 
 ### Step 1: Connect to the Windows Server VPS
 Connect to your VPS using **Remote Desktop Connection (RDP)**:
-- Press `Win + R` → Type `mstsc` → Enter VPS IP and Administrator password.
+- Press `Win + R`  Type `mstsc`  Enter VPS IP and Administrator password.
 
 ---
 
@@ -58,13 +58,13 @@ powershell -ExecutionPolicy Bypass -File .\setup-vps.ps1
 ```
 
 #### What `setup-vps.ps1` automatically does:
-- ✅ Checks for Google Chrome (downloads and installs Chrome if missing).
-- ✅ Checks for Python 3.10+ (downloads and installs Python 3.12 with PATH registration if missing).
-- ✅ Creates the Python virtual environment (`venv`).
-- ✅ Installs all dependencies from `requirements.txt`.
-- ✅ Installs Playwright browser binaries.
-- ✅ Creates `.env` and initializes `data\ips-list-pk.txt`.
-- ✅ Runs `test_end_to_end.py` self-verification to confirm 100% operational readiness.
+-  Checks for Google Chrome (downloads and installs Chrome if missing).
+-  Checks for Python 3.10+ (downloads and installs Python 3.12 with PATH registration if missing).
+-  Creates the Python virtual environment (`venv`).
+-  Installs all dependencies from `requirements.txt`.
+-  Installs Playwright browser binaries.
+-  Creates `.env` and initializes `data\ips-list-pk.txt`.
+-  Runs `test_end_to_end.py` self-verification to confirm 100% operational readiness.
 
 ---
 
@@ -80,7 +80,7 @@ powershell -ExecutionPolicy Bypass -File .\setup-vps.ps1
 
 ### Step 5: Start the Platform (1-Click)
 Double-click:
-📁 **`Start-KamalExpress.bat`** (or run `.\start-vps.ps1` in PowerShell).
+ **`Start-KamalExpress.bat`** (or run `.\start-vps.ps1` in PowerShell).
 
 This starts:
 - Chrome CDP listener on port `9222`.
@@ -89,7 +89,7 @@ This starts:
 
 ---
 
-## 🌐 Remote Access & Firewall (Optional)
+##  Remote Access & Firewall (Optional)
 
 If you wish to access the Web Dashboard from your local laptop instead of inside the VPS RDP:
 
@@ -102,7 +102,7 @@ If you wish to access the Web Dashboard from your local laptop instead of inside
 
 ---
 
-## 🔄 Automatic Code Updates
+##  Automatic Code Updates
 
 [`Start-KamalExpress.bat`](file:///E:/Alamia/KamalExpress-Agents/Start-KamalExpress.bat) and [`start-vps.ps1`](file:///E:/Alamia/KamalExpress-Agents/start-vps.ps1) **automatically run `git pull` on startup** to fetch the latest code from GitHub whenever launched.
 
