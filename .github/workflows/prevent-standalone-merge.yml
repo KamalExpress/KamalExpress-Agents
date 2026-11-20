@@ -1,0 +1,23 @@
+name: Branch Protection Guard
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+jobs:
+  verify-branch-isolation:
+    name: Verify Branch Boundary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Source Branch
+        run: |
+          echo "Target Branch: ${{ github.base_ref }}"
+          echo "Source Branch: ${{ github.head_ref }}"
+          if [ "${{ github.head_ref }}" = "standalone-flow" ]; then
+            echo "::error::[BLOCKED] Merging 'standalone-flow' directly into 'main' is strictly prohibited by architectural governance."
+            echo "[ERROR] 'main' is the Portainer live production branch. Direct merges from standalone-flow are forbidden."
+            exit 1
+          fi
+          echo "[SUCCESS] Source branch '${{ github.head_ref }}' is permitted."
