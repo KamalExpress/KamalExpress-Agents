@@ -47,5 +47,28 @@ def test_proxy_quarantine():
     finally:
         tmp.unlink(missing_ok=True)
 
+
+def test_clear_all_proxies_endpoint(monkeypatch):
+    from fastapi.testclient import TestClient
+    from api.main import app, require_admin
+
+    # Mock require_admin to return admin user
+    app.dependency_overrides[require_admin] = lambda: {"username": "admin", "role": "admin"}
+    client = TestClient(app)
+
+    try:
+        # Test POST /api/proxies/clear-all
+        res = client.post("/api/proxies/clear-all")
+        assert res.status_code == 200
+        assert res.json()["success"] is True
+
+        # Test DELETE /api/proxies
+        res_del = client.delete("/api/proxies")
+        assert res_del.status_code == 200
+        assert res_del.json()["success"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
 if __name__ == '__main__':
     run_test()

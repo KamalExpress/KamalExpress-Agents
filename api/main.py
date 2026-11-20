@@ -2398,6 +2398,8 @@ async def delete_proxy_endpoint(proxy_id: int, admin: dict = Depends(require_adm
 
 
 @app.delete("/api/proxies")
+@app.post("/api/proxies/clear-all")
+@app.delete("/api/proxies/clear-all")
 async def clear_proxies_endpoint(admin: dict = Depends(require_admin)):
     """Clear all proxies from SQLite (Admin only)."""
     clear_all_proxies()
