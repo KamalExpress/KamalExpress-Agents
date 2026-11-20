@@ -29,7 +29,7 @@ if sys.platform == "win32":
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Header, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import AIMessage, HumanMessage
@@ -107,6 +107,7 @@ logging.basicConfig(level=get_settings().log_level)
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
+DOCS_DIR = Path(__file__).parent.parent / "docs"
 
 app = FastAPI(
     title="Kamal Express AI Agents",
@@ -139,6 +140,8 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+if DOCS_DIR.exists():
+    app.mount("/docs-viewer", StaticFiles(directory=DOCS_DIR, html=True), name="docs_viewer")
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -2353,3 +2356,9 @@ async def health():
 async def root():
     """Serve the Web Dashboard & Chat UI."""
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/documentation", include_in_schema=False)
+async def documentation():
+    """Redirect to standalone documentation viewer."""
+    return RedirectResponse(url="/docs-viewer/")

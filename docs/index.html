@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kamal Express Documentation Hub</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --card: #121215;
+      --card-border: #27272a;
+      --foreground: #f4f4f5;
+      --muted: #71717a;
+      --muted-bg: #1c1c20;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --code-bg: #18181b;
+      --border: #27272a;
+      --sidebar-width: 300px;
+      --toc-width: 240px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--foreground);
+      line-height: 1.6;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+    /* Layout */
+    #sidebar {
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      height: 100vh;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    #main-container {
+      flex: 1;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #topbar {
+      height: 56px;
+      min-height: 56px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+    }
+
+    #content-area {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    #doc-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 48px;
+    }
+
+    #toc-rail {
+      width: var(--toc-width);
+      min-width: var(--toc-width);
+      border-left: 1px solid var(--border);
+      padding: 24px 16px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    @media (min-width: 1200px) {
+      #toc-rail { display: block; }
+    }
+
+    /* Sidebar Components */
+    .brand {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+
+    .brand svg {
+      color: var(--accent);
+      width: 20px;
+      height: 20px;
+    }
+
+    .search-box {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--muted-bg);
+      border: 1px solid var(--border);
+      color: var(--foreground);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+
+    .nav-tree {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 8px;
+    }
+
+    .nav-category {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 10px 12px 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #d4d4d8;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      margin-bottom: 2px;
+    }
+
+    .nav-item:hover {
+      background: var(--muted-bg);
+      color: #fff;
+    }
+
+    .nav-item.active {
+      background: rgba(37, 99, 235, 0.15);
+      color: #60a5fa;
+      font-weight: 600;
+    }
+
+    .nav-item svg {
+      width: 14px;
+      height: 14px;
+      opacity: 0.7;
+    }
+
+    /* Content Styling */
+    .doc-header {
+      margin-bottom: 28px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 4px;
+      background: var(--muted-bg);
+      border: 1px solid var(--border);
+      color: #a1a1aa;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 6px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--foreground);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn:hover {
+      background: var(--muted-bg);
+      border-color: #3f3f46;
+    }
+
+    /* Markdown Rendering Styling */
+    .markdown-body {
+      max-width: 900px;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #e4e4e7;
+    }
+
+    .markdown-body h1 {
+      font-size: 26px;
+      font-weight: 700;
+      margin: 0 0 16px 0;
+      color: #fafafa;
+      letter-spacing: -0.02em;
+    }
+
+    .markdown-body h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 32px 0 14px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      color: #f4f4f5;
+    }
+
+    .markdown-body h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 24px 0 10px 0;
+      color: #f4f4f5;
+    }
+
+    .markdown-body p, .markdown-body ul, .markdown-body ol {
+      margin-bottom: 16px;
+    }
+
+    .markdown-body ul, .markdown-body ol {
+      padding-left: 24px;
+    }
+
+    .markdown-body li {
+      margin-bottom: 6px;
+    }
+
+    .markdown-body code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12.5px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #93c5fd;
+    }
+
+    .markdown-body pre {
+      position: relative;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      margin-bottom: 20px;
+    }
+
+    .markdown-body pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: #e4e4e7;
+      font-size: 13px;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 4px 8px;
+      font-size: 11px;
+      background: rgba(39, 39, 42, 0.8);
+      border: 1px solid #3f3f46;
+      border-radius: 4px;
+      color: #a1a1aa;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s;
+    }
+
+    .markdown-body pre:hover .copy-btn {
+      opacity: 1;
+    }
+
+    .copy-btn:hover {
+      background: #3f3f46;
+      color: #fff;
+    }
+
+    .markdown-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+      font-size: 13px;
+    }
+
+    .markdown-body th, .markdown-body td {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: left;
+    }
+
+    .markdown-body th {
+      background: var(--muted-bg);
+      font-weight: 600;
+      color: #fafafa;
+    }
+
+    .markdown-body tr:nth-child(even) {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .markdown-body blockquote {
+      border-left: 3px solid var(--accent);
+      padding: 10px 16px;
+      background: rgba(37, 99, 235, 0.08);
+      border-radius: 0 6px 6px 0;
+      margin-bottom: 18px;
+      color: #cbd5e1;
+    }
+
+    .markdown-body hr {
+      border: 0;
+      height: 1px;
+      background: var(--border);
+      margin: 32px 0;
+    }
+
+    /* TOC Rail */
+    .toc-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .toc-link {
+      display: block;
+      font-size: 12px;
+      color: #a1a1aa;
+      text-decoration: none;
+      padding: 4px 0;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: color 0.15s;
+    }
+
+    .toc-link:hover {
+      color: var(--foreground);
+    }
+
+    .toc-link.h3 {
+      padding-left: 12px;
+      color: #71717a;
+    }
+
+    /* Topic Guide Cards */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+
+    .card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fafafa;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-desc {
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .dropzone {
+      margin-top: auto;
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Left Sidebar -->
+  <aside id="sidebar">
+    <div class="brand">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
+      <span>Kamal Express Docs</span>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="search-input" class="search-input" placeholder="Search documentation...">
+    </div>
+
+    <nav class="nav-tree" id="nav-tree">
+      <!-- Injected dynamically -->
+    </nav>
+
+    <div class="dropzone" id="dropzone">
+      Tip: Drag &amp; drop any local <code>.md</code> file here to render instantly
+    </div>
+  </aside>
+
+  <!-- Main View -->
+  <main id="main-container">
+    <header id="topbar">
+      <div id="breadcrumb" style="font-size: 13px; color: var(--muted);">Documentation</div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" id="btn-copy-md" title="Copy raw markdown to clipboard">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+          Copy MD
+        </button>
+      </div>
+    </header>
+
+    <div id="content-area">
+      <div id="doc-scroll">
+        <div class="doc-header">
+          <div>
+            <h1 id="doc-title" style="font-size: 22px; font-weight: 700; margin-bottom: 6px;">System Knowledge Base</h1>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="badge" id="doc-category">Hub</span>
+              <span id="doc-path" style="font-size: 11px; color: var(--muted); font-family: monospace;"></span>
+            </div>
+          </div>
+        </div>
+
+        <article class="markdown-body" id="doc-content">
+          <!-- Rendered Markdown Injected Here -->
+        </article>
+      </div>
+
+      <!-- Right Table of Contents -->
+      <aside id="toc-rail">
+        <div class="toc-title">On This Page</div>
+        <div id="toc-list">
+          <!-- TOC Injected Here -->
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- Offline-capable Markdown Parser -->
+  <script src="assets/marked.min.js"></script>
+  <!-- Ingested Docs Data -->
+  <script src="docs_data.js"></script>
+
+  <script>
+    // State
+    let currentDocId = "home";
+    const docs = window.DOCS_DATA || [];
+
+    // Initialize UI
+    function init() {
+      buildSidebar();
+      setupSearch();
+      setupDragAndDrop();
+
+      // Check URL hash for direct deep links (e.g. #standalone-workers)
+      const hash = window.location.hash.replace("#", "");
+      if (hash && docs.some(d => d.id === hash)) {
+        loadDoc(hash);
+      } else {
+        renderHomePage();
+      }
+    }
+
+    // Build categories and navigation tree
+    function buildSidebar(filterText = "") {
+      const nav = document.getElementById("nav-tree");
+      nav.innerHTML = "";
+
+      // Add Home option
+      const homeLink = document.createElement("a");
+      homeLink.className = `nav-item ${currentDocId === 'home' ? 'active' : ''}`;
+      homeLink.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> Overview &amp; Guide`;
+      homeLink.onclick = () => renderHomePage();
+      nav.appendChild(homeLink);
+
+      // Group by category
+      const categories = {};
+      docs.forEach(doc => {
+        if (filterText) {
+          const match = doc.title.toLowerCase().includes(filterText) ||
+                        doc.description.toLowerCase().includes(filterText) ||
+                        doc.markdown.toLowerCase().includes(filterText);
+          if (!match) return;
+        }
+
+        if (!categories[doc.category]) categories[doc.category] = [];
+        categories[doc.category].push(doc);
+      });
+
+      for (const [catName, catDocs] of Object.entries(categories)) {
+        const catHeader = document.createElement("div");
+        catHeader.className = "nav-category";
+        catHeader.textContent = catName;
+        nav.appendChild(catHeader);
+
+        catDocs.forEach(doc => {
+          const item = document.createElement("a");
+          item.className = `nav-item ${currentDocId === doc.id ? 'active' : ''}`;
+          item.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> ${escapeHtml(doc.title)}`;
+          item.onclick = () => loadDoc(doc.id);
+          nav.appendChild(item);
+        });
+      }
+    }
+
+    // Search filter
+    function setupSearch() {
+      const input = document.getElementById("search-input");
+      input.addEventListener("input", (e) => {
+        buildSidebar(e.target.value.trim().toLowerCase());
+      });
+    }
+
+    // Render Home / Topic Map
+    function renderHomePage() {
+      currentDocId = "home";
+      window.location.hash = "home";
+      buildSidebar();
+
+      document.getElementById("doc-title").textContent = "Documentation Hub & Topic Map";
+      document.getElementById("doc-category").textContent = "Index";
+      document.getElementById("doc-path").textContent = "docs/index.html";
+      document.getElementById("breadcrumb").textContent = "Documentation / Knowledge Base";
+      document.getElementById("toc-list").innerHTML = "";
+
+      const content = document.getElementById("doc-content");
+      content.innerHTML = `
+        <p style="font-size:15px; color:#d4d4d8;">
+          Welcome to the <strong>Kamal Express AI Platform Documentation Hub</strong>. 
+          Use this interactive browser to review architecture invariants, standalone worker parameters, deployment procedures, and troubleshooting guides.
+        </p>
+
+        <h2 style="margin-top:24px;">Core Reference Domains</h2>
+        <div class="cards-grid">
+          <div class="card" onclick="loadDoc('standalone-workers')">
+            <div class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Standalone Workers (checker &amp; booker)
+            </div>
+            <div class="card-desc">Complete CLI guide, parameter schemas, sequence diagrams, and side-by-side human vs automated execution comparison table.</div>
+          </div>
+
+          <div class="card" onclick="loadDoc('autonomous-workers-invariants')">
+            <div class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+              GVC Invariants &amp; Center Codes
+            </div>
+            <div class="card-desc">Official consular center codes (Islamabad 137, Lahore 138), operational calendar rules, and live HAR recording diagnostics.</div>
+          </div>
+
+          <div class="card" onclick="loadDoc('dual-pool-fleet')">
+            <div class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/></svg>
+              Dual-Pool Fleet &amp; Drop Planner
+            </div>
+            <div class="card-desc">Architecture for parallel scout workers, background booking threads, proxy failover rotation, and drop strike orchestration.</div>
+          </div>
+
+          <div class="card" onclick="loadDoc('vps-deployment')">
+            <div class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+              VPS &amp; Portainer Deployment
+            </div>
+            <div class="card-desc">Hetzner Cloud VPS provisioning, systemd services, container compose, and Cloudflare Zero Trust secure tunnels.</div>
+          </div>
+        </div>
+
+        <h2 style="margin-top:36px;">Quick Invariant Matrix</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Entity / Topic</th>
+              <th>Production Value</th>
+              <th>Reference Document</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Islamabad Center ID</strong></td>
+              <td><code>137</code> (Default VAC)</td>
+              <td><a href="javascript:loadDoc('autonomous-workers-invariants')">08-failproof-autonomous-workers-specification.md</a></td>
+            </tr>
+            <tr>
+              <td><strong>Lahore Center ID</strong></td>
+              <td><code>138</code></td>
+              <td><a href="javascript:loadDoc('autonomous-workers-invariants')">08-failproof-autonomous-workers-specification.md</a></td>
+            </tr>
+            <tr>
+              <td><strong>Karachi Center</strong></td>
+              <td><em>Does not exist in GVC World</em></td>
+              <td><a href="javascript:loadDoc('autonomous-workers-invariants')">08-failproof-autonomous-workers-specification.md</a></td>
+            </tr>
+            <tr>
+              <td><strong>Type 26 (Work / Seasonal)</strong></td>
+              <td>Active Mon–Fri (Closed Sat, Sun)</td>
+              <td><a href="javascript:loadDoc('standalone-workers')">WORKFLOW_SPECIFICATION.md</a></td>
+            </tr>
+            <tr>
+              <td><strong>CapSolver reCAPTCHA v2</strong></td>
+              <td>Sitekey <code>6LcnlCoUAAAAAJLjWXXaByTFyuOLf4K0gGu5r3d2</code></td>
+              <td><a href="javascript:loadDoc('standalone-workers')">WORKFLOW_SPECIFICATION.md</a></td>
+            </tr>
+            <tr>
+              <td><strong>OTP Webhook Ingestion</strong></td>
+              <td><code>POST /api/otp/webhook</code></td>
+              <td><a href="javascript:loadDoc('overview')">README.md</a></td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+    }
+
+    // Load and render a specific document
+    function loadDoc(docId) {
+      const doc = docs.find(d => d.id === docId);
+      if (!doc) return;
+
+      currentDocId = docId;
+      window.location.hash = docId;
+      buildSidebar();
+
+      document.getElementById("doc-title").textContent = doc.title;
+      document.getElementById("doc-category").textContent = doc.category;
+      document.getElementById("doc-path").textContent = doc.path;
+      document.getElementById("breadcrumb").textContent = `Documentation / ${doc.category} / ${doc.title}`;
+
+      // Convert Markdown to HTML using client-side marked.js
+      const rawHtml = marked.parse(doc.markdown);
+      const contentEl = document.getElementById("doc-content");
+      contentEl.innerHTML = rawHtml;
+
+      // Enhance Code Blocks with Copy Buttons
+      attachCodeCopyButtons();
+
+      // Extract Headings for Table of Contents
+      buildToc(contentEl);
+
+      // Scroll to top
+      document.getElementById("doc-scroll").scrollTop = 0;
+    }
+
+    // Attach copy button to code blocks
+    function attachCodeCopyButtons() {
+      document.querySelectorAll(".markdown-body pre").forEach(pre => {
+        const btn = document.createElement("button");
+        btn.className = "copy-btn";
+        btn.textContent = "Copy";
+        btn.onclick = () => {
+          const code = pre.querySelector("code")?.innerText || pre.innerText;
+          navigator.clipboard.writeText(code).then(() => {
+            btn.textContent = "Copied!";
+            setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+          });
+        };
+        pre.appendChild(btn);
+      });
+    }
+
+    // Build right-hand TOC rail
+    function buildToc(contentEl) {
+      const tocList = document.getElementById("toc-list");
+      tocList.innerHTML = "";
+
+      const headings = contentEl.querySelectorAll("h2, h3");
+      if (headings.length === 0) {
+        document.getElementById("toc-rail").style.display = "none";
+        return;
+      }
+      document.getElementById("toc-rail").style.display = "block";
+
+      headings.forEach((heading, idx) => {
+        const id = "sec-" + idx + "-" + heading.textContent.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        heading.id = id;
+
+        const link = document.createElement("a");
+        link.className = `toc-link ${heading.tagName.toLowerCase()}`;
+        link.textContent = heading.textContent;
+        link.href = "#" + id;
+        link.onclick = (e) => {
+          e.preventDefault();
+          heading.scrollIntoView({ behavior: "smooth" });
+        };
+        tocList.appendChild(link);
+      });
+    }
+
+    // Drag and drop local .md file preview
+    function setupDragAndDrop() {
+      const dropzone = document.body;
+      ["dragenter", "dragover"].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }, false);
+      });
+
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].name.endsWith(".md")) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            currentDocId = "custom";
+            document.getElementById("doc-title").textContent = files[0].name;
+            document.getElementById("doc-category").textContent = "Local File Preview";
+            document.getElementById("doc-path").textContent = "Dropped: " + files[0].name;
+            document.getElementById("breadcrumb").textContent = `Documentation / Local Preview / ${files[0].name}`;
+            
+            const rawHtml = marked.parse(event.target.result);
+            const contentEl = document.getElementById("doc-content");
+            contentEl.innerHTML = rawHtml;
+            attachCodeCopyButtons();
+            buildToc(contentEl);
+          };
+          reader.readAsText(files[0]);
+        }
+      }, false);
+    }
+
+    // Copy raw markdown button in topbar
+    document.getElementById("btn-copy-md").onclick = () => {
+      const doc = docs.find(d => d.id === currentDocId);
+      if (doc) {
+        navigator.clipboard.writeText(doc.markdown).then(() => {
+          alert("[SUCCESS] Full Markdown copied to clipboard!");
+        });
+      } else {
+        alert("[INFO] Please select a document to copy.");
+      }
+    };
+
+    function escapeHtml(str) {
+      return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Launch
+    window.addEventListener("DOMContentLoaded", init);
+  </script>
+</body>
+</html>
