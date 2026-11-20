@@ -334,6 +334,24 @@ window.DOCS_DATA = [
     "line_count": 23
   },
   {
+    "id": "product-readme",
+    "title": "Product Domain Knowledge",
+    "category": "Product",
+    "path": "docs/permanent/product/README.md",
+    "description": "**Classification:** Permanent Knowledge",
+    "markdown": "# Product Domain Knowledge\n\n> **Classification:** Permanent Knowledge  \n> **Lifecycle:** Lives for years  \n> **Purpose:** Product vision, positioning, user personas, PRDs, requirements, and enduring commercial constraints.\n\n---\n\n## Scope & Contents\nThis directory contains the foundational product documentation for the Kamal Express AI Platform:\n- Product Requirement Documents (PRDs)\n- Service catalog definitions and visa workflow specifications\n- Persona and target audience profiles\n- Long-term commercial invariants and business rules\n",
+    "line_count": 14
+  },
+  {
+    "id": "research-readme",
+    "title": "Research & Technical Feasibility",
+    "category": "Research",
+    "path": "docs/research/README.md",
+    "description": "**Classification:** Project Research",
+    "markdown": "# Research & Technical Feasibility\n\n> **Classification:** Project Research  \n> **Lifecycle:** Multi-sprint reference / Historical context  \n> **Purpose:** Dated market analysis, anti-bot bypass research, TLS fingerprinting evaluations, and external platform protocol studies.\n\n---\n\n## Scope & Contents\nThis directory contains technical research and investigative findings supporting Kamal Express AI operations:\n- Imperva Incapsula and Cloudflare Turnstile bot detection research\n- Proxy protocol benchmarking (residential vs mobile vs datacenter)\n- Pakistan SMS gateway routing and latency evaluations\n- GVC World portal API reverse engineering notes\n",
+    "line_count": 14
+  },
+  {
     "id": "test-support-agents",
     "title": "Test Support Agents",
     "category": "Testing",
