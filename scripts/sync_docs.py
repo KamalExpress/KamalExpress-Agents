@@ -12,9 +12,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Add Alamia-Skills-System to sys.path if available
-alamia_core = REPO_ROOT / "Alamia-Skills-System"
-if alamia_core.exists() and str(alamia_core) not in sys.path:
-    sys.path.insert(0, str(alamia_core))
+for alamia_cand in [REPO_ROOT / "Alamia-Skills-System", Path(r"E:\Alamia\Alamia-Skills-System")]:
+    if alamia_cand.exists() and str(alamia_cand) not in sys.path:
+        sys.path.insert(0, str(alamia_cand))
 
 try:
     from core.doc_engine import DocEngine
