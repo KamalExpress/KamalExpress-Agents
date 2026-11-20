@@ -90,8 +90,9 @@ except Exception as e:
                 if l.startswith("# "):
                     title = l[2:].strip()
                     break
+            doc_id = "project-overview" if ext_path == REPO_ROOT / "README.md" else ext_path.stem.lower().replace(" ", "-")
             docs_payload.append({
-                "id": ext_path.stem.lower().replace(" ", "-"),
+                "id": doc_id,
                 "title": title,
                 "category": cat,
                 "path": str(ext_path.relative_to(REPO_ROOT)).replace("\\", "/"),

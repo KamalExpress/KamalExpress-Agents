@@ -3,508 +3,276 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kamal Express Documentation Hub</title>
+  <title>Kamal Express Knowledge Hub</title>
+
+  <!-- Google OSS Fonts: Plus Jakarta Sans (Prose) & JetBrains Mono (Code) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN with Typography plugin & Dark mode class configuration -->
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons Pack -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Offline Local Syntax Highlighting (Highlight.js) -->
+  <link id="hljs-theme-dark" rel="stylesheet" href="assets/highlight-dark.min.css">
+  <link id="hljs-theme-light" rel="stylesheet" href="assets/highlight-light.min.css" disabled>
+
   <style>
-    :root {
-      --bg: #09090b;
-      --card: #121215;
-      --card-border: #27272a;
-      --foreground: #f4f4f5;
-      --muted: #71717a;
-      --muted-bg: #1c1c20;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
-      --code-bg: #18181b;
-      --border: #27272a;
-      --sidebar-width: 300px;
-      --toc-width: 240px;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: var(--bg);
-      color: var(--foreground);
-      line-height: 1.6;
-      display: flex;
-      height: 100vh;
-      overflow: hidden;
-    }
-
-    /* Scrollbars */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    /* Custom scrollbars & smooth transitions */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #52525b; }
-
-    /* Layout */
-    #sidebar {
-      width: var(--sidebar-width);
-      min-width: var(--sidebar-width);
-      height: 100vh;
-      background: var(--card);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+    .dark ::-webkit-scrollbar-thumb { background: #334155; }
+    
+    body {
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
     }
 
-    #main-container {
-      flex: 1;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    #topbar {
-      height: 56px;
-      min-height: 56px;
-      border-bottom: 1px solid var(--border);
-      background: var(--card);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 24px;
-    }
-
-    #content-area {
-      flex: 1;
-      display: flex;
-      overflow: hidden;
-    }
-
-    #doc-scroll {
-      flex: 1;
-      overflow-y: auto;
-      padding: 32px 48px;
-    }
-
-    #toc-rail {
-      width: var(--toc-width);
-      min-width: var(--toc-width);
-      border-left: 1px solid var(--border);
-      padding: 24px 16px;
-      overflow-y: auto;
-      display: none;
-    }
-
-    @media (min-width: 1200px) {
-      #toc-rail { display: block; }
-    }
-
-    /* Sidebar Components */
-    .brand {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 700;
-      font-size: 15px;
-      letter-spacing: -0.01em;
-    }
-
-    .brand svg {
-      color: var(--accent);
-      width: 20px;
-      height: 20px;
-    }
-
-    .search-box {
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .search-input {
-      width: 100%;
-      background: var(--muted-bg);
-      border: 1px solid var(--border);
-      color: var(--foreground);
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 13px;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-
-    .search-input:focus {
-      border-color: var(--accent);
-    }
-
-    .nav-tree {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px 8px;
-    }
-
-    .nav-category {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      padding: 10px 12px 4px;
-    }
-
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 12px;
-      border-radius: 6px;
-      font-size: 13px;
-      color: #d4d4d8;
-      text-decoration: none;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
-      margin-bottom: 2px;
-    }
-
-    .nav-item:hover {
-      background: var(--muted-bg);
-      color: #fff;
-    }
-
-    .nav-item.active {
-      background: rgba(37, 99, 235, 0.15);
-      color: #60a5fa;
-      font-weight: 600;
-    }
-
-    .nav-item svg {
-      width: 14px;
-      height: 14px;
-      opacity: 0.7;
-    }
-
-    /* Content Styling */
-    .doc-header {
-      margin-bottom: 28px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 8px;
-      font-size: 11px;
-      font-weight: 600;
-      border-radius: 4px;
-      background: var(--muted-bg);
-      border: 1px solid var(--border);
-      color: #a1a1aa;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      font-size: 12px;
-      font-weight: 500;
-      border-radius: 6px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      color: var(--foreground);
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .btn:hover {
-      background: var(--muted-bg);
-      border-color: #3f3f46;
-    }
-
-    /* Markdown Rendering Styling */
-    .markdown-body {
-      max-width: 900px;
-      font-size: 14px;
-      line-height: 1.7;
-      color: #e4e4e7;
-    }
-
-    .markdown-body h1 {
-      font-size: 26px;
-      font-weight: 700;
-      margin: 0 0 16px 0;
-      color: #fafafa;
-      letter-spacing: -0.02em;
-    }
-
-    .markdown-body h2 {
-      font-size: 20px;
-      font-weight: 600;
-      margin: 32px 0 14px 0;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-      color: #f4f4f5;
-    }
-
-    .markdown-body h3 {
-      font-size: 16px;
-      font-weight: 600;
-      margin: 24px 0 10px 0;
-      color: #f4f4f5;
-    }
-
-    .markdown-body p, .markdown-body ul, .markdown-body ol {
-      margin-bottom: 16px;
-    }
-
-    .markdown-body ul, .markdown-body ol {
-      padding-left: 24px;
-    }
-
-    .markdown-body li {
-      margin-bottom: 6px;
-    }
-
-    .markdown-body code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 12.5px;
-      background: var(--code-bg);
-      border: 1px solid var(--border);
-      padding: 2px 6px;
-      border-radius: 4px;
-      color: #93c5fd;
-    }
-
-    .markdown-body pre {
+    /* Enhanced Code Block Container */
+    .code-block-wrapper {
       position: relative;
-      background: var(--code-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px;
-      overflow-x: auto;
-      margin-bottom: 20px;
-    }
-
-    .markdown-body pre code {
-      background: transparent;
-      border: none;
-      padding: 0;
-      color: #e4e4e7;
-      font-size: 13px;
-    }
-
-    .copy-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      padding: 4px 8px;
-      font-size: 11px;
-      background: rgba(39, 39, 42, 0.8);
-      border: 1px solid #3f3f46;
-      border-radius: 4px;
-      color: #a1a1aa;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.15s, background 0.15s;
-    }
-
-    .markdown-body pre:hover .copy-btn {
-      opacity: 1;
-    }
-
-    .copy-btn:hover {
-      background: #3f3f46;
-      color: #fff;
-    }
-
-    .markdown-body table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 24px;
-      font-size: 13px;
-    }
-
-    .markdown-body th, .markdown-body td {
-      border: 1px solid var(--border);
-      padding: 8px 12px;
-      text-align: left;
-    }
-
-    .markdown-body th {
-      background: var(--muted-bg);
-      font-weight: 600;
-      color: #fafafa;
-    }
-
-    .markdown-body tr:nth-child(even) {
-      background: rgba(255, 255, 255, 0.02);
-    }
-
-    .markdown-body blockquote {
-      border-left: 3px solid var(--accent);
-      padding: 10px 16px;
-      background: rgba(37, 99, 235, 0.08);
-      border-radius: 0 6px 6px 0;
-      margin-bottom: 18px;
-      color: #cbd5e1;
-    }
-
-    .markdown-body hr {
-      border: 0;
-      height: 1px;
-      background: var(--border);
-      margin: 32px 0;
-    }
-
-    /* TOC Rail */
-    .toc-title {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--muted);
-      margin-bottom: 12px;
-    }
-
-    .toc-link {
-      display: block;
-      font-size: 12px;
-      color: #a1a1aa;
-      text-decoration: none;
-      padding: 4px 0;
-      line-height: 1.4;
-      white-space: nowrap;
+      border-radius: 10px;
       overflow: hidden;
-      text-overflow: ellipsis;
-      transition: color 0.15s;
+      margin: 20px 0 24px 0;
+      border: 1px solid #1e293b;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    }
+    .light .code-block-wrapper {
+      border-color: #e2e8f0;
+      box-shadow: 0 2px 4px 0 rgb(0 0 0 / 0.05);
     }
 
-    .toc-link:hover {
-      color: var(--foreground);
-    }
-
-    .toc-link.h3 {
-      padding-left: 12px;
-      color: #71717a;
-    }
-
-    /* Topic Guide Cards */
-    .cards-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-      margin-top: 20px;
-    }
-
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 18px;
-      cursor: pointer;
-      transition: border-color 0.15s, transform 0.15s;
-    }
-
-    .card:hover {
-      border-color: var(--accent);
-      transform: translateY(-2px);
-    }
-
-    .card-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: #fafafa;
-      margin-bottom: 6px;
+    .code-block-header {
       display: flex;
       align-items: center;
-      gap: 8px;
-    }
-
-    .card-desc {
-      font-size: 12.5px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    .dropzone {
-      margin-top: auto;
-      padding: 12px;
-      border-top: 1px solid var(--border);
+      justify-content: space-between;
+      padding: 7px 14px;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
       font-size: 11px;
-      color: var(--muted);
-      text-align: center;
+      font-family: "JetBrains Mono", monospace;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+    .light .code-block-header {
+      background: #f1f5f9;
+      border-bottom-color: #e2e8f0;
+      color: #64748b;
+    }
+
+    .code-copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 5px;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid #334155;
+      color: #cbd5e1;
+      transition: all 0.15s ease;
+    }
+    .light .code-copy-btn {
+      background: #ffffff;
+      border-color: #cbd5e1;
+      color: #475569;
+    }
+    .code-copy-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+    }
+    .light .code-copy-btn:hover {
+      background: #f8fafc;
+      color: #0f172a;
+    }
+
+    .code-block-wrapper pre {
+      margin: 0 !important;
+      border-radius: 0 !important;
+      padding: 16px 18px !important;
+      background: #050811 !important;
+      border: none !important;
+      overflow-x: auto;
+    }
+    .light .code-block-wrapper pre {
+      background: #f8fafc !important;
+    }
+
+    .code-block-wrapper code {
+      font-family: "JetBrains Mono", ui-monospace, monospace !important;
+      font-size: 12.5px !important;
+      line-height: 1.65 !important;
+      background: transparent !important;
+      padding: 0 !important;
+      border: none !important;
     }
   </style>
 </head>
-<body>
+<body class="bg-slate-50 dark:bg-[#090d16] text-slate-900 dark:text-slate-100 h-screen flex overflow-hidden antialiased selection:bg-blue-500/20 selection:text-blue-600 dark:selection:text-blue-400">
 
-  <!-- Left Sidebar -->
-  <aside id="sidebar">
-    <div class="brand">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
-      <span>Kamal Express Docs</span>
+  <!-- Left Sidebar (Navigation & Search) -->
+  <aside id="sidebar" class="w-80 min-w-[320px] h-screen bg-white dark:bg-[#0f172a] border-r border-slate-200 dark:border-slate-800/80 flex flex-col z-30 transition-transform duration-200 ease-out md:translate-x-0 -translate-x-full fixed md:static shadow-sm">
+    
+    <!-- Brand Header -->
+    <div class="h-16 px-5 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
+      <a href="javascript:renderHomePage()" class="flex items-center gap-3 group">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-sm shadow-blue-500/20 group-hover:bg-blue-700 transition-colors">
+          <i data-lucide="book-marked" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <span class="font-bold text-sm tracking-tight text-slate-900 dark:text-white block leading-tight">Kamal Express</span>
+          <span class="text-[11px] font-medium text-slate-500 dark:text-slate-400 block leading-tight">Knowledge Base Hub</span>
+        </div>
+      </a>
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+        v0.2.0
+      </span>
     </div>
 
-    <div class="search-box">
-      <input type="text" id="search-input" class="search-input" placeholder="Search documentation...">
+    <!-- Search Input Bar -->
+    <div class="p-3 border-b border-slate-200 dark:border-slate-800/80">
+      <div class="relative flex items-center">
+        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none"></i>
+        <input 
+          type="text" 
+          id="search-input" 
+          placeholder="Search docs (Ctrl + K)..." 
+          class="w-full pl-9 pr-14 py-2 bg-slate-100 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/60 rounded-lg text-xs font-medium text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+        />
+        <div class="absolute right-2.5 flex items-center gap-1">
+          <kbd class="px-1.5 py-0.5 text-[10px] font-mono text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded shadow-2xs">Ctrl K</kbd>
+        </div>
+      </div>
     </div>
 
-    <nav class="nav-tree" id="nav-tree">
+    <!-- Categories & Docs Tree -->
+    <nav class="flex-1 overflow-y-auto p-3 space-y-4" id="nav-tree">
       <!-- Injected dynamically -->
     </nav>
 
-    <div class="dropzone" id="dropzone">
-      Tip: Drag &amp; drop any local <code>.md</code> file here to render instantly
+    <!-- Sidebar Footer -->
+    <div class="p-3 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/40">
+      <span class="flex items-center gap-1.5 font-medium text-[11.5px]">
+        <i data-lucide="hard-drive" class="w-3.5 h-3.5 text-slate-400"></i>
+        Offline Verified
+      </span>
+      <span id="doc-count-badge" class="px-2 py-0.5 text-[10.5px] font-semibold rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+        36 Docs
+      </span>
     </div>
   </aside>
 
-  <!-- Main View -->
-  <main id="main-container">
-    <header id="topbar">
-      <div id="breadcrumb" style="font-size: 13px; color: var(--muted);">Documentation</div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn" id="btn-copy-md" title="Copy raw markdown to clipboard">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-          Copy MD
+  <!-- Main Content Layout -->
+  <main class="flex-1 h-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-[#090d16]">
+    
+    <!-- Topbar Navigation & Theme Controls -->
+    <header class="h-16 min-h-[64px] px-6 bg-white dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between shadow-2xs">
+      <div class="flex items-center gap-3">
+        <!-- Mobile Sidebar Hamburger -->
+        <button id="mobile-toggle" class="md:hidden p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+          <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+        <!-- Breadcrumb trail -->
+        <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-medium" id="breadcrumb">
+          <span>Documentation</span>
+          <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600"></i>
+          <span class="text-slate-900 dark:text-white font-semibold">Knowledge Hub</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons & Theme Switcher -->
+      <div class="flex items-center gap-2.5">
+        <!-- Light / Dark Mode Toggle (Shadcn Style) -->
+        <button id="theme-toggle" class="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors" title="Toggle theme">
+          <i id="theme-icon-sun" data-lucide="sun" class="w-4 h-4 hidden"></i>
+          <i id="theme-icon-moon" data-lucide="moon" class="w-4 h-4 hidden"></i>
+        </button>
+
+        <!-- Copy Raw Markdown Button -->
+        <button id="btn-copy-md" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors" title="Copy raw markdown to clipboard">
+          <i data-lucide="copy" class="w-3.5 h-3.5 text-slate-500"></i>
+          <span>Copy MD</span>
         </button>
       </div>
     </header>
 
-    <div id="content-area">
-      <div id="doc-scroll">
-        <div class="doc-header">
-          <div>
-            <h1 id="doc-title" style="font-size: 22px; font-weight: 700; margin-bottom: 6px;">System Knowledge Base</h1>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <span class="badge" id="doc-category">Hub</span>
-              <span id="doc-path" style="font-size: 11px; color: var(--muted); font-family: monospace;"></span>
+    <!-- Reading Content Area -->
+    <div class="flex-1 flex overflow-hidden">
+      
+      <!-- Article Scroll Container -->
+      <div class="flex-1 overflow-y-auto px-6 md:px-12 py-8" id="doc-scroll">
+        <div class="max-w-4xl mx-auto">
+          
+          <!-- Document Header & Meta Pill Tags -->
+          <div class="pb-6 mb-8 border-b border-slate-200 dark:border-slate-800/80">
+            <h1 id="doc-title" class="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-3">
+              Knowledge Base Hub
+            </h1>
+            <div class="flex flex-wrap items-center gap-2.5 text-xs">
+              <span id="doc-category" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                Hub
+              </span>
+              <span id="doc-path" class="font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-[11.5px]">
+                docs/index.html
+              </span>
+              <span id="doc-reading-time" class="text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+                0 min read
+              </span>
             </div>
           </div>
-        </div>
 
-        <article class="markdown-body" id="doc-content">
-          <!-- Rendered Markdown Injected Here -->
-        </article>
+          <!-- Markdown Content Pane with Tailwind Typography -->
+          <article class="prose prose-slate dark:prose-invert max-w-none text-slate-700 dark:text-slate-300 font-sans prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-2xl prose-h2:text-xl prose-h2:border-b prose-h2:border-slate-200 dark:prose-h2:border-slate-800 prose-h2:pb-2 prose-code:font-mono prose-code:text-blue-600 dark:prose-code:text-blue-400 prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-table:border prose-table:border-slate-200 dark:prose-table:border-slate-800 prose-th:bg-slate-100 dark:prose-th:bg-slate-800/80 prose-th:px-3 prose-th:py-2.5 prose-td:px-3 prose-td:py-2" id="doc-content">
+            <!-- Injected dynamically -->
+          </article>
+        </div>
       </div>
 
-      <!-- Right Table of Contents -->
-      <aside id="toc-rail">
-        <div class="toc-title">On This Page</div>
-        <div id="toc-list">
-          <!-- TOC Injected Here -->
+      <!-- Right "On This Page" Table of Contents -->
+      <aside id="toc-rail" class="w-64 min-w-[256px] border-l border-slate-200 dark:border-slate-800/80 bg-white dark:bg-[#0f172a] p-6 overflow-y-auto hidden xl:block">
+        <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3 flex items-center gap-1.5">
+          <i data-lucide="align-left" class="w-3.5 h-3.5"></i>
+          On This Page
+        </div>
+        <div id="toc-list" class="space-y-1 text-xs">
+          <!-- Dynamic Headings Injected Here -->
         </div>
       </aside>
     </div>
   </main>
 
-  <!-- Offline-capable Markdown Parser -->
+  <!-- Offline Local Markdown Parser & Syntax Highlighter -->
   <script src="assets/marked.min.js"></script>
-  <!-- Ingested Docs Data -->
+  <script src="assets/highlight.min.js"></script>
   <script src="docs_data.js"></script>
 
   <script>
@@ -512,19 +280,98 @@
     let currentDocId = "home";
     const docs = window.DOCS_DATA || [];
 
-    // Initialize UI
+    // Configure marked with highlight.js integration
+    if (window.marked && window.hljs) {
+      marked.setOptions({
+        highlight: function(code, lang) {
+          if (lang && hljs.getLanguage(lang)) {
+            try {
+              return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+            } catch (__) {}
+          }
+          try {
+            return hljs.highlightAuto(code).value;
+          } catch (__) {}
+          return code;
+        },
+        langPrefix: 'hljs language-'
+      });
+    }
+
+    // Icon map
+    const ICONS = {
+      overview: 'book-open',
+      architecture: 'layers',
+      adr: 'shield-check',
+      workers: 'zap',
+      handoffs: 'history',
+      lessons: 'alert-triangle',
+      standards: 'check-circle-2',
+      glossary: 'file-text',
+      indexes: 'list-ordered',
+      operations: 'terminal',
+      sprint: 'calendar-check',
+      'skills system': 'cpu',
+      'skills-system': 'cpu',
+      general: 'file'
+    };
+
+    // Theme Management (Light / Dark)
+    function initTheme() {
+      const savedTheme = localStorage.getItem("docs-theme");
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const theme = savedTheme || (prefersDark ? "dark" : "light");
+      setTheme(theme);
+
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const isDark = document.documentElement.classList.contains("dark");
+        setTheme(isDark ? "light" : "dark");
+      });
+    }
+
+    function setTheme(theme) {
+      const sunIcon = document.getElementById("theme-icon-sun");
+      const moonIcon = document.getElementById("theme-icon-moon");
+      const darkCss = document.getElementById("hljs-theme-dark");
+      const lightCss = document.getElementById("hljs-theme-light");
+
+      if (theme === "dark") {
+        document.documentElement.classList.add("dark");
+        document.documentElement.classList.remove("light");
+        sunIcon.classList.remove("hidden");
+        moonIcon.classList.add("hidden");
+        if (darkCss) darkCss.disabled = false;
+        if (lightCss) lightCss.disabled = true;
+      } else {
+        document.documentElement.classList.remove("dark");
+        document.documentElement.classList.add("light");
+        sunIcon.classList.add("hidden");
+        moonIcon.classList.remove("hidden");
+        if (darkCss) darkCss.disabled = true;
+        if (lightCss) lightCss.disabled = false;
+      }
+      localStorage.setItem("docs-theme", theme);
+      if (window.lucide) lucide.createIcons();
+    }
+
+    // App Initialization
     function init() {
+      initTheme();
+      document.getElementById("doc-count-badge").textContent = `${docs.length} Docs`;
       buildSidebar();
       setupSearch();
-      setupDragAndDrop();
+      setupShortcuts();
+      setupMobileToggle();
 
-      // Check URL hash for direct deep links (e.g. #standalone-workers)
+      // Check URL hash for direct deep links
       const hash = window.location.hash.replace("#", "");
       if (hash && docs.some(d => d.id === hash)) {
         loadDoc(hash);
       } else {
         renderHomePage();
       }
+
+      if (window.lucide) lucide.createIcons();
     }
 
     // Build categories and navigation tree
@@ -532,193 +379,385 @@
       const nav = document.getElementById("nav-tree");
       nav.innerHTML = "";
 
-      // Add Home option
+      // Overview Link
       const homeLink = document.createElement("a");
-      homeLink.className = `nav-item ${currentDocId === 'home' ? 'active' : ''}`;
-      homeLink.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> Overview &amp; Guide`;
-      homeLink.onclick = () => renderHomePage();
+      homeLink.className = `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+        currentDocId === 'home'
+          ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold border-l-2 border-blue-600'
+          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+      }`;
+      homeLink.innerHTML = `<i data-lucide="home" class="w-4 h-4"></i> <span>Overview &amp; Knowledge Map</span>`;
+      homeLink.onclick = () => { renderHomePage(); closeMobileSidebar(); };
       nav.appendChild(homeLink);
 
-      // Group by category
+      // Group docs by category
       const categories = {};
       docs.forEach(doc => {
         if (filterText) {
           const match = doc.title.toLowerCase().includes(filterText) ||
                         doc.description.toLowerCase().includes(filterText) ||
+                        doc.path.toLowerCase().includes(filterText) ||
                         doc.markdown.toLowerCase().includes(filterText);
           if (!match) return;
         }
 
-        if (!categories[doc.category]) categories[doc.category] = [];
-        categories[doc.category].push(doc);
+        const cat = doc.category || "General";
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push(doc);
       });
 
-      for (const [catName, catDocs] of Object.entries(categories)) {
+      const priorityOrder = [
+        "Overview", "Architecture", "Adr", "Workers", "Handoffs",
+        "Lessons", "Standards", "Glossary", "Indexes", "Operations", "Sprint", "Skills System", "General"
+      ];
+
+      const sortedCategories = Object.keys(categories).sort((a, b) => {
+        const ia = priorityOrder.indexOf(a);
+        const ib = priorityOrder.indexOf(b);
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        if (ia !== -1) return -1;
+        if (ia !== -1) return 1;
+        return a.localeCompare(b);
+      });
+
+      sortedCategories.forEach(catName => {
+        const catDocs = categories[catName];
+        const catBox = document.createElement("div");
+        catBox.className = "space-y-1";
+
         const catHeader = document.createElement("div");
-        catHeader.className = "nav-category";
-        catHeader.textContent = catName;
-        nav.appendChild(catHeader);
+        catHeader.className = "px-3 pt-2 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between";
+        catHeader.innerHTML = `<span>${catName}</span><span class="text-[9.5px] px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">${catDocs.length}</span>`;
+        catBox.appendChild(catHeader);
 
         catDocs.forEach(doc => {
           const item = document.createElement("a");
-          item.className = `nav-item ${currentDocId === doc.id ? 'active' : ''}`;
-          item.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> ${escapeHtml(doc.title)}`;
-          item.onclick = () => loadDoc(doc.id);
-          nav.appendChild(item);
+          const isActive = currentDocId === doc.id;
+          item.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+            isActive
+              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold border-l-2 border-blue-600'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+          }`;
+          const iconName = ICONS[catName.toLowerCase()] || ICONS.general;
+          item.innerHTML = `<i data-lucide="${iconName}" class="w-3.5 h-3.5 opacity-70 flex-shrink-0"></i> <span class="truncate">${escapeHtml(doc.title)}</span>`;
+          item.onclick = () => { loadDoc(doc.id); closeMobileSidebar(); };
+          catBox.appendChild(item);
         });
-      }
+
+        nav.appendChild(catBox);
+      });
+
+      if (window.lucide) lucide.createIcons();
     }
 
-    // Search filter
+    // Search filter setup
     function setupSearch() {
       const input = document.getElementById("search-input");
       input.addEventListener("input", (e) => {
-        buildSidebar(e.target.value.trim().toLowerCase());
+        const val = e.target.value.trim().toLowerCase();
+        buildSidebar(val);
       });
     }
 
-    // Render Home / Topic Map
+    // Keyboard Shortcuts (Ctrl + K / Escape)
+    function setupShortcuts() {
+      window.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+          e.preventDefault();
+          document.getElementById("search-input").focus();
+        } else if (e.key === "Escape") {
+          const input = document.getElementById("search-input");
+          if (document.activeElement === input) {
+            input.value = "";
+            buildSidebar();
+            input.blur();
+          }
+        }
+      });
+    }
+
+    // Mobile drawer
+    function setupMobileToggle() {
+      const btn = document.getElementById("mobile-toggle");
+      const sidebar = document.getElementById("sidebar");
+      btn.addEventListener("click", () => {
+        sidebar.classList.toggle("-translate-x-full");
+      });
+    }
+
+    function closeMobileSidebar() {
+      document.getElementById("sidebar").classList.add("-translate-x-full");
+    }
+
+    // Render Home / Topic Map View
     function renderHomePage() {
       currentDocId = "home";
       window.location.hash = "home";
       buildSidebar();
 
-      document.getElementById("doc-title").textContent = "Documentation Hub & Topic Map";
-      document.getElementById("doc-category").textContent = "Index";
+      document.getElementById("doc-title").textContent = "Kamal Express Knowledge Hub";
+      document.getElementById("doc-category").textContent = "Hub";
       document.getElementById("doc-path").textContent = "docs/index.html";
-      document.getElementById("breadcrumb").textContent = "Documentation / Knowledge Base";
+      document.getElementById("doc-reading-time").textContent = `${docs.length} Documents`;
+      document.getElementById("breadcrumb").innerHTML = `<span>Documentation</span> <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400"></i> <span class="text-slate-900 dark:text-white font-semibold">Knowledge Hub</span>`;
       document.getElementById("toc-list").innerHTML = "";
 
       const content = document.getElementById("doc-content");
       content.innerHTML = `
-        <p style="font-size:15px; color:#d4d4d8;">
-          Welcome to the <strong>Kamal Express AI Platform Documentation Hub</strong>. 
-          Use this interactive browser to review architecture invariants, standalone worker parameters, deployment procedures, and troubleshooting guides.
+        <p class="text-sm md:text-base text-slate-600 dark:text-slate-300 leading-relaxed mb-6">
+          Welcome to the unified technical documentation and AI knowledge base for the <strong>Kamal Express AI Platform</strong>.
+          This hub provides immediate offline architectural guidance, standalone worker parameters, incident playbooks, and historical handoffs.
         </p>
 
-        <h2 style="margin-top:24px;">Core Reference Domains</h2>
-        <div class="cards-grid">
-          <div class="card" onclick="loadDoc('standalone-workers')">
-            <div class="card-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              Standalone Workers (checker &amp; booker)
+        <h2 class="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-2 mb-4">Core Knowledge Domains</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          
+          <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-2xs hover:shadow-md hover:border-blue-500/50 transition-all cursor-pointer flex flex-col justify-between group" onclick="loadDoc('standalone-workers-workflow-specification')">
+            <div>
+              <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                <i data-lucide="zap" class="w-5 h-5"></i>
+              </div>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">Standalone Workers (Scout &amp; Booker)</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Comprehensive CLI guide for <code>checker.py</code> and <code>booker.py</code>, parameter schemas, sequence diagrams, and comparative human vs automated workflow tables.
+              </p>
             </div>
-            <div class="card-desc">Complete CLI guide, parameter schemas, sequence diagrams, and side-by-side human vs automated execution comparison table.</div>
+            <div class="mt-3 text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+              Read specification <i data-lucide="arrow-right" class="w-3 h-3"></i>
+            </div>
           </div>
 
-          <div class="card" onclick="loadDoc('autonomous-workers-invariants')">
-            <div class="card-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
-              GVC Invariants &amp; Center Codes
+          <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-2xs hover:shadow-md hover:border-blue-500/50 transition-all cursor-pointer flex flex-col justify-between group" onclick="loadDoc('08-failproof-autonomous-workers-specification')">
+            <div>
+              <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                <i data-lucide="layers" class="w-5 h-5"></i>
+              </div>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">GVC Portal Invariants &amp; Centers</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Official consular center IDs (Islamabad 137, Lahore 138), operational calendar rules, and live HAR recording diagnostics.
+              </p>
             </div>
-            <div class="card-desc">Official consular center codes (Islamabad 137, Lahore 138), operational calendar rules, and live HAR recording diagnostics.</div>
+            <div class="mt-3 text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+              Read invariants <i data-lucide="arrow-right" class="w-3 h-3"></i>
+            </div>
           </div>
 
-          <div class="card" onclick="loadDoc('dual-pool-fleet')">
-            <div class="card-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/></svg>
-              Dual-Pool Fleet &amp; Drop Planner
+          <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-2xs hover:shadow-md hover:border-blue-500/50 transition-all cursor-pointer flex flex-col justify-between group" onclick="loadDoc('adr-001-dual-pool-scout-booker-decoupling')">
+            <div>
+              <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                <i data-lucide="shield-check" class="w-5 h-5"></i>
+              </div>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">Architecture Decisions (ADRs)</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Documented architectural tradeoffs: Dual-Pool decoupling (ADR-001), SQLite WAL persistence (ADR-002), and browser context WAF clearance (ADR-003).
+              </p>
             </div>
-            <div class="card-desc">Architecture for parallel scout workers, background booking threads, proxy failover rotation, and drop strike orchestration.</div>
+            <div class="mt-3 text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+              Explore ADR catalog <i data-lucide="arrow-right" class="w-3 h-3"></i>
+            </div>
           </div>
 
-          <div class="card" onclick="loadDoc('vps-deployment')">
-            <div class="card-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-              VPS &amp; Portainer Deployment
+          <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-2xs hover:shadow-md hover:border-blue-500/50 transition-all cursor-pointer flex flex-col justify-between group" onclick="loadDoc('09-session-handoff-live-fleet-gvc-auth-waf-and-docs-viewer')">
+            <div>
+              <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                <i data-lucide="history" class="w-5 h-5"></i>
+              </div>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">Complete Handoff History (01–09)</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Chronological record of every engineering sprint from project inception to present date, preserving context across all AI sessions.
+              </p>
             </div>
-            <div class="card-desc">Hetzner Cloud VPS provisioning, systemd services, container compose, and Cloudflare Zero Trust secure tunnels.</div>
+            <div class="mt-3 text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+              View handoffs <i data-lucide="arrow-right" class="w-3 h-3"></i>
+            </div>
+          </div>
+
+          <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-2xs hover:shadow-md hover:border-blue-500/50 transition-all cursor-pointer flex flex-col justify-between group" onclick="loadDoc('gvc-imperva-waf-troubleshooting')">
+            <div>
+              <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+              </div>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">Operational Troubleshooting Playbooks</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Step-by-step diagnostic and remediation SOPs for Imperva Incapsula WAF challenges, SMS webhook forwarders, and AI token streaming.
+              </p>
+            </div>
+            <div class="mt-3 text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+              View playbooks <i data-lucide="arrow-right" class="w-3 h-3"></i>
+            </div>
+          </div>
+
+          <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-2xs hover:shadow-md hover:border-blue-500/50 transition-all cursor-pointer flex flex-col justify-between group" onclick="loadDoc('01-coding-standards')">
+            <div>
+              <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+              </div>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">Coding Standards &amp; Invariants</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Strict zero-emoji rules, professional Lucide SVG standards, PII client confidentiality, and automated testing protocols.
+              </p>
+            </div>
+            <div class="mt-3 text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+              Read standards <i data-lucide="arrow-right" class="w-3 h-3"></i>
+            </div>
           </div>
         </div>
 
-        <h2 style="margin-top:36px;">Quick Invariant Matrix</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Entity / Topic</th>
-              <th>Production Value</th>
-              <th>Reference Document</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Islamabad Center ID</strong></td>
-              <td><code>137</code> (Default VAC)</td>
-              <td><a href="javascript:loadDoc('autonomous-workers-invariants')">08-failproof-autonomous-workers-specification.md</a></td>
-            </tr>
-            <tr>
-              <td><strong>Lahore Center ID</strong></td>
-              <td><code>138</code></td>
-              <td><a href="javascript:loadDoc('autonomous-workers-invariants')">08-failproof-autonomous-workers-specification.md</a></td>
-            </tr>
-            <tr>
-              <td><strong>Karachi Center</strong></td>
-              <td><em>Does not exist in GVC World</em></td>
-              <td><a href="javascript:loadDoc('autonomous-workers-invariants')">08-failproof-autonomous-workers-specification.md</a></td>
-            </tr>
-            <tr>
-              <td><strong>Type 26 (Work / Seasonal)</strong></td>
-              <td>Active Mon–Fri (Closed Sat, Sun)</td>
-              <td><a href="javascript:loadDoc('standalone-workers')">WORKFLOW_SPECIFICATION.md</a></td>
-            </tr>
-            <tr>
-              <td><strong>CapSolver reCAPTCHA v2</strong></td>
-              <td>Sitekey <code>6LcnlCoUAAAAAJLjWXXaByTFyuOLf4K0gGu5r3d2</code></td>
-              <td><a href="javascript:loadDoc('standalone-workers')">WORKFLOW_SPECIFICATION.md</a></td>
-            </tr>
-            <tr>
-              <td><strong>OTP Webhook Ingestion</strong></td>
-              <td><code>POST /api/otp/webhook</code></td>
-              <td><a href="javascript:loadDoc('overview')">README.md</a></td>
-            </tr>
-          </tbody>
-        </table>
+        <h2 class="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-2 mb-4">Consular &amp; System Invariant Matrix</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
+            <thead class="bg-slate-100 dark:bg-slate-800 font-bold text-slate-900 dark:text-white">
+              <tr>
+                <th class="p-3 border-b border-slate-200 dark:border-slate-800">Entity / Topic</th>
+                <th class="p-3 border-b border-slate-200 dark:border-slate-800">Production Value</th>
+                <th class="p-3 border-b border-slate-200 dark:border-slate-800">Primary Specification</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td class="p-3 font-semibold">Islamabad Center ID</td>
+                <td class="p-3"><code>137</code> (Default Pakistan VAC)</td>
+                <td class="p-3"><a href="javascript:loadDoc('08-failproof-autonomous-workers-specification')" class="text-blue-600 dark:text-blue-400 hover:underline">08-failproof-autonomous-workers-specification.md</a></td>
+              </tr>
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td class="p-3 font-semibold">Lahore Center ID</td>
+                <td class="p-3"><code>138</code> (Active Pakistan VAC)</td>
+                <td class="p-3"><a href="javascript:loadDoc('08-failproof-autonomous-workers-specification')" class="text-blue-600 dark:text-blue-400 hover:underline">08-failproof-autonomous-workers-specification.md</a></td>
+              </tr>
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td class="p-3 font-semibold">Karachi Center</td>
+                <td class="p-3"><em>Does not exist in GVC World</em></td>
+                <td class="p-3"><a href="javascript:loadDoc('08-failproof-autonomous-workers-specification')" class="text-blue-600 dark:text-blue-400 hover:underline">08-failproof-autonomous-workers-specification.md</a></td>
+              </tr>
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td class="p-3 font-semibold">Visa Type 26 (Work / Seasonal)</td>
+                <td class="p-3">Active strictly Mon–Fri (Closed Sat, Sun)</td>
+                <td class="p-3"><a href="javascript:loadDoc('standalone-workers-workflow-specification')" class="text-blue-600 dark:text-blue-400 hover:underline">WORKFLOW_SPECIFICATION.md</a></td>
+              </tr>
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td class="p-3 font-semibold">Genuine Slots Rule</td>
+                <td class="p-3"><code>id &gt; 0</code> and <code>isavailable == true</code> and <code>num &gt; 0</code></td>
+                <td class="p-3"><a href="javascript:loadDoc('standalone-workers-workflow-specification')" class="text-blue-600 dark:text-blue-400 hover:underline">WORKFLOW_SPECIFICATION.md</a></td>
+              </tr>
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td class="p-3 font-semibold">CapSolver reCAPTCHA v2</td>
+                <td class="p-3">Sitekey <code>6LcnlCoUAAAAAJLjWXXaByTFyuOLf4K0gGu5r3d2</code></td>
+                <td class="p-3"><a href="javascript:loadDoc('standalone-workers-workflow-specification')" class="text-blue-600 dark:text-blue-400 hover:underline">WORKFLOW_SPECIFICATION.md</a></td>
+              </tr>
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td class="p-3 font-semibold">OTP Webhook Ingestion</td>
+                <td class="p-3"><code>POST /api/otp/webhook</code></td>
+                <td class="p-3"><a href="javascript:loadDoc('sms-otp-forwarder-sanitization')" class="text-blue-600 dark:text-blue-400 hover:underline">sms-otp-forwarder-sanitization.md</a></td>
+              </tr>
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td class="p-3 font-semibold">Imperva Challenge Detection</td>
+                <td class="p-3">Halts before solver, marks failed, rotates proxy</td>
+                <td class="p-3"><a href="javascript:loadDoc('gvc-imperva-waf-troubleshooting')" class="text-blue-600 dark:text-blue-400 hover:underline">gvc-imperva-waf-troubleshooting.md</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       `;
+
+      if (window.lucide) lucide.createIcons();
     }
 
     // Load and render a specific document
     function loadDoc(docId) {
-      const doc = docs.find(d => d.id === docId);
+      let doc = docs.find(d => d.id === docId);
+      if (!doc && docId === 'readme') {
+        doc = docs.find(d => d.id === 'project-overview' || d.id === 'master-index');
+      }
       if (!doc) return;
 
-      currentDocId = docId;
-      window.location.hash = docId;
+      currentDocId = doc.id;
+      window.location.hash = doc.id;
       buildSidebar();
 
       document.getElementById("doc-title").textContent = doc.title;
       document.getElementById("doc-category").textContent = doc.category;
       document.getElementById("doc-path").textContent = doc.path;
-      document.getElementById("breadcrumb").textContent = `Documentation / ${doc.category} / ${doc.title}`;
 
-      // Convert Markdown to HTML using client-side marked.js
+      // Estimate reading time
+      const wordCount = doc.markdown.trim().split(/\s+/).length;
+      const readMins = Math.max(1, Math.round(wordCount / 200));
+      document.getElementById("doc-reading-time").textContent = `${readMins} min read (${doc.line_count} lines)`;
+
+      document.getElementById("breadcrumb").innerHTML = `
+        <span>Documentation</span> 
+        <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400"></i> 
+        <span>${escapeHtml(doc.category)}</span> 
+        <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400"></i> 
+        <span class="text-slate-900 dark:text-white font-semibold">${escapeHtml(doc.title)}</span>
+      `;
+
+      // Convert Markdown to HTML using marked.js with highlight.js formatting
       const rawHtml = marked.parse(doc.markdown);
       const contentEl = document.getElementById("doc-content");
       contentEl.innerHTML = rawHtml;
 
-      // Enhance Code Blocks with Copy Buttons
-      attachCodeCopyButtons();
+      // Wrap pre blocks into beautiful code block containers with language header & copy button
+      enhanceCodeBlocks(contentEl);
 
       // Extract Headings for Table of Contents
       buildToc(contentEl);
 
       // Scroll to top
       document.getElementById("doc-scroll").scrollTop = 0;
+
+      if (window.lucide) lucide.createIcons();
     }
 
-    // Attach copy button to code blocks
-    function attachCodeCopyButtons() {
-      document.querySelectorAll(".markdown-body pre").forEach(pre => {
-        const btn = document.createElement("button");
-        btn.className = "copy-btn";
-        btn.textContent = "Copy";
-        btn.onclick = () => {
-          const code = pre.querySelector("code")?.innerText || pre.innerText;
-          navigator.clipboard.writeText(code).then(() => {
-            btn.textContent = "Copied!";
-            setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    // Enhance Code Blocks with Language Header & Copy Action
+    function enhanceCodeBlocks(container) {
+      const preElements = container.querySelectorAll("pre");
+      preElements.forEach(pre => {
+        const code = pre.querySelector("code");
+        if (!code) return;
+
+        // Detect language from class (e.g. language-python, language-powershell)
+        let langName = "CODE";
+        code.classList.forEach(cls => {
+          if (cls.startsWith("language-")) {
+            langName = cls.replace("language-", "").toUpperCase();
+          } else if (cls.startsWith("hljs")) {
+            const m = cls.match(/language-([a-zA-Z0-9_-]+)/);
+            if (m) langName = m[1].toUpperCase();
+          }
+        });
+
+        // Wrapper container
+        const wrapper = document.createElement("div");
+        wrapper.className = "code-block-wrapper";
+
+        // Header bar
+        const header = document.createElement("div");
+        header.className = "code-block-header";
+        header.innerHTML = `
+          <span class="code-lang-badge">${langName}</span>
+          <button class="code-copy-btn">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span>Copy</span>
+          </button>
+        `;
+
+        const copyBtn = header.querySelector(".code-copy-btn");
+        copyBtn.onclick = () => {
+          const textToCopy = code.innerText;
+          navigator.clipboard.writeText(textToCopy).then(() => {
+            copyBtn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i> <span class="text-emerald-400">Copied!</span>`;
+            if (window.lucide) lucide.createIcons();
+            setTimeout(() => {
+              copyBtn.innerHTML = `<i data-lucide="copy" class="w-3.5 h-3.5"></i> <span>Copy</span>`;
+              if (window.lucide) lucide.createIcons();
+            }, 2000);
           });
         };
-        pre.appendChild(btn);
+
+        // Replace pre with wrapped element
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(header);
+        wrapper.appendChild(pre);
       });
     }
 
@@ -739,7 +778,8 @@
         heading.id = id;
 
         const link = document.createElement("a");
-        link.className = `toc-link ${heading.tagName.toLowerCase()}`;
+        const isH3 = heading.tagName.toLowerCase() === "h3";
+        link.className = `block text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors truncate py-1 ${isH3 ? 'pl-4 text-[11.5px]' : 'font-medium text-xs'}`;
         link.textContent = heading.textContent;
         link.href = "#" + id;
         link.onclick = (e) => {
@@ -748,40 +788,6 @@
         };
         tocList.appendChild(link);
       });
-    }
-
-    // Drag and drop local .md file preview
-    function setupDragAndDrop() {
-      const dropzone = document.body;
-      ["dragenter", "dragover"].forEach(eventName => {
-        dropzone.addEventListener(eventName, (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }, false);
-      });
-
-      dropzone.addEventListener("drop", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const files = e.dataTransfer.files;
-        if (files.length > 0 && files[0].name.endsWith(".md")) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            currentDocId = "custom";
-            document.getElementById("doc-title").textContent = files[0].name;
-            document.getElementById("doc-category").textContent = "Local File Preview";
-            document.getElementById("doc-path").textContent = "Dropped: " + files[0].name;
-            document.getElementById("breadcrumb").textContent = `Documentation / Local Preview / ${files[0].name}`;
-            
-            const rawHtml = marked.parse(event.target.result);
-            const contentEl = document.getElementById("doc-content");
-            contentEl.innerHTML = rawHtml;
-            attachCodeCopyButtons();
-            buildToc(contentEl);
-          };
-          reader.readAsText(files[0]);
-        }
-      }, false);
     }
 
     // Copy raw markdown button in topbar
@@ -800,7 +806,7 @@
       return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    // Launch
+    // Launch App
     window.addEventListener("DOMContentLoaded", init);
   </script>
 </body>

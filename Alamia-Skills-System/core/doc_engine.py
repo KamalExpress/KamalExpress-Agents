@@ -31,6 +31,7 @@ class DocEngine:
 
         discovered_docs: List[Dict[str, Any]] = []
         seen_paths = set()
+        used_ids: set[str] = set()
 
         # 1. First priority: Everything in docs/
         if self.docs_dir.exists():
@@ -42,7 +43,7 @@ class DocEngine:
                         if p in seen_paths:
                             continue
                         seen_paths.add(p)
-                        doc_info = self._process_doc_file(p, is_inside_docs=True)
+                        doc_info = self._process_doc_file(p, is_inside_docs=True, used_ids=used_ids)
                         if doc_info:
                             discovered_docs.append(doc_info)
 
@@ -61,7 +62,7 @@ class DocEngine:
         for p in candidate_paths:
             if p.exists() and p not in seen_paths:
                 seen_paths.add(p)
-                doc_info = self._process_doc_file(p, is_inside_docs=False)
+                doc_info = self._process_doc_file(p, is_inside_docs=False, used_ids=used_ids)
                 if doc_info:
                     discovered_docs.append(doc_info)
 
@@ -82,6 +83,7 @@ class DocEngine:
             "History": 13,
             "Indexes": 14,
             "Operations": 15,
+            "Skills System": 16,
             "General": 20,
         }
 
@@ -94,7 +96,7 @@ class DocEngine:
 
         return discovered_docs
 
-    def _process_doc_file(self, full_path: Path, is_inside_docs: bool) -> Optional[Dict[str, Any]]:
+    def _process_doc_file(self, full_path: Path, is_inside_docs: bool, used_ids: set[str]) -> Optional[Dict[str, Any]]:
         """Extracts structural metadata and markdown content from a file."""
         try:
             content = full_path.read_text(encoding="utf-8", errors="replace")
@@ -120,20 +122,60 @@ class DocEngine:
         category = "General"
         if is_inside_docs:
             rel_to_docs = full_path.relative_to(self.docs_dir).parts
-            if len(rel_to_docs) > 1:
-                category = rel_to_docs[0].capitalize()
-                if category.lower() in ["permanent", "transient"] and len(rel_to_docs) > 2:
+            if len(rel_to_docs) == 1:
+                if full_path.stem.lower() in ["readme", "index"]:
+                    category = "Overview"
+                else:
+                    category = "General"
+            elif len(rel_to_docs) > 1:
+                cat_first = rel_to_docs[0].capitalize()
+                if cat_first.lower() in ["permanent", "transient"] and len(rel_to_docs) > 2:
                     category = rel_to_docs[1].capitalize()
+                else:
+                    category = cat_first
         else:
-            if full_path.name.lower() == "readme.md":
+            if full_path == self.root / "README.md":
                 category = "Overview"
+            elif "alamia" in rel_path.lower():
+                category = "Skills System"
             elif "worker" in rel_path.lower():
                 category = "Workers"
             elif "run" in full_path.stem.lower():
                 category = "Operations"
+            elif full_path.name.lower() == "readme.md":
+                category = full_path.parent.name.replace("-", " ").replace("_", " ").title()
+            else:
+                parent_name = full_path.parent.name.replace("-", " ").replace("_", " ").title()
+                category = parent_name if parent_name not in ["", ".", self.root.name] else "General"
 
-        doc_id = full_path.stem.lower().replace(" ", "-").replace("_", "-")
-        # Ensure unique ID if duplicates exist
+        # Generate unique document ID to prevent collision across same-named files
+        parent_slug = full_path.parent.name.lower().replace(" ", "-").replace("_", "-")
+        if full_path == self.docs_dir / "README.md" or full_path == self.docs_dir / "index.md":
+            base_id = "master-index"
+        elif full_path == self.root / "README.md":
+            base_id = "project-overview"
+        elif full_path.stem.lower() in ["readme", "index"]:
+            # Subdirectory readmes/indexes are prefixed with their folder name
+            base_id = f"{parent_slug}-{full_path.stem.lower()}" if parent_slug else full_path.stem.lower()
+        else:
+            base_id = full_path.stem.lower().replace(" ", "-").replace("_", "-")
+
+        doc_id = base_id
+        if doc_id in used_ids:
+            if parent_slug and parent_slug != doc_id and not doc_id.startswith(parent_slug):
+                doc_id = f"{parent_slug}-{base_id}"
+            else:
+                rel_parts = [p.lower().replace(" ", "-").replace("_", "-") for p in full_path.relative_to(self.root).with_suffix("").parts]
+                doc_id = "-".join(rel_parts)
+
+        # Final uniqueness guarantee
+        candidate = doc_id
+        counter = 2
+        while candidate in used_ids:
+            candidate = f"{doc_id}-{counter}"
+            counter += 1
+        doc_id = candidate
+        used_ids.add(doc_id)
         return {
             "id": doc_id,
             "title": title,
