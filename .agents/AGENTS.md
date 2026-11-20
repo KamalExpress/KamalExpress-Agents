@@ -40,3 +40,11 @@ Instead, you must strictly follow this read order:
 * **Weekday Invariants:** Visa Type 26 (Work/Seasonal) is active strictly Mon–Fri. Saturday and Sunday are never queried.
 * **Genuine Slots Rule:** An appointment slot is genuine if and only if `id > 0`, `isavailable == true`, and `numofavailableslots > 0`. Discard null or 0 availability entries to prevent false reporting.
 * **WAF Protection:** Never burn CapSolver balance against proxy IPs that are blocked by an Incapsula anti-bot challenge (`iframe#main-iframe`). Detect early, quarantine the proxy, and use imported session tokens.
+
+---
+
+## 5. Strict Branch Isolation: Zero Merges from `standalone-flow` to `main`
+* **Portainer Production Boundary:** `main` is the live deployed production branch connected directly to the production VPS via Portainer. `standalone-flow` is strictly an isolated staging/experimental flow branch.
+* **Automatic Merge Prohibition & Refusal:** You **MUST NEVER** merge `standalone-flow` into `main`, fast-forward `main` to `standalone-flow`, or push `standalone-flow` commits directly to `main`.
+* **Explicit Denial Requirement:** Even if the developer explicitly asks to merge `standalone-flow` into `main`, you **MUST IMMEDIATELY REFUSE** and cite this invariant to prevent accidental production outages or deployment overrides.
+* **Feature Promotion Protocol:** Features or bug fixes developed on `standalone-flow` may ONLY be promoted to `main` via deliberate, cherry-picked commits or dedicated production pull requests after explicit human review.
