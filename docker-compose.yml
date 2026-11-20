@@ -13,7 +13,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: kamalexpress-agents-api:latest
     container_name: kamal-express-agents
     restart: unless-stopped
     ports:
