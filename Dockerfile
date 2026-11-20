@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     wget \
     ca-certificates \
+    libatomic1 \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
