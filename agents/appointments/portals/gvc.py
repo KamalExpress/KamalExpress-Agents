@@ -632,7 +632,7 @@ class GVCPortalDriver:
                         from .gvc_auth import gvc_auth_solver
                         login_res = await gvc_auth_solver.login_with_credentials()
                         if login_res.get("success"):
-                            logger.info("[gvc] ✓ Re-authentication succeeded. Retrying slot search with fresh session...")
+                            logger.info("[gvc] [SUCCESS] Re-authentication succeeded. Retrying slot search with fresh session...")
                             return await self.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=date_from, date_to=date_to)
 
                     self.last_search_status = {
@@ -660,7 +660,7 @@ class GVCPortalDriver:
                         telemetry_collector=self.last_telemetry,
                     )
 
-                    logger.info(f"[gvc] ✓ Direct REST slot query returned {len(found_slots)} open slots.")
+                    logger.info(f"[gvc] [SUCCESS] Direct REST slot query returned {len(found_slots)} open slots.")
                     return found_slots
 
                 elif is_waf_block:
@@ -768,7 +768,7 @@ class GVCPortalDriver:
                     visa_type=str(visa_type),
                     telemetry_collector=self.last_telemetry,
                 )
-                logger.info(f"[gvc] ✓ In-browser CDP slot query returned {len(found_slots)} open slots.")
+                logger.info(f"[gvc] [SUCCESS] In-browser CDP slot query returned {len(found_slots)} open slots.")
                 return found_slots
         except Exception:
             pass
@@ -822,7 +822,7 @@ class GVCPortalDriver:
                     if resp.status_code in [200, 204]:
                         if proxy:
                             self.proxy_manager.mark_proxy_success(proxy)
-                        logger.info(f"[gvc] ✓ OTP successfully triggered for +92-{phone_clean} on GVC API (HTTP {resp.status_code}).")
+                        logger.info(f"[gvc] [SUCCESS] OTP successfully triggered for +92-{phone_clean} on GVC API (HTTP {resp.status_code}).")
                         return {"success": True, "phone": phone_clean, "message": "OTP sent successfully."}
                     elif resp.status_code in [403, 429]:
                         logger.warning(f"[gvc] Proxy blocked/rate-limited (HTTP {resp.status_code}) on {proxy}. Quarantining and retrying...")
@@ -889,9 +889,9 @@ class GVCPortalDriver:
             logger.info(f"[gvc] Solving reCAPTCHA v2 token for final booking submission (sitekey: {self.sitekey})...")
             recaptcha_token = await self.captcha_solver.solve_recaptcha_v2(self.sitekey, f"{self.base_url}/appointments/add")
             if recaptcha_token:
-                logger.info(f"[gvc] ✓ Successfully solved reCAPTCHA v2 token for booking submission.")
+                logger.info(f"[gvc] [SUCCESS] Successfully solved reCAPTCHA v2 token for booking submission.")
             else:
-                logger.warning("[gvc] ⚠️ Captcha solver returned None for reCAPTCHA v2 token.")
+                logger.warning("[gvc] [WARNING] Captcha solver returned None for reCAPTCHA v2 token.")
 
         # Determine the authenticating user email for the top-level payload
         # GVC enforces that top-level 'email' matches the subject in the Bearer token (JWT sub)
@@ -983,7 +983,7 @@ class GVCPortalDriver:
                             if not ref_no:
                                 ref_no = "GVC-GR-" + "".join(random.choices("0123456789ABCDEF", k=8))
 
-                            logger.info(f"[gvc] ✓ BOOKING CONFIRMED! Reference: {ref_no}")
+                            logger.info(f"[gvc] [SUCCESS] BOOKING CONFIRMED! Reference: {ref_no}")
                             return BookingResult(
                                 success=True,
                                 client_id=applicant.id,

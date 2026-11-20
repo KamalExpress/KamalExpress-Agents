@@ -686,10 +686,10 @@
         <div class="bubble">Welcome to **Kamal Express AI Platform**!
 
 I can assist you across all travel & pilgrimage operations:
-- **🛂 Visa Requirements & Guidance:** Document checklists for Greece (Type 26 / Schengen), Saudi Arabia, UAE, UK, and Turkey.
-- **📅 Appointment Operations:** Intake applicants into queue and search live Greece GVC World slots.
-- **🕋 Hajj & Umrah Packages:** Custom packages, Nusuk Rawdah permit guidelines, Tasheer biometric rules, and Makkah/Madinah Ziyarat.
-- **🏨 Hotel Reservations:** Instant hotel discovery and confirmed voucher holds in Makkah (Clock Tower), Madinah (Markaziyah), Athens, and Dubai.
+- **Visa Requirements & Guidance:** Document checklists for Greece (Type 26 / Schengen), Saudi Arabia, UAE, UK, and Turkey.
+- **Appointment Operations:** Intake applicants into queue and search live Greece GVC World slots.
+- **Hajj & Umrah Packages:** Custom packages, Nusuk Rawdah permit guidelines, Tasheer biometric rules, and Makkah/Madinah Ziyarat.
+- **Hotel Reservations:** Instant hotel discovery and confirmed voucher holds in Makkah (Clock Tower), Madinah (Markaziyah), Athens, and Dubai.
 
 How can I help you today?</div>
       </div>
@@ -740,13 +740,13 @@ How can I help you today?</div>
             <i data-lucide="rotate-cw" class="icon"></i> Refresh
           </button>
           <button class="btn btn-outline btn-sm" onclick="requeueAllFailed()" id="btn-requeue-failed" title="Reset all FAILED and stalled applicants back to active QUEUED status" style="color: #d97706; border-color: #fde68a;">
-            <i data-lucide="refresh-cw" class="icon"></i> 🔄 Re-Queue Failed
+            <i data-lucide="refresh-cw" class="icon"></i> Re-Queue Failed
           </button>
           <button class="btn btn-outline btn-sm" onclick="openBulkUploadModal()">
             <i data-lucide="upload-cloud" class="icon"></i> Bulk CSV / TXT
           </button>
           <button class="btn btn-sm" onclick="openBlitzModal()" id="btn-booking-blitz" style="background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; font-weight: 600;">
-            <i data-lucide="zap" class="icon"></i> 🚀 Launch Booking Blitz
+            <i data-lucide="zap" class="icon"></i> Launch Booking Blitz
           </button>
           <button class="btn btn-primary btn-sm" onclick="openAddModal()">
             <i data-lucide="user-plus" class="icon"></i> + Add Client
@@ -1121,7 +1121,7 @@ How can I help you today?</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" id="btn-pre-stage-fleet" onclick="preStageFleetAction()" style="background:#0284c7;">
-            <i data-lucide="zap" class="icon"></i> ⚡ Pre-Stage Active Booking Fleet
+            <i data-lucide="zap" class="icon"></i> Pre-Stage Active Booking Fleet
           </button>
           <button class="btn btn-outline btn-sm" id="btn-reschedule-checks" onclick="rescheduleSlotChecksAction()">
             <i data-lucide="rotate-cw" class="icon"></i> Reschedule Slot Discovery Checks
@@ -1148,7 +1148,7 @@ How can I help you today?</div>
           <!-- Multi-Wave Operations Breakdown -->
           <div style="background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:12px;">
             <div style="font-weight:600; font-size:12.5px; color:var(--foreground); margin-bottom:6px;">
-              📋 Multi-Wave Dispatch Plan:
+              Multi-Wave Dispatch Plan:
             </div>
             <div id="wave-plan-summary" style="font-size:12px; color:var(--muted-foreground); line-height:1.5;">
               Calculating active queue and booker wave breakdown...
@@ -1475,7 +1475,7 @@ How can I help you today?</div>
           </div>
 
           <div style="background:var(--secondary); padding:10px 12px; border-radius:var(--radius); font-size:12px; border:1px solid var(--border);">
-            <div style="font-weight:600; margin-bottom:4px; color:var(--foreground);">📱 3-Minute Phone Setup Guide:</div>
+            <div style="font-weight:600; margin-bottom:4px; color:var(--foreground);">Phone Setup Guide:</div>
             <ol style="padding-left:16px; margin:0; display:flex; flex-direction:column; gap:4px; color:var(--muted-foreground);">
               <li>Install <b>SMS Forwarder</b> (or MacroDroid/Tasker) from Play Store / F-Droid.</li>
               <li>Add Webhook Rule: Match SMS where Sender/Text contains <code>GERRYS</code>, <code>GVCW</code>, <code>GVC</code>, or <code>Appointment</code>.</li>
@@ -1864,7 +1864,7 @@ How can I help you today?</div>
       <div class="card-title">
         <i data-lucide="edit-3" class="icon"></i> Edit Client Profile (<span style="color:var(--primary)">#<span id="edit-client-id-badge"></span></span>)
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeEditClientModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeEditClientModal()" style="padding:2px 8px;">&times;</button>
     </div>
     
     <input type="hidden" id="edit-client-id">
@@ -2001,7 +2001,7 @@ How can I help you today?</div>
       <div class="card-title">
         <i data-lucide="smartphone" class="icon"></i> Ingested SMS / OTP Payload Inspection
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeOtpModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeOtpModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -2064,7 +2064,7 @@ How can I help you today?</div>
       <div class="card-title">
         <i data-lucide="shield-check" class="icon"></i> Register GVC Portal Account to Fleet
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeAddGvcAccountModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeAddGvcAccountModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <form onsubmit="event.preventDefault(); submitAddGvcAccount();" style="display:flex; flex-direction:column; gap:10px;">
@@ -2154,7 +2154,7 @@ How can I help you today?</div>
       <div class="card-title">
         <i data-lucide="edit-3" class="icon"></i> Edit GVC Portal Account Settings
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeEditGvcAccountModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeEditGvcAccountModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <form onsubmit="event.preventDefault(); submitEditGvcAccount();" style="display:flex; flex-direction:column; gap:10px;">
@@ -2249,11 +2249,11 @@ How can I help you today?</div>
         </div>
         <div class="card-desc">Execute high-speed direct strikes across all active booking accounts.</div>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeBlitzModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeBlitzModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <div style="background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius); padding:12px; font-size:12px; color:var(--muted-foreground); line-height:1.45; margin-bottom:12px;">
-      ⚡ <b>Blind Strike Drop Mode:</b> Dispatches parallel direct booking waves across all ready portal accounts. Optional target overrides below apply globally across all queued applicants. If fields are left empty, workers book <b>autonomously</b> using each applicant's individual profile and preferred dates.
+      <b>Blind Strike Drop Mode:</b> Dispatches parallel direct booking waves across all ready portal accounts. Optional target overrides below apply globally across all queued applicants. If fields are left empty, workers book <b>autonomously</b> using each applicant's individual profile and preferred dates.
     </div>
 
     <form onsubmit="event.preventDefault(); executeBookingBlitz();" style="display:flex; flex-direction:column; gap:12px;">
@@ -2297,7 +2297,7 @@ How can I help you today?</div>
       <div class="modal-actions" style="margin-top:6px;">
         <button type="button" class="btn btn-outline" onclick="closeBlitzModal()">Cancel</button>
         <button type="submit" class="btn btn-primary" id="btn-submit-blitz" style="background: linear-gradient(135deg, #0284c7, #2563eb); font-weight:600;">
-          <i data-lucide="zap" class="icon"></i> ⚡ Launch Parallel Blitz
+          <i data-lucide="zap" class="icon"></i> Launch Parallel Blitz
         </button>
       </div>
     </form>
@@ -2314,7 +2314,7 @@ How can I help you today?</div>
         </div>
         <div class="card-desc">Upload a CSV/TXT file or paste raw rows to bulk-enroll applicants into the auto-booking queue.</div>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeBulkUploadModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeBulkUploadModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <div style="display:flex; justify-content:space-between; align-items:center; background:var(--secondary); padding:10px 14px; border-radius:var(--radius); border:1px solid var(--border);">
@@ -2354,11 +2354,11 @@ How can I help you today?</div>
       <div class="card-title" style="color:var(--primary);">
         <i data-lucide="shield" class="icon"></i> Applicant PII Data Privacy Verification
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closePiiModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closePiiModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <div style="background:var(--secondary); padding:10px 12px; border-radius:var(--radius); border:1px solid var(--border); font-size:12px; color:var(--muted-foreground); line-height:1.5;">
-      🔒 <b>Kamal Express Privacy Standard:</b> In accordance with client confidentiality and applicant protection standards, full personal contact numbers are masked. Viewing unmasked contact data is recorded in the activity stream.
+      <b>Kamal Express Privacy Standard:</b> In accordance with client confidentiality and applicant protection standards, full personal contact numbers are masked. Viewing unmasked contact data is recorded in the activity stream.
     </div>
 
     <div style="display:flex; flex-direction:column; gap:8px; margin-top:2px;">
@@ -2397,7 +2397,7 @@ How can I help you today?</div>
       <div class="card-title">
         <i data-lucide="key" class="icon"></i> Manual Session Sync: <span id="sync-modal-acc-title" style="color:var(--primary);">Account</span>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeSyncAccountTokenModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeSyncAccountTokenModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <form onsubmit="event.preventDefault(); submitSyncAccountToken();" style="display:flex; flex-direction:column; gap:10px;">
@@ -2424,7 +2424,7 @@ How can I help you today?</div>
       <div class="card-title">
         <i data-lucide="file-check-2" class="icon" style="color:var(--success);"></i> GVC World Booking Confirmation Proof
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeRawConfirmationModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeRawConfirmationModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <div style="background:var(--secondary); border:1px solid var(--border); border-radius:var(--radius); padding:12px; display:flex; flex-direction:column; gap:8px;">
@@ -2466,7 +2466,7 @@ How can I help you today?</div>
       <div class="card-title">
         <i data-lucide="sliders-horizontal" class="icon"></i> Configure Operator Rates & Task Billing
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeWorkerAccountingSettingsModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeWorkerAccountingSettingsModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <form onsubmit="event.preventDefault(); submitWorkerAccountingSettings();" style="display:flex; flex-direction:column; gap:12px;">
@@ -2505,7 +2505,7 @@ How can I help you today?</div>
       <div class="card-title">
         <i data-lucide="key" class="icon"></i> Change Your Account Password
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeChangePasswordModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeChangePasswordModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <form onsubmit="event.preventDefault(); submitChangePassword();" style="display:flex; flex-direction:column; gap:10px;">
@@ -2539,7 +2539,7 @@ How can I help you today?</div>
       <div class="card-title">
         <i data-lucide="shield-alert" class="icon"></i> Reset Password for <span id="admin-rp-username" style="color:var(--primary);">User</span>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="closeAdminResetPasswordModal()" style="padding:2px 8px;">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="closeAdminResetPasswordModal()" style="padding:2px 8px;">&times;</button>
     </div>
 
     <form onsubmit="event.preventDefault(); submitAdminResetPassword();" style="display:flex; flex-direction:column; gap:10px;">
@@ -2792,7 +2792,7 @@ How can I help you today?</div>
     const origin = window.location.origin;
     const bmCode = `javascript:(function(){
       if(!location.hostname.includes('gvcworld')&&!location.hostname.includes('gvc')){
-        alert('⚠️ Please switch to your active GVC World tab (pk-gr-services.gvcworld.eu) first, and THEN click this bookmarklet!');
+        alert('[WARNING] Please switch to your active GVC World tab (pk-gr-services.gvcworld.eu) first, and THEN click this bookmarklet!');
         return;
       }
       var foundToken = '';
@@ -2852,7 +2852,7 @@ How can I help you today?</div>
         source: 'BOOKMARKLET'
       };
       if (!foundToken && !allCookies) {
-        alert('⚠️ No active session token found. Please sign in to GVC World first, then click this bookmark.');
+        alert('[WARNING] No active session token found. Please sign in to GVC World first, then click this bookmark.');
         return;
       }
       var target = '${origin}/api/gvc/session/sync';
@@ -2863,14 +2863,14 @@ How can I help you today?</div>
       }).then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.success) {
-          alert('🎉 SUCCESS! GVC Session synced to Kamal Express!\\nSession ID: #' + (d.session ? d.session.id : 'OK') + '\\nYou can now search & book visa slots.');
+          alert('[SUCCESS] SUCCESS! GVC Session synced to Kamal Express!\\nSession ID: #' + (d.session ? d.session.id : 'OK') + '\\nYou can now search & book visa slots.');
         } else {
-          alert('❌ Sync error: ' + (d.detail || d.message || 'Unknown error'));
+          alert('[ERROR] Sync error: ' + (d.detail || d.message || 'Unknown error'));
         }
       }).catch(function(err) {
         if (foundToken) {
           try { navigator.clipboard.writeText(foundToken); } catch(e) {}
-          alert('📋 GVC Token Extracted & Copied to Clipboard!\\n(Browser CSP prevented direct background sync)\\n\\nToken: ' + foundToken.slice(0, 30) + '...\\n\\nNow open Kamal Express -> GVC Auth -> Paste Token -> Save.');
+          alert('[INFO] GVC Token Extracted & Copied to Clipboard!\\n(Browser CSP prevented direct background sync)\\n\\nToken: ' + foundToken.slice(0, 30) + '...\\n\\nNow open Kamal Express -> GVC Auth -> Paste Token -> Save.');
         } else {
           prompt('Copy this session data into Kamal Express:', allCookies);
         }
@@ -2885,9 +2885,9 @@ How can I help you today?</div>
 
   function copyConsoleSnippet() {
     const origin = window.location.origin;
-    const snippet = `(function(){function s(o){if(!o)return'';if(typeof o==='string'){var t=o.trim();if(t.startsWith('Bearer '))t=t.substring(7);if(t.length>=25&&/^[A-Za-z0-9_\\-\\.]+$/.test(t))return t;try{return s(JSON.parse(t));}catch(e){}}else if(typeof o==='object'){for(var k in o){var r=s(o[k]);if(r)return r;}}return'';}var tk='';for(var i=0;i<localStorage.length;i++){tk=s(localStorage.getItem(localStorage.key(i)));if(tk)break;}if(!tk){for(var j=0;j<sessionStorage.length;j++){tk=s(sessionStorage.getItem(sessionStorage.key(j)));if(tk)break;}}fetch('${origin}/api/gvc/session/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tk,cookies:document.cookie,source:'CONSOLE_SYNC'})}).then(r=>r.json()).then(d=>alert(d.success?'🎉 SUCCESS! Synced GVC Session #'+d.session.id:'❌ Sync failed: '+(d.detail||d.message))).catch(e=>alert('❌ '+e));})()`;
+    const snippet = `(function(){function s(o){if(!o)return'';if(typeof o==='string'){var t=o.trim();if(t.startsWith('Bearer '))t=t.substring(7);if(t.length>=25&&/^[A-Za-z0-9_\\-\\.]+$/.test(t))return t;try{return s(JSON.parse(t));}catch(e){}}else if(typeof o==='object'){for(var k in o){var r=s(o[k]);if(r)return r;}}return'';}var tk='';for(var i=0;i<localStorage.length;i++){tk=s(localStorage.getItem(localStorage.key(i)));if(tk)break;}if(!tk){for(var j=0;j<sessionStorage.length;j++){tk=s(sessionStorage.getItem(sessionStorage.key(j)));if(tk)break;}}fetch('${origin}/api/gvc/session/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tk,cookies:document.cookie,source:'CONSOLE_SYNC'})}).then(r=>r.json()).then(d=>alert(d.success?'[SUCCESS] Synced GVC Session #'+d.session.id:'[ERROR] Sync failed: '+(d.detail||d.message))).catch(e=>alert('[ERROR] '+e));})()`;
     navigator.clipboard.writeText(snippet).then(() => {
-      alert('📋 1-Line Console Script copied to clipboard!\n\nTo use:\n1. Open your GVC World tab (pk-gr-services.gvcworld.eu)\n2. Press F12 -> click Console\n3. Press Ctrl+V -> hit Enter!');
+      alert('[INFO] 1-Line Console Script copied to clipboard!\n\nTo use:\n1. Open your GVC World tab (pk-gr-services.gvcworld.eu)\n2. Press F12 -> click Console\n3. Press Ctrl+V -> hit Enter!');
     }).catch(() => {
       prompt('Copy this script and run it in F12 Console on GVC World:', snippet);
     });
@@ -3075,11 +3075,11 @@ How can I help you today?</div>
       const resp = await fetch('/api/gvc/fleet/pre-stage', { method: 'POST' });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`⚡ SUCCESS!\n${data.message || `Pre-staged ${data.pre_staged_count} booking operator(s) in Hot Standby readiness.`}`);
+        alert(`[DISPATCHED] SUCCESS!\n${data.message || `Pre-staged ${data.pre_staged_count} booking operator(s) in Hot Standby readiness.`}`);
         loadGvcAccounts();
         loadActivityLogsStream();
       } else {
-        alert(`❌ Pre-stage error: ${data.detail || 'Failed'}`);
+        alert(`[ERROR] Pre-stage error: ${data.detail || 'Failed'}`);
       }
     } catch (err) {
       alert(`Error: ${err.message}`);
@@ -3096,11 +3096,11 @@ How can I help you today?</div>
       const resp = await fetch('/api/gvc/fleet/reschedule-checks', { method: 'POST' });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`🔄 ${data.message || 'Slot discovery checks rescheduled across all centers.'}`);
+        alert(`[RESCHEDULED] ${data.message || 'Slot discovery checks rescheduled across all centers.'}`);
         loadGvcAccounts();
         loadActivityLogsStream();
       } else {
-        alert(`❌ Error: ${data.detail || 'Failed'}`);
+        alert(`[ERROR] Error: ${data.detail || 'Failed'}`);
       }
     } catch (err) {
       alert(`Error: ${err.message}`);
@@ -3179,7 +3179,7 @@ How can I help you today?</div>
 
   function copyPiiPhone() {
     navigator.clipboard.writeText(`+92-${activePiiPhone}`).then(() => {
-      alert('📋 Phone number copied to clipboard: +92-' + activePiiPhone);
+      alert('[INFO] Phone number copied to clipboard: +92-' + activePiiPhone);
     }).catch(() => {
       prompt('Copy Phone Number:', `+92-${activePiiPhone}`);
     });
@@ -3236,7 +3236,7 @@ How can I help you today?</div>
         resDiv.style.background = 'var(--success-light)';
         resDiv.style.color = '#047857';
         resDiv.style.border = '1px solid #a7f3d0';
-        resDiv.innerHTML = `<b>✓ Ingestion Complete:</b> ${data.added_count} applicant(s) added to queue. ${data.failed_count > 0 ? `(${data.failed_count} skipped/errors)` : ''}`;
+        resDiv.innerHTML = `<b>[SUCCESS] Ingestion Complete:</b> ${data.added_count} applicant(s) added to queue. ${data.failed_count > 0 ? `(${data.failed_count} skipped/errors)` : ''}`;
         refreshQueue();
         setTimeout(() => {
           closeBulkUploadModal();
@@ -3245,12 +3245,12 @@ How can I help you today?</div>
         resDiv.style.background = 'var(--destructive-light)';
         resDiv.style.color = '#b91c1c';
         resDiv.style.border = '1px solid #fecaca';
-        resDiv.innerHTML = `<b>❌ Upload Failed:</b> ${data.detail || data.message || 'Error processing rows.'} ${data.errors ? `<br><small>${data.errors.join('<br>')}</small>` : ''}`;
+        resDiv.innerHTML = `<b>[FAILED] Upload Failed:</b> ${data.detail || data.message || 'Error processing rows.'} ${data.errors ? `<br><small>${data.errors.join('<br>')}</small>` : ''}`;
       }
     } catch (err) {
       resDiv.style.background = 'var(--destructive-light)';
       resDiv.style.color = '#b91c1c';
-      resDiv.innerHTML = `<b>❌ Network Error:</b> ${err.message}`;
+      resDiv.innerHTML = `<b>[ERROR] Network Error:</b> ${err.message}`;
     } finally {
       btn.disabled = false;
       renderIcons();
@@ -3415,11 +3415,11 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`✅ Account #${id} updated successfully.`);
+        alert(`[SUCCESS] Account #${id} updated successfully.`);
         closeEditGvcAccountModal();
         loadGvcAccounts();
       } else {
-        alert(`❌ Error: ${data.detail || 'Could not update account.'}`);
+        alert(`[ERROR] Error: ${data.detail || 'Could not update account.'}`);
       }
     } catch (e) {
       alert(`Network error: ${e.message}`);
@@ -3468,7 +3468,7 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`✅ ${data.message || 'Account registered!'}`);
+        alert(`[SUCCESS] ${data.message || 'Account registered!'}`);
         closeAddGvcAccountModal();
         document.getElementById('gvc-new-label').value = '';
         document.getElementById('gvc-new-persona').value = '';
@@ -3478,7 +3478,7 @@ How can I help you today?</div>
         document.getElementById('gvc-new-datefrom').value = '';
         loadGvcAccounts();
       } else {
-        alert(`❌ Error: ${data.detail || 'Could not add account.'}`);
+        alert(`[ERROR] Error: ${data.detail || 'Could not add account.'}`);
       }
     } catch (e) {
       alert(`Network error: ${e.message}`);
@@ -3513,11 +3513,11 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`🎉 ${data.message || 'Token synced!'}`);
+        alert(`[SUCCESS] ${data.message || 'Token synced!'}`);
         closeSyncAccountTokenModal();
         loadGvcAccounts();
       } else {
-        alert(`❌ Sync failed: ${data.detail || 'Error'}`);
+        alert(`[ERROR] Sync failed: ${data.detail || 'Error'}`);
       }
     } catch (e) {
       alert(`Error: ${e.message}`);
@@ -3531,7 +3531,7 @@ How can I help you today?</div>
       if (resp.ok && data.success) {
         loadGvcAccounts();
       } else {
-        alert(`❌ Could not toggle worker: ${data.detail || 'Error'}`);
+        alert(`[ERROR] Could not toggle worker: ${data.detail || 'Error'}`);
       }
     } catch (e) {
       alert(`Error: ${e.message}`);
@@ -3543,10 +3543,10 @@ How can I help you today?</div>
       const resp = await fetch(`/api/gvc/accounts/${id}/login`, { method: 'POST' });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`🎉 ${data.message}`);
+        alert(`[SUCCESS] ${data.message}`);
         loadGvcAccounts();
       } else {
-        alert(`❌ Auto-login failed: ${data.error || data.detail || 'Error'}`);
+        alert(`[ERROR] Auto-login failed: ${data.error || data.detail || 'Error'}`);
       }
     } catch (e) {
       alert(`Login error: ${e.message}`);
@@ -3559,10 +3559,10 @@ How can I help you today?</div>
       const resp = await fetch(`/api/gvc/accounts/${id}/logout`, { method: 'POST' });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`🔒 ${data.message}`);
+        alert(`[SECURITY] ${data.message}`);
         loadGvcAccounts();
       } else {
-        alert(`❌ Logout failed: ${data.detail || data.error || 'Error'}`);
+        alert(`[ERROR] Logout failed: ${data.detail || data.error || 'Error'}`);
       }
     } catch (e) {
       alert(`Logout error: ${e.message}`);
@@ -3577,7 +3577,7 @@ How can I help you today?</div>
       if (resp.ok && data.success) {
         loadGvcAccounts();
       } else {
-        alert(`❌ Could not delete account: ${data.detail || 'Error'}`);
+        alert(`[ERROR] Could not delete account: ${data.detail || 'Error'}`);
       }
     } catch (e) {
       alert(`Delete error: ${e.message}`);
@@ -3598,9 +3598,9 @@ How can I help you today?</div>
       }
       if (capsolverStatus) {
         if (data.captcha_configured) {
-          capsolverStatus.innerHTML = `<span style="color:#16a34a; font-weight:600;">✓ Saved & Active (${data.captcha_api_key_masked || 'Active'})</span>`;
+          capsolverStatus.innerHTML = `<span style="color:#16a34a; font-weight:600;">Saved & Active (${data.captcha_api_key_masked || 'Active'})</span>`;
         } else {
-          capsolverStatus.innerHTML = `<span style="color:#dc2626; font-weight:600;">⚠️ Key Required</span>`;
+          capsolverStatus.innerHTML = `<span style="color:#dc2626; font-weight:600;">Key Required</span>`;
         }
       }
       renderIcons();
@@ -3627,7 +3627,7 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert('✅ CapSolver settings saved successfully.');
+        alert('[SUCCESS] CapSolver settings saved successfully.');
         loadGVCAuthStatus();
       } else {
         let errMsg = 'Failed to save CapSolver settings.';
@@ -3640,7 +3640,7 @@ How can I help you today?</div>
         } else if (data.message) {
           errMsg = data.message;
         }
-        alert('❌ Failed: ' + errMsg);
+        alert('[ERROR] Failed: ' + errMsg);
       }
     } catch (e) {
       alert('Error: ' + e.message);
@@ -3778,7 +3778,7 @@ How can I help you today?</div>
       refreshQueue();
       renderIcons();
     } catch (err) {
-      bubbleEl.textContent = `⚠️ Error: ${err.message}`;
+      bubbleEl.textContent = `[ERROR] ${err.message}`;
     } finally {
       streaming = false;
       sendBtn.disabled = false;
@@ -3827,7 +3827,7 @@ How can I help you today?</div>
             ${c.booking_reference ? `
               <div style="display:flex; flex-direction:column; gap:2px;">
                 <span style="font-weight:700; color:var(--success); cursor:pointer; text-decoration:underline;" onclick="openRawConfirmationModal(${c.id})" title="Click to view Raw GVC Confirmation Response">
-                  📄 ${escapeHtml(c.booking_reference)}
+                  ${escapeHtml(c.booking_reference)}
                 </span>
                 <small style="color:var(--muted-foreground);">${escapeHtml(c.booked_date || '')} ${escapeHtml(c.booked_time || '')}</small>
                 ${c.booked_by_worker_name ? `<small style="color:#0284c7; font-weight:500;">Operator: ${escapeHtml(c.booked_by_worker_name)}</small>` : ''}
@@ -3968,7 +3968,7 @@ How can I help you today?</div>
   async function triggerClientBooking(id, name, isRebook) {
     const promptMsg = isRebook
       ? `Applicant ${name} (#${id}) is already marked as BOOKED.\n\nDo you want to manually re-trigger the booking workflow?`
-      : `⚡ Trigger immediate appointment booking workflow for ${name} (#${id})?\n\nThis will scan live slots on GVC, claim the slot, and request OTP verification.`;
+      : `Trigger immediate appointment booking workflow for ${name} (#${id})?\n\nThis will scan live slots on GVC, claim the slot, and request OTP verification.`;
 
     if (!confirm(promptMsg)) return;
 
@@ -4007,14 +4007,14 @@ How can I help you today?</div>
       }
 
       if (resp.ok && data.success) {
-        alert(`🎉 BOOKING SUCCESSFUL!\n\nApplicant: ${name} (#${id})\nReference: ${data.reference_number || 'CONFIRMED'}\nSlot: ${data.slot_date || ''} ${data.slot_time || ''}\nOperator: ${data.worker_name || 'Fleet Operator'}\n\nClient queue record has been updated with full booking proof.`);
+        alert(`[SUCCESS] BOOKING SUCCESSFUL!\n\nApplicant: ${name} (#${id})\nReference: ${data.reference_number || 'CONFIRMED'}\nSlot: ${data.slot_date || ''} ${data.slot_time || ''}\nOperator: ${data.worker_name || 'Fleet Operator'}\n\nClient queue record has been updated with full booking proof.`);
       } else if (data.status === 'NO_SLOTS') {
         alert(`ℹ️ NO OPEN SLOTS FOUND\n\n${data.error || 'No appointment slots are currently available on GVC for this center and visa category.'}\n\nThe applicant remains in the queue and will be booked automatically as soon as slots open.`);
       } else if (data.status === 'OTP_TIMEOUT') {
-        alert(`⚠️ OTP VERIFICATION TIMED OUT\n\n${data.error || 'SMS verification code was not received within 75 seconds.'}\n\nPlease check the SIM or phone forwarder and try again.`);
+        alert(`[WARNING] OTP VERIFICATION TIMED OUT\n\n${data.error || 'SMS verification code was not received within 75 seconds.'}\n\nPlease check the SIM or phone forwarder and try again.`);
       } else {
         const cleanMsg = formatAlertError(data.error || data.detail || data.message || 'Operation failed.');
-        alert(`❌ Booking Workflow Notice:\n\n${cleanMsg}`);
+        alert(`[ERROR] Booking Workflow Notice:\n\n${cleanMsg}`);
       }
     } catch (err) {
       alert(`Network error triggering booking: ${err.message}`);
@@ -4028,7 +4028,7 @@ How can I help you today?</div>
   }
 
   async function requeueAllFailed() {
-    if (!confirm('🔄 Re-queue all FAILED and stalled applicants back to active QUEUED status?')) return;
+    if (!confirm('Re-queue all FAILED and stalled applicants back to active QUEUED status?')) return;
     const btn = document.getElementById('btn-requeue-failed');
     if (btn) btn.disabled = true;
 
@@ -4037,9 +4037,9 @@ How can I help you today?</div>
       if (resp.status === 401) { showLogin(); return; }
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`🎉 ${data.message || 'Applicants re-queued!'}`);
+        alert(`[SUCCESS] ${data.message || 'Applicants re-queued!'}`);
       } else {
-        alert(`❌ Could not re-queue: ${data.detail || data.error || 'Failed'}`);
+        alert(`[ERROR] Could not re-queue: ${data.detail || data.error || 'Failed'}`);
       }
     } catch (e) {
       alert(`Error: ${e.message}`);
@@ -4061,7 +4061,7 @@ How can I help you today?</div>
         refreshQueue();
         loadActivityLogsStream();
       } else {
-        alert(`❌ Could not re-queue: ${data.detail || data.error || 'Failed'}`);
+        alert(`[ERROR] Could not re-queue: ${data.detail || data.error || 'Failed'}`);
       }
     } catch (e) {
       alert(`Error: ${e.message}`);
@@ -4094,7 +4094,7 @@ How can I help you today?</div>
         if (ico) ico.setAttribute('data-lucide', 'shield-check');
       } else {
         dot.className = 'status-dot active';
-        text.textContent = '⚡ Blitz Mode (Drop)';
+        text.textContent = 'Blitz Mode (Drop)';
         pill.title = 'Operational Mode: Blitz Mode (Blind Strikes Enabled). Click to toggle Safe Mode.';
         if (ico) ico.setAttribute('data-lucide', 'zap');
       }
@@ -4107,8 +4107,8 @@ How can I help you today?</div>
   async function toggleOperationalMode() {
     const isCurrentlySafe = currentOperationalMode.require_slot_availability_check;
     const confirmMsg = isCurrentlySafe
-      ? "⚡ SWITCH TO BLITZ DROP MODE (BLIND STRIKES)?\n\nWorkers will bypass live slot availability checks and strike GVC booking directly on target or preferred dates.\n\nRecommended during confirmed embassy slot drops.\n\nProceed?"
-      : "🛡️ SWITCH TO SAFE MODE (STRICT VERIFICATION)?\n\nWorkers will verify open slot availability on GVC before attempting applicant bookings, preventing phantom OTP requests.\n\nProceed?";
+      ? "SWITCH TO BLITZ DROP MODE (BLIND STRIKES)?\n\nWorkers will bypass live slot availability checks and strike GVC booking directly on target or preferred dates.\n\nRecommended during confirmed embassy slot drops.\n\nProceed?"
+      : "SWITCH TO SAFE MODE (STRICT VERIFICATION)?\n\nWorkers will verify open slot availability on GVC before attempting applicant bookings, preventing phantom OTP requests.\n\nProceed?";
 
     if (!confirm(confirmMsg)) return;
 
@@ -4121,7 +4121,7 @@ How can I help you today?</div>
       if (resp.status === 401) { showLogin(); return; }
       const data = await resp.json();
       await loadOperationalMode();
-      alert(`Operational mode updated to: ${!isCurrentlySafe ? '⚡ BLITZ DROP MODE (Blind Strikes Enabled)' : '🛡️ SAFE MODE (Strict Verification Active)'}`);
+      alert(`Operational mode updated to: ${!isCurrentlySafe ? 'BLITZ DROP MODE (Blind Strikes Enabled)' : 'SAFE MODE (Strict Verification Active)'}`);
     } catch (e) {
       alert(`Error toggling operational mode: ${e.message}`);
     }
@@ -4149,7 +4149,7 @@ How can I help you today?</div>
       target_time ? `Time: ${target_time}` : 'Time: Autonomous Slot',
     ].join(' | ');
 
-    if (!confirm(`🚀 LAUNCH PARALLEL BOOKING BLITZ?\n\nTarget Config: ${targetDesc}\n\nThis will trigger parallel direct booking for all currently queued applicants across all active fleet operators.\n\nProceed?`)) {
+    if (!confirm(`LAUNCH PARALLEL BOOKING BLITZ?\n\nTarget Config: ${targetDesc}\n\nThis will trigger parallel direct booking for all currently queued applicants across all active fleet operators.\n\nProceed?`)) {
       return;
     }
 
@@ -4179,7 +4179,7 @@ How can I help you today?</div>
       const data = await resp.json();
       closeBlitzModal();
       if (resp.ok && data.success) {
-        alert(`⚡ BOOKING BLITZ DISPATCHED!\n\n${data.message || 'Parallel bookings launched across active accounts.'}\n\nMonitor the Activity Stream & Queue table.`);
+        alert(`[DISPATCHED] BOOKING BLITZ DISPATCHED!\n\n${data.message || 'Parallel bookings launched across active accounts.'}\n\nMonitor the Activity Stream & Queue table.`);
       } else {
         alert(`Blitz Notice: ${data.message || data.detail || 'No clients to blitz or error occurred.'}`);
       }
@@ -4218,9 +4218,9 @@ How can I help you today?</div>
     const isActiveToday = rule.days.includes(today);
 
     if (rule.days.length === 0) {
-      noticeEl.innerHTML = `<span class="badge badge-destructive" style="font-size:11px; padding:2px 6px;">⛔ Type ${visaType} Inactive</span> <span style="color:#991b1b; font-size:11px; margin-left:4px;">GVC does not accept monitoring/booking queries for this category.</span>`;
+      noticeEl.innerHTML = `<span class="badge badge-destructive" style="font-size:11px; padding:2px 6px;">Inactive: Type ${visaType} Inactive</span> <span style="color:#991b1b; font-size:11px; margin-left:4px;">GVC does not accept monitoring/booking queries for this category.</span>`;
     } else if (isActiveToday) {
-      noticeEl.innerHTML = `<span class="badge badge-booked" style="font-size:11px; padding:2px 6px;">🟢 Active Today (${currentDayName})</span> <span style="color:var(--muted-foreground); font-size:11px; margin-left:4px;">Monitoring Schedule: <b>${rule.dayNames}</b> (Closed: ${rule.closedDays})</span>`;
+      noticeEl.innerHTML = `<span class="badge badge-booked" style="font-size:11px; padding:2px 6px;">Active Today (${currentDayName})</span> <span style="color:var(--muted-foreground); font-size:11px; margin-left:4px;">Monitoring Schedule: <b>${rule.dayNames}</b> (Closed: ${rule.closedDays})</span>`;
     } else {
       noticeEl.innerHTML = `<span class="badge badge-in_progress" style="font-size:11px; padding:2px 6px; background:#fff7ed; color:#c2410c; border:1px solid #fed7aa;">⏸️ Inactive Today (${currentDayName})</span> <span style="color:#c2410c; font-size:11px; margin-left:4px;">Workers paused today. Active on: <b>${rule.dayNames}</b></span>`;
     }
@@ -4304,7 +4304,7 @@ How can I help you today?</div>
   }
 
   async function clearDiscoveredSlotsHistory() {
-    if (!confirm("🗑️ CLEAR DISCOVERED SLOT HISTORY?\n\nThis will purge all discovered open slot history records from the persistent database activity log.\n\nProceed?")) {
+    if (!confirm("CLEAR DISCOVERED SLOT HISTORY?\n\nThis will purge all discovered open slot history records from the persistent database activity log.\n\nProceed?")) {
       return;
     }
 
@@ -4473,7 +4473,7 @@ How can I help you today?</div>
 
   async function quickBookSlot(slotId, slotDate, slotTime, vacId, visaType, vacName) {
     const centerTitle = vacName || `VAC ${vacId}`;
-    if (!confirm(`⚡ Immediately book the next QUEUED applicant on this open slot?\n\nCenter: ${centerTitle} (Type ${visaType})\nDate & Time: ${slotDate} at ${slotTime}\n\n(Note: This bypasses client date preferences and claims the next queued applicant immediately.)`)) {
+    if (!confirm(`Immediately book the next QUEUED applicant on this open slot?\n\nCenter: ${centerTitle} (Type ${visaType})\nDate & Time: ${slotDate} at ${slotTime}\n\n(Note: This bypasses client date preferences and claims the next queued applicant immediately.)`)) {
       return;
     }
 
@@ -4507,13 +4507,13 @@ How can I help you today?</div>
       }
 
       if (resp.ok && data.success) {
-        alert(`🎉 QUICK BOOKING SUCCESSFUL!\n\nApplicant: ${data.client_name} (#${data.client_id})\nReference: ${data.reference_number || 'CONFIRMED'}\nSlot: ${data.slot_date} ${data.slot_time}\nOperator: ${data.worker_name || 'Fleet Operator'}\n\nClient queue record has been updated with full booking confirmation proof.`);
+        alert(`[SUCCESS] QUICK BOOKING SUCCESSFUL!\n\nApplicant: ${data.client_name} (#${data.client_id})\nReference: ${data.reference_number || 'CONFIRMED'}\nSlot: ${data.slot_date} ${data.slot_time}\nOperator: ${data.worker_name || 'Fleet Operator'}\n\nClient queue record has been updated with full booking confirmation proof.`);
       } else if (data.status === 'NO_CLIENTS') {
         alert(`ℹ️ NO QUEUED APPLICANTS FOUND\n\n${data.error || 'No queued applicants found matching this VAC and visa type.'}\n\nPlease add applicants to the queue to book them.`);
       } else if (data.status === 'OTP_TIMEOUT') {
-        alert(`⚠️ OTP VERIFICATION TIMED OUT\n\n${data.error || 'SMS verification code was not received within 75 seconds.'}\n\nPlease check the operator SIM and try again.`);
+        alert(`[WARNING] OTP VERIFICATION TIMED OUT\n\n${data.error || 'SMS verification code was not received within 75 seconds.'}\n\nPlease check the operator SIM and try again.`);
       } else {
-        alert(`❌ Quick Booking Result:\n\n${data.error || data.detail || data.message || 'Operation failed.'}`);
+        alert(`[ERROR] Quick Booking Result:\n\n${data.error || data.detail || data.message || 'Operation failed.'}`);
       }
     } catch (err) {
       alert(`Network error during quick-booking: ${err.message}`);
@@ -4559,12 +4559,12 @@ How can I help you today?</div>
       if (resp.status === 401) { showLogin(); return; }
       const res = await resp.json();
       if (!resp.ok) {
-        alert(`⚠️ Monitor Notice: ${res.detail || 'Unable to update monitor state.'}`);
+        alert(`[WARNING] Monitor Notice: ${res.detail || 'Unable to update monitor state.'}`);
       }
       await refreshTelemetry();
     } catch (e) {
       console.error("Monitor control error:", e);
-      alert("❌ Communication error with monitor API.");
+      alert("[ERROR] Communication error with monitor API.");
     }
   }
 
@@ -4754,11 +4754,11 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`✅ ${data.message || `Ingested ${data.added} proxies!`}`);
+        alert(`[SUCCESS] ${data.message || `Ingested ${data.added} proxies!`}`);
         document.getElementById('proxy-bulk-input').value = '';
         loadProxies();
       } else {
-        alert(`❌ Proxy import error: ${data.detail || data.error || 'Failed'}`);
+        alert(`[ERROR] Proxy import error: ${data.detail || data.error || 'Failed'}`);
       }
     } catch (err) {
       alert(`Error importing proxies: ${err.message}`);
@@ -4905,12 +4905,12 @@ How can I help you today?</div>
       const meta = data.metadata || {};
       const counts = meta.summary_counts || {};
 
-      const summaryText = `📦 KAMAL EXPRESS PLATFORM — DATA EXPORT SUMMARY\n` +
+      const summaryText = `KAMAL EXPRESS PLATFORM — DATA EXPORT SUMMARY\n` +
         `═══════════════════════════════════════════════════\n` +
         `• Generated At: ${meta.export_timestamp || 'Now'}\n` +
         `• Exported By: Admin (${meta.exported_by || 'admin'})\n` +
         `• Schema Version: ${meta.schema_version || '1.0'}\n\n` +
-        `📊 INCLUDED ENTITIES:\n` +
+        `INCLUDED ENTITIES:\n` +
         `───────────────────────────────────────────────────\n` +
         `• Staff / Admin Accounts: ${counts.staff_accounts || 0}\n` +
         `• GVC Portal Accounts: ${counts.gvc_portal_accounts || 0}\n` +
@@ -4951,7 +4951,7 @@ How can I help you today?</div>
 
       const meta = backupData.metadata || {};
       const counts = meta.summary_counts || {};
-      const confirmMsg = `⚠️ RESTORE SYSTEM BACKUP\n\n` +
+      const confirmMsg = `[WARNING] RESTORE SYSTEM BACKUP\n\n` +
         `File: ${file.name}\n` +
         `Exported At: ${meta.export_timestamp || 'Unknown'}\n` +
         `Schema: ${meta.schema_version || '1.0'}\n\n` +
@@ -4989,7 +4989,7 @@ How can I help you today?</div>
       }
 
       const imported = res.imported_counts || {};
-      alert(`✅ Database Backup Imported Successfully!\n\n` +
+      alert(`[SUCCESS] Database Backup Imported Successfully!\n\n` +
         `• Staff Accounts: ${imported.staff_accounts || 0}\n` +
         `• GVC Accounts: ${imported.gvc_portal_accounts || 0}\n` +
         `• Proxies: ${imported.proxies || 0}\n` +
@@ -5031,13 +5031,13 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`✅ Account '${username}' created successfully.`);
+        alert(`[SUCCESS] Account '${username}' created successfully.`);
         document.getElementById('u-username').value = '';
         document.getElementById('u-fullname').value = '';
         document.getElementById('u-password').value = '';
         loadUsers();
       } else {
-        alert(`❌ Error: ${data.detail || 'Could not create user.'}`);
+        alert(`[ERROR] Error: ${data.detail || 'Could not create user.'}`);
       }
     } catch (e) {
       alert(`Connection error: ${e.message}`);
@@ -5066,7 +5066,7 @@ How can I help you today?</div>
   function copyWebhookUrl() {
     const url = window.location.origin + '/api/otp/webhook';
     navigator.clipboard.writeText(url).then(() => {
-      alert('📋 Webhook URL copied to clipboard:\n' + url + '\n\nPaste this into your Android SMS Forwarder HTTP POST configuration.');
+      alert('[INFO] Webhook URL copied to clipboard:\n' + url + '\n\nPaste this into your Android SMS Forwarder HTTP POST configuration.');
     }).catch(() => {
       prompt('Copy your Webhook URL:', url);
     });
@@ -5230,7 +5230,7 @@ How can I help you today?</div>
     const text = document.getElementById('otp-modal-payload').textContent;
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
-      alert('📋 Payload JSON copied to clipboard!');
+      alert('[INFO] Payload JSON copied to clipboard!');
     }).catch(() => {
       prompt('Copy Payload:', text);
     });
@@ -5253,7 +5253,7 @@ How can I help you today?</div>
       if (resp.ok) {
         loadOtpStream();
       } else {
-        alert(`❌ Could not delete record: ${data.detail || 'Error'}`);
+        alert(`[ERROR] Could not delete record: ${data.detail || 'Error'}`);
       }
     } catch (e) {
       alert(`Delete error: ${e.message}`);
@@ -5269,7 +5269,7 @@ How can I help you today?</div>
       if (resp.ok) {
         loadOtpStream();
       } else {
-        alert(`❌ Could not clear stream: ${data.detail || 'Error'}`);
+        alert(`[ERROR] Could not clear stream: ${data.detail || 'Error'}`);
       }
     } catch (e) {
       alert(`Clear error: ${e.message}`);
@@ -5287,11 +5287,11 @@ How can I help you today?</div>
       const resp = await fetch(url, { method: 'POST' });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`⚡ SUCCESS!\nSimulated incoming SMS OTP '${data.record.code}' for +92-${data.record.phone}.\nAny active booking coroutines have been notified!`);
+        alert(`[DISPATCHED] SUCCESS!\nSimulated incoming SMS OTP '${data.record.code}' for +92-${data.record.phone}.\nAny active booking coroutines have been notified!`);
         document.getElementById('sim-code').value = '';
         loadOtpStream();
       } else {
-        alert(`❌ Simulation failed: ${data.detail || 'Error'}`);
+        alert(`[ERROR] Simulation failed: ${data.detail || 'Error'}`);
       }
     } catch (e) {
       alert(`Simulation error: ${e.message}`);
@@ -5316,11 +5316,11 @@ How can I help you today?</div>
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        alert(`✅ OTP '${code}' submitted successfully and dispatched to active booking tasks.`);
+        alert(`[SUCCESS] OTP '${code}' submitted successfully and dispatched to active booking tasks.`);
         document.getElementById('man-code').value = '';
         loadOtpStream();
       } else {
-        alert(`❌ Error submitting OTP: ${data.detail || 'Failed'}`);
+        alert(`[ERROR] Error submitting OTP: ${data.detail || 'Failed'}`);
       }
     } catch (e) {
       alert(`Submit error: ${e.message}`);
@@ -5420,7 +5420,7 @@ How can I help you today?</div>
         return;
       }
       closeWorkerAccountingSettingsModal();
-      alert('✅ Worker accounting rates updated successfully.');
+      alert('[SUCCESS] Worker accounting rates updated successfully.');
       loadWorkerAccounting();
     } catch (e) {
       alert('Error updating rates: ' + e.message);
@@ -5477,7 +5477,7 @@ How can I help you today?</div>
     const text = document.getElementById('conf-modal-raw-json').textContent;
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
-      alert('📋 Raw confirmation JSON copied to clipboard!');
+      alert('[INFO] Raw confirmation JSON copied to clipboard!');
     }).catch(() => {
       prompt('Copy JSON:', text);
     });

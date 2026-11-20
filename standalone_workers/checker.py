@@ -69,7 +69,7 @@ def load_config() -> dict:
 def dispatch_alert(vac: str, visa_type: str, date_str: str, slots: list):
     vac_name = "Islamabad VAC (137)" if vac == "137" else f"VAC {vac}"
     msg = (
-        f"\n🚨 [SLOT DROP ALERT] Genuine Open Slots Detected!\n"
+        f"\n[SLOT DROP ALERT] Genuine Open Slots Detected!\n"
         f"  Center: {vac_name}\n"
         f"  Visa Type: {visa_type}\n"
         f"  Date: {date_str}\n"
@@ -215,13 +215,13 @@ def run_checker(args: argparse.Namespace):
 
             # Accurate status reporting
             if waf_block_count > 0 and successful_queries == 0:
-                logger.error(f"❌ [CRITICAL WAF BLOCK] All {waf_block_count} dates BLOCKED by Imperva Incapsula! Zero timetable data could be inspected.")
+                logger.error(f"[CRITICAL WAF BLOCK] All {waf_block_count} dates BLOCKED by Imperva Incapsula! Zero timetable data could be inspected.")
             elif unauth_count > 0 and successful_queries == 0:
-                logger.error(f"❌ [CRITICAL AUTH ERROR] All {unauth_count} dates failed with HTTP 401 Unauthorized! Portal session login required.")
+                logger.error(f"[CRITICAL AUTH ERROR] All {unauth_count} dates failed with HTTP 401 Unauthorized! Portal session login required.")
             elif waf_block_count > 0 or unauth_count > 0 or other_err_count > 0:
-                logger.warning(f"⚠️ [PARTIAL FAILURE] {successful_queries} succeeded, {waf_block_count} WAF-blocked, {unauth_count} unauthorized, {other_err_count} errored.")
+                logger.warning(f"[PARTIAL FAILURE] {successful_queries} succeeded, {waf_block_count} WAF-blocked, {unauth_count} unauthorized, {other_err_count} errored.")
             elif not slots_found_any and successful_queries > 0:
-                logger.info(f"✓ Successfully inspected {successful_queries} dates -> 0 genuine open slots currently available.")
+                logger.info(f"[SUCCESS] Successfully inspected {successful_queries} dates -> 0 genuine open slots currently available.")
 
             if max_iterations and iteration >= int(max_iterations):
                 logger.info(f"Reached configured limit of {max_iterations} iteration(s). Finishing scout run.")

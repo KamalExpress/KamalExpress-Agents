@@ -91,7 +91,7 @@ class ProxyManager:
                 quarantine_seconds=int(self._cooldown_seconds),
             )
             clean = proxy_url.split("@")[-1]
-            logger.warning(f"[proxy] ⚠️ Proxy {clean} marked failed in SQLite (quarantined 5m).")
+            logger.warning(f"[proxy] [FAILED] Proxy {clean} marked failed in SQLite (quarantined 5m).")
             if error and ("407" in str(error) or "traffic limit" in str(error).lower() or "access denied" in str(error).lower()):
                 try:
                     from .service_guard import service_guard

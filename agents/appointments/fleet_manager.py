@@ -397,7 +397,7 @@ class AccountWorkerInstance:
                         ttl_seconds=90
                     )
                     fleet_manager.log_event(
-                        f"🚨 Found {len(slots)} open slots at {vac_meta.get('name', 'VAC')} (Type {visa_type})!",
+                        f"[SLOTS FOUND] Found {len(slots)} open slots at {vac_meta.get('name', 'VAC')} (Type {visa_type})!",
                         level="SUCCESS",
                         category="SLOT_DISCOVERY",
                         account_id=self.account_id,
@@ -459,7 +459,7 @@ class AccountWorkerInstance:
                         for otp_attempt in range(1, max_otp_attempts + 1):
                             attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
                             fleet_manager.log_event(
-                                f"⚡ Operator '{persona}' claimed Client #{client.id} ({client.first_name} {client.last_name}). Triggering verification code{attempt_label} to SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} ({int(otp_timeout)}s window)...",
+                                f"[OPERATOR CLAIM] Operator '{persona}' claimed Client #{client.id} ({client.first_name} {client.last_name}). Triggering verification code{attempt_label} to SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} ({int(otp_timeout)}s window)...",
                                 level="INFO",
                                 category="BOOKING",
                                 account_id=self.account_id,
@@ -468,7 +468,7 @@ class AccountWorkerInstance:
                             otp_res = await self._driver.trigger_booking_otp(phone_number=target_phone)
                             if not otp_res.get("success"):
                                 fleet_manager.log_event(
-                                    f"⚠️ GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
+                                    f"[WARNING] GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
                                     level="WARNING",
                                     category="OTP",
                                     account_id=self.account_id,
@@ -477,7 +477,7 @@ class AccountWorkerInstance:
                             otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
                             if otp_code:
                                 fleet_manager.log_event(
-                                    f"✓ Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {slot.date} {slot.time}.",
+                                    f"[SUCCESS] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {slot.date} {slot.time}.",
                                     level="SUCCESS",
                                     category="OTP",
                                     account_id=self.account_id,
@@ -494,7 +494,7 @@ class AccountWorkerInstance:
                                 notes=f"OTP verification timed out on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} after {max_otp_attempts} attempts. Reverted to QUEUED."
                             )
                             fleet_manager.log_event(
-                                f"❌ OTP verification timed out for Client #{client.id} ({client.first_name} {client.last_name}, {client.passport_number}) on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} after {max_otp_attempts} attempts. Reverted to QUEUED.",
+                                f"[OTP TIMED OUT] OTP verification timed out for Client #{client.id} ({client.first_name} {client.last_name}, {client.passport_number}) on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} after {max_otp_attempts} attempts. Reverted to QUEUED.",
                                 level="WARNING",
                                 category="OTP",
                                 account_id=self.account_id,
@@ -551,7 +551,7 @@ class AccountWorkerInstance:
                                 booking_cost_pkr=rate_booking,
                             )
                             fleet_manager.log_event(
-                                f"🎉 BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {slot.date} {slot.time}!",
+                                f"[SUCCESS] BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {slot.date} {slot.time}!",
                                 level="SUCCESS",
                                 category="BOOKING",
                                 account_id=self.account_id,
@@ -577,7 +577,7 @@ class AccountWorkerInstance:
                                 booked_by_worker_name=persona,
                             )
                             fleet_manager.log_event(
-                                f"❌ Booking submission failed for {client.passport_number}: {result.message}",
+                                f"[FAILED] Booking submission failed for {client.passport_number}: {result.message}",
                                 level="WARNING",
                                 category="BOOKING",
                                 account_id=self.account_id,
@@ -896,7 +896,7 @@ class GVCFleetManager:
                     # SAFE MODE: Halt cleanly without triggering OTPs
                     msg = f"No open appointment slots found at {vac_name} ({visa_label}) for Client #{client.id} ({client.first_name} {client.last_name}). Booking halted; applicant remains QUEUED."
                     self.log_event(
-                        f"⚠️ {msg}",
+                        f"[WARNING] {msg}",
                         level="WARNING",
                         category="SLOT_DISCOVERY",
                         account_id=account_id,
@@ -917,7 +917,7 @@ class GVCFleetManager:
                     target_time = blitz_time or "09:30"
                     target_slot_id = "0"
                     self.log_event(
-                        f"⚡ [BLITZ DROP STRIKE] Direct booking strike enabled (Availability Check: OFF). Striking GVC for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_name} ({visa_label}) on target date {target_date} {target_time}...",
+                        f"[BLITZ DROP STRIKE] Direct booking strike enabled (Availability Check: OFF). Striking GVC for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_name} ({visa_label}) on target date {target_date} {target_time}...",
                         level="INFO",
                         category="BOOKING",
                         account_id=account_id,
@@ -964,7 +964,7 @@ class GVCFleetManager:
             for otp_attempt in range(1, max_otp_attempts + 1):
                 attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
                 self.log_event(
-                    f"⚡ Operator '{persona}' triggered OTP{attempt_label} to SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {target_date} {target_time} ({int(otp_timeout)}s window)...",
+                    f"[OPERATOR CLAIM] Operator '{persona}' triggered OTP{attempt_label} to SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {target_date} {target_time} ({int(otp_timeout)}s window)...",
                     level="INFO",
                     category="BOOKING",
                     account_id=account_id,
@@ -973,7 +973,7 @@ class GVCFleetManager:
                 otp_res = await driver.trigger_booking_otp(phone_number=target_phone)
                 if not otp_res.get("success"):
                     self.log_event(
-                        f"⚠️ GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
+                        f"[WARNING] GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
                         level="WARNING",
                         category="OTP",
                         account_id=account_id,
@@ -982,7 +982,7 @@ class GVCFleetManager:
                 otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
                 if otp_code:
                     self.log_event(
-                        f"✓ Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {target_date} {target_time}.",
+                        f"[SUCCESS] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {target_date} {target_time}.",
                         level="SUCCESS",
                         category="OTP",
                         account_id=account_id,
@@ -1000,7 +1000,7 @@ class GVCFleetManager:
                     notes=f"OTP verification timed out on SIM {masked_sim} for {vac_name} ({visa_label}) on {target_date} {target_time} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
                 )
                 self.log_event(
-                    f"❌ OTP verification timed out for Client #{client.id} ({client.first_name} {client.last_name}, {client.passport_number}) on SIM {masked_sim} for {vac_name} ({visa_label}) on {target_date} {target_time} after {max_otp_attempts} attempts. Applicant returned to QUEUED status.",
+                    f"[OTP TIMED OUT] OTP verification timed out for Client #{client.id} ({client.first_name} {client.last_name}, {client.passport_number}) on SIM {masked_sim} for {vac_name} ({visa_label}) on {target_date} {target_time} after {max_otp_attempts} attempts. Applicant returned to QUEUED status.",
                     level="WARNING",
                     category="OTP",
                     account_id=account_id,
@@ -1064,7 +1064,7 @@ class GVCFleetManager:
                     booking_cost_pkr=rate_booking,
                 )
                 self.log_event(
-                    f"🎉 [MANUAL TRIGGER] BOOKING SUCCESSFUL! Ref: {result.reference_number} for Client #{client.id} ({client.first_name} {client.last_name}) by Operator '{persona}' at {vac_name} ({visa_label}) on {final_booked_date} {final_booked_time}!",
+                    f"[SUCCESS] [MANUAL TRIGGER] BOOKING SUCCESSFUL! Ref: {result.reference_number} for Client #{client.id} ({client.first_name} {client.last_name}) by Operator '{persona}' at {vac_name} ({visa_label}) on {final_booked_date} {final_booked_time}!",
                     level="SUCCESS",
                     category="BOOKING",
                     account_id=account_id,
@@ -1101,7 +1101,7 @@ class GVCFleetManager:
                     booked_by_worker_name=persona,
                 )
                 self.log_event(
-                    f"❌ [MANUAL TRIGGER] Booking submission failed for {client.passport_number}: {result.message}",
+                    f"[FAILED] [MANUAL TRIGGER] Booking submission failed for {client.passport_number}: {result.message}",
                     level="WARNING",
                     category="BOOKING",
                     account_id=account_id,
@@ -1224,7 +1224,7 @@ class GVCFleetManager:
         for otp_attempt in range(1, max_otp_attempts + 1):
             attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
             self.log_event(
-                f"⚡ [QUICK BOOK] Operator '{persona}' triggered instant booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_name} ({visa_label}) on {slot_date} {slot_time}. Triggering OTP{attempt_label} to SIM {masked_sim} ({int(otp_timeout)}s window)...",
+                f"[QUICK BOOK] Operator '{persona}' triggered instant booking for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_name} ({visa_label}) on {slot_date} {slot_time}. Triggering OTP{attempt_label} to SIM {masked_sim} ({int(otp_timeout)}s window)...",
                 level="INFO",
                 category="BOOKING",
                 account_id=account_id,
@@ -1233,7 +1233,7 @@ class GVCFleetManager:
             otp_res = await driver.trigger_booking_otp(phone_number=target_phone)
             if not otp_res.get("success"):
                 self.log_event(
-                    f"⚠️ [QUICK BOOK] GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
+                    f"[WARNING] [QUICK BOOK] GVC returned issue triggering OTP for SIM {masked_sim}: {otp_res.get('message') or otp_res.get('error')}",
                     level="WARNING",
                     category="OTP",
                     account_id=account_id,
@@ -1242,7 +1242,7 @@ class GVCFleetManager:
             otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
             if otp_code:
                 self.log_event(
-                    f"✓ [QUICK BOOK] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {slot_date} {slot_time}.",
+                    f"[SUCCESS] [QUICK BOOK] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {slot_date} {slot_time}.",
                     level="SUCCESS",
                     category="OTP",
                     account_id=account_id,
@@ -1258,7 +1258,7 @@ class GVCFleetManager:
                 notes=f"Quick-book: OTP verification timed out on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot_date} {slot_time} after {max_otp_attempts} attempts. Reverted to queue for automatic retry."
             )
             self.log_event(
-                f"❌ [QUICK BOOK] OTP timed out for Client #{client.id} ({client.first_name} {client.last_name}, {client.passport_number}) on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot_date} {slot_time} after {max_otp_attempts} attempts. Reverted to QUEUED.",
+                f"[FAILED] [QUICK BOOK] OTP timed out for Client #{client.id} ({client.first_name} {client.last_name}, {client.passport_number}) on SIM {masked_sim} for {vac_name} ({visa_label}) on {slot_date} {slot_time} after {max_otp_attempts} attempts. Reverted to QUEUED.",
                 level="WARNING",
                 category="OTP",
                 account_id=account_id,
@@ -1304,7 +1304,7 @@ class GVCFleetManager:
                 booking_cost_pkr=rate_booking,
             )
             self.log_event(
-                f"🎉 [QUICK BOOK] BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {slot_date} {slot_time}!",
+                f"[SUCCESS] [QUICK BOOK] BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {slot_date} {slot_time}!",
                 level="SUCCESS",
                 category="BOOKING",
                 account_id=account_id,
@@ -1341,7 +1341,7 @@ class GVCFleetManager:
                 booked_by_worker_name=persona,
             )
             self.log_event(
-                f"❌ [QUICK BOOK] Booking submission failed for {client.passport_number}: {result.message}",
+                f"[FAILED] [QUICK BOOK] Booking submission failed for {client.passport_number}: {result.message}",
                 level="WARNING",
                 category="BOOKING",
                 account_id=account_id,
@@ -1451,7 +1451,7 @@ class GVCFleetManager:
         vac_desc = f" ({GVC_VACS.get(str(target_vac_id), {}).get('name', f'VAC {target_vac_id}')})" if target_vac_id else " (All VACs)"
         date_desc = f" targeting {target_date} {target_time or '09:30'}" if target_date else " (Autonomous Dates)"
         self.log_event(
-            f"🚀 [BOOKING BLITZ] Launching direct booking blitz for {len(queued_clients)} queued applicant(s){vac_desc}{date_desc} across {len(auth_accounts) or 1} operator(s)...",
+            f"[BOOKING BLITZ] Launching direct booking blitz for {len(queued_clients)} queued applicant(s){vac_desc}{date_desc} across {len(auth_accounts) or 1} operator(s)...",
             level="SUCCESS",
             category="BOOKING",
         )

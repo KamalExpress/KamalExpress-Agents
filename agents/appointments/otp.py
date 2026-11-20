@@ -80,7 +80,7 @@ def _init_from_persistence() -> None:
                 OTP_STORE[rec["phone"]] = rec
                 OTP_STORE["latest"] = rec
         if persisted:
-            logger.info(f"[otp] ✓ Restored {len(persisted)} persistent OTP records from SQLite database.")
+            logger.info(f"[otp] [SUCCESS] Restored {len(persisted)} persistent OTP records from SQLite database.")
     except Exception as e:
         logger.warning(f"[otp] Could not load persisted OTPs from SQLite: {e}")
 
@@ -234,7 +234,7 @@ def record_incoming_otp(
         )
 
     logger.info(
-        f"[otp] ✓ Intercepted SMS: id='{record_id}', code='{display_code}', is_otp={has_valid_otp}, "
+        f"[otp] [SUCCESS] Intercepted SMS: id='{record_id}', code='{display_code}', is_otp={has_valid_otp}, "
         f"phone=+92-{clean_phone}, sender='{sender}', ip='{client_ip or 'unknown'}', "
         f"raw_text='{raw_message[:120] if raw_message else ''}'. (Woke up {notified_count} tasks)"
     )
@@ -258,7 +258,7 @@ async def wait_for_otp(
         age = time.time() - candidate.get("timestamp", 0)
         if age <= max_age_seconds:
             logger.info(
-                f"[otp] ✓ Using recent cached OTP '{candidate['code']}' (age: {age:.1f}s) "
+                f"[otp] [SUCCESS] Using recent cached OTP '{candidate['code']}' (age: {age:.1f}s) "
                 f"for phone +92-{clean_phone}"
             )
             return candidate["code"]
@@ -273,12 +273,12 @@ async def wait_for_otp(
     OTP_WAITERS[key].append(fut)
 
     try:
-        logger.info(f"[otp] ⏳ Awaiting OTP for +92-{clean_phone or 'ANY'} (timeout: {timeout}s)...")
+        logger.info(f"[otp] [WAITING] Awaiting OTP for +92-{clean_phone or 'ANY'} (timeout: {timeout}s)...")
         otp = await asyncio.wait_for(fut, timeout=timeout)
-        logger.info(f"[otp] ⚡ Awaited OTP received: '{otp}' for +92-{clean_phone}")
+        logger.info(f"[otp] [RECEIVED] Awaited OTP received: '{otp}' for +92-{clean_phone}")
         return otp
     except asyncio.TimeoutError:
-        logger.warning(f"[otp] ⚠️ Timed out waiting for OTP for +92-{clean_phone} after {timeout}s.")
+        logger.warning(f"[otp] [WARNING] Timed out waiting for OTP for +92-{clean_phone} after {timeout}s.")
         return None
     finally:
         if key in OTP_WAITERS and fut in OTP_WAITERS[key]:

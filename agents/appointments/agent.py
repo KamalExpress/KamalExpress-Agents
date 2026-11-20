@@ -351,7 +351,7 @@ def start_slot_monitor(interval_seconds: int = 45) -> dict:
         "status": res["status"],
         "interval_seconds": slot_monitor.interval_seconds,
         "cdp_connected": is_cdp,
-        "warning": "" if is_cdp else "⚠️ Note: Chrome CDP is disconnected on port 9222. The monitor is running in standby and will poll as soon as Chrome is launched via `.\\Launch-Chrome-CDP.ps1 -RealProfile` and logged into GVC.",
+        "warning": "" if is_cdp else "[WARNING] Chrome CDP is disconnected on port 9222. The monitor is running in standby and will poll as soon as Chrome is launched via `.\\Launch-Chrome-CDP.ps1 -RealProfile` and logged into GVC.",
         "message": f"Autonomous Slot Monitor is now ACTIVE (polling every {slot_monitor.interval_seconds}s).",
     }
 

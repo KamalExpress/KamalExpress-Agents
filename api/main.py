@@ -560,7 +560,7 @@ async def stream_agent(agent, messages: list) -> AsyncIterator[str]:
 
     except Exception as e:
         logger.error(f"[stream_agent] Streaming exception: {e}", exc_info=True)
-        yield f"data: {json.dumps({'delta': f'⚠️ AI service temporarily unavailable: {str(e)}'})}\n\n"
+        yield f"data: {json.dumps({'delta': f'[WARNING] AI service temporarily unavailable: {str(e)}'})}\n\n"
         yield f"data: {json.dumps({'done': True})}\n\n"
 
 
