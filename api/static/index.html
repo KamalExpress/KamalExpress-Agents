@@ -4950,8 +4950,18 @@ How can I help you today?</div>
 
   async function clearAllProxies() {
     if (!confirm("Are you sure you want to delete ALL proxies from SQLite?")) return;
-    await fetch('/api/proxies/clear-all', { method: 'POST' });
-    loadProxies();
+    try {
+      const resp = await fetch('/api/proxies/clear-all', { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        alert(data.message || "All proxies cleared from database.");
+        loadProxies();
+      } else {
+        alert(`[ERROR] Failed to clear proxies: ${data.detail || data.error || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    }
   }
 
   async function deleteProxy(id) {
