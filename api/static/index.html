@@ -657,6 +657,27 @@
   </div>
 </div>
 
+<!-- ── Prominent Coverage Gap Advisory Banner (For Staff Review) ── -->
+<div id="coverage-gap-banner" style="display:none; margin: 12px 24px 0 24px; padding: 12px 18px; border-radius: 8px; background: #fffbeb; border: 1px solid #f59e0b; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.12);">
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div style="display:flex; align-items:flex-start; gap:12px;">
+      <i data-lucide="alert-triangle" class="icon" style="width:22px; height:22px; color:#d97706; flex-shrink:0; margin-top:2px;"></i>
+      <div>
+        <div style="font-size:13px; font-weight:700; color:#92400e; letter-spacing:0.2px; display:flex; align-items:center; gap:8px;">
+          <span>COVERAGE GAP WARNING: QUEUED CLIENTS WITHOUT A DEDICATED SCOUT</span>
+          <span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-size:10px; font-weight:700;">ADVISORY</span>
+        </div>
+        <div id="coverage-gap-reasons-list" style="margin-top:5px; font-size:12px; color:#78350f; display:flex; flex-direction:column; gap:3px;"></div>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+      <button class="btn btn-sm" onclick="switchNavTab('auth-view')" style="background:#fef3c7; border:1px solid #f59e0b; color:#92400e; font-weight:600; font-size:11.5px; padding:6px 12px;">
+        <i data-lucide="settings" class="icon" style="width:13px; height:13px;"></i> Review GVC Accounts
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ── VIEW 1: CHAT VIEW ── -->
 <div class="view-container active" id="chat-view">
   <div class="agent-sub-bar">
@@ -2660,8 +2681,32 @@ How can I help you today?</div>
       const data = await resp.json();
       cachedServiceGuard = data;
       renderServiceGuardBanner(data);
+      loadCoverageGapAdvisories();
     } catch (err) {
       console.warn('Failed to load service guard status:', err);
+    }
+  }
+
+  async function loadCoverageGapAdvisories() {
+    const banner = document.getElementById('coverage-gap-banner');
+    const listEl = document.getElementById('coverage-gap-reasons-list');
+    if (!banner || !listEl || !currentUser) return;
+    try {
+      const resp = await fetch('/api/reports/fleet');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const gaps = data.coverage_gaps || [];
+      if (!gaps.length) {
+        banner.style.display = 'none';
+        return;
+      }
+      banner.style.display = 'block';
+      listEl.innerHTML = gaps.map(g =>
+        `<div><b>[WARNING]</b> ${escapeHtml(g.message)}</div>`
+      ).join('');
+      if (window.lucide) lucide.createIcons();
+    } catch (err) {
+      console.warn('Failed to load coverage gap advisories:', err);
     }
   }
 
