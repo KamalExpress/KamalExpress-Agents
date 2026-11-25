@@ -21,6 +21,7 @@ from cockpit.otp import inspect_latest_otp, submit_manual_code
 from cockpit.proxies import run_inspect_proxies, reset_cooldowns, quarantine_dirty_proxies
 from cockpit.doctor import run_cockpit_doctor
 from cockpit.report import run_report
+from cockpit.clients import list_clients, reassign_clients_owner
 
 
 def main():
@@ -68,6 +69,12 @@ def main():
     report_parser.add_argument("--all", dest="export_all", action="store_true", help="Export Fleet Rollup + all client reports")
     report_parser.add_argument("--save", type=str, default=None, help="Optional file path to save the .md report locally")
 
+    # clients
+    clients_parser = subparsers.add_parser("clients", help="List live clients or reassign staff ownership")
+    clients_parser.add_argument("--set-owner", type=str, default=None, help="Target staff username to assign")
+    clients_parser.add_argument("--ids", type=int, nargs="*", default=None, help="Client IDs to reassign")
+    clients_parser.add_argument("--names", type=str, nargs="*", default=None, help="Full client names to reassign")
+
     args = parser.parse_args()
 
     if args.command == "health":
@@ -104,6 +111,11 @@ def main():
             run_inspect_proxies()
     elif args.command == "report":
         run_report(client_id=args.client, save_path=args.save, export_all=args.export_all)
+    elif args.command == "clients":
+        if args.set_owner:
+            reassign_clients_owner(owner=args.set_owner, ids=args.ids, names=args.names)
+        else:
+            list_clients()
     else:
         parser.print_help()
 
