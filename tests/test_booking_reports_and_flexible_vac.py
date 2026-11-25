@@ -135,3 +135,34 @@ def test_agent_monitor_and_report_api_endpoints():
         assert r_client_md.status_code == 404
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_staff_client_ownership_isolation(tmp_path: Path):
+    from agents.appointments.db import get_all_clients, get_queue_stats
+    db_file = tmp_path / "rbac_clients.db"
+    init_db(db_file)
+
+    c_kamal = _make_client("PKM1001", "KamalClient")
+    c_kamal.owner_username = "kamal"
+    c_talha = _make_client("PTL2002", "TalhaClient")
+    c_talha.owner_username = "talha"
+    c_admin = _make_client("PAD3003", "AdminClient")
+    c_admin.owner_username = "admin"
+
+    add_client(c_kamal, db_path=db_file)
+    add_client(c_talha, db_path=db_file)
+    add_client(c_admin, db_path=db_file)
+
+    # Staff 'kamal' sees ONLY KamalClient
+    kamal_list = get_all_clients(owner_username="kamal", is_admin=False, db_path=db_file)
+    assert [c.passport_number for c in kamal_list] == ["PKM1001"]
+    assert get_queue_stats(owner_username="kamal", is_admin=False, db_path=db_file)["TOTAL"] == 1
+
+    # Staff 'talha' sees ONLY TalhaClient
+    talha_list = get_all_clients(owner_username="talha", is_admin=False, db_path=db_file)
+    assert [c.passport_number for c in talha_list] == ["PTL2002"]
+
+    # Admin sees ALL 3 clients
+    admin_list = get_all_clients(owner_username="admin", is_admin=True, db_path=db_file)
+    assert len(admin_list) == 3
+    assert get_queue_stats(owner_username="admin", is_admin=True, db_path=db_file)["TOTAL"] == 3

@@ -48,6 +48,7 @@ class ClientProfile(BaseModel):
     booked_by_account_id: Optional[int] = Field(default=None, description="GVC portal account ID that booked this client")
     booked_by_worker_name: Optional[str] = Field(default="", description="Name of remote worker persona that booked this client")
     booking_cost_pkr: Optional[int] = Field(default=0, description="Calculated operational cost for securing this booking")
+    owner_username: Optional[str] = Field(default="admin", description="Username of staff/admin who added this client")
     created_at: Optional[str] = Field(default_factory=lambda: datetime.utcnow().isoformat())
 
     @model_validator(mode="before")

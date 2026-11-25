@@ -743,11 +743,26 @@ async def book_hotel_endpoint(req: HotelBookRequest, user: dict = Depends(get_cu
 
 # ── Client Queue REST Endpoints ───────────────────────────────────────────────
 
+def _check_client_access(client: ClientProfile, user: dict) -> None:
+    """Enforce multi-tenant staff isolation: staff only access clients they added; admin sees all."""
+    if user.get("role") == "admin":
+        return
+    username = (user.get("username") or "").strip().lower()
+    owner = (getattr(client, "owner_username", None) or "admin").strip().lower()
+    if owner != username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: you can only access clients you added.",
+        )
+
+
 @app.get("/api/clients")
 async def list_clients(status: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
-    """Retrieve all clients in the queue with statistics."""
-    clients = get_all_clients(status=status)
-    stats = get_queue_stats()
+    """Retrieve clients in the queue with statistics (staff sees only own clients; admin sees all)."""
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    clients = get_all_clients(status=status, owner_username=username, is_admin=is_admin)
+    stats = get_queue_stats(owner_username=username, is_admin=is_admin)
     return {
         "stats": stats,
         "total": len(clients),
@@ -757,14 +772,15 @@ async def list_clients(status: Optional[str] = Query(None), user: dict = Depends
 
 @app.post("/api/clients")
 async def create_client(client: ClientProfile, user: dict = Depends(get_current_user)):
-    """Add or update a client in the queue database."""
-    client_id = add_client(client)
+    """Add or update a client in the queue database (attributed to current user)."""
     username = user.get("username", "staff")
+    client.owner_username = username
+    client_id = add_client(client)
     log_system_event(
         level="INFO",
         category="QUEUE",
         message=f"Staff '{username}' added applicant '{client.first_name} {client.last_name}' ({client.passport_number}) to queue for {client.vac_city} (Type {client.visa_type}).",
-        details={"client_id": client_id, "passport": client.passport_number, "vac_city": client.vac_city},
+        details={"client_id": client_id, "passport": client.passport_number, "vac_city": client.vac_city, "owner": username},
     )
     return {
         "success": True,
@@ -944,6 +960,7 @@ async def bulk_upload_clients(
                 preferred_date_start=pref_start or None,
                 preferred_date_end=pref_end or None,
                 notes=row.get("notes", "Bulk uploaded via CSV/TXT"),
+                owner_username=user.get("username", "staff"),
             )
 
             client_id = add_client(client_obj)
@@ -977,10 +994,11 @@ async def bulk_upload_clients(
 
 @app.get("/api/clients/{client_id}")
 async def get_client(client_id: int, user: dict = Depends(get_current_user)):
-    """Get single client by ID."""
+    """Get single client by ID (staff restricted to own clients)."""
     client = get_client_by_id(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    _check_client_access(client, user)
     return client.model_dump()
 
 
@@ -990,6 +1008,7 @@ async def get_client_confirmation_endpoint(client_id: int, user: dict = Depends(
     client = get_client_by_id(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    _check_client_access(client, user)
     data = get_raw_confirmation(client_id)
     if not data:
         raise HTTPException(status_code=404, detail="No confirmation data found for this client")
@@ -1003,13 +1022,15 @@ async def get_client_confirmation_endpoint(client_id: int, user: dict = Depends(
 
 @app.put("/api/clients/{client_id}")
 async def update_client_endpoint(client_id: int, client: ClientProfile, user: dict = Depends(get_current_user)):
-    """Update an existing client profile in the queue (Staff and Admin)."""
+    """Update an existing client profile in the queue (Staff restricted to own clients; Admin sees all)."""
     existing = get_client_by_id(client_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Client not found")
+    _check_client_access(existing, user)
     
-    # If client.id not passed in body or differs, force path client_id
+    # If client.id not passed in body or differs, force path client_id & preserve owner
     client.id = client_id
+    client.owner_username = existing.owner_username
     updated = update_client(client_id, client)
     if not updated:
         raise HTTPException(status_code=400, detail="Failed to update client")
@@ -1065,8 +1086,11 @@ async def update_client_endpoint(client_id: int, client: ClientProfile, user: di
 
 @app.delete("/api/clients/{client_id}")
 async def remove_client(client_id: int, user: dict = Depends(get_current_user)):
-    """Remove a client from the queue database (Staff and Admin)."""
+    """Remove a client from the queue database (Staff restricted to own clients; Admin sees all)."""
     existing = get_client_by_id(client_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Client not found")
+    _check_client_access(existing, user)
     deleted = delete_client(client_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -1094,6 +1118,7 @@ async def trigger_client_booking_endpoint(client_id: int, user: dict = Depends(g
         client = get_client_by_id(client_id)
         if not client:
             raise HTTPException(status_code=404, detail="Client not found in queue.")
+        _check_client_access(client, user)
 
         username = user.get("username", "staff")
         res = await fleet_manager.trigger_client_booking(client_id=client_id, triggered_by=username)
@@ -2439,18 +2464,22 @@ async def agent_monitor_page():
 
 @app.get("/api/reports/fleet")
 async def get_fleet_report_json(user: dict = Depends(get_current_user)):
-    """Get live Tier-A Fleet & Client Queue rollup telemetry."""
+    """Get live Tier-A Fleet & Client Queue rollup telemetry (staff-scoped unless admin)."""
     from agents.appointments.reports import build_fleet_rollup_data
-    return build_fleet_rollup_data()
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    return build_fleet_rollup_data(owner_username=username, is_admin=is_admin)
 
 
 @app.get("/api/reports/fleet.md")
 async def get_fleet_report_md(user: dict = Depends(get_current_user)):
-    """Download or view live Fleet & Queue Rollup report as Markdown."""
+    """Download or view live Fleet & Queue Rollup report as Markdown (staff-scoped unless admin)."""
     from datetime import datetime, timezone
     from fastapi.responses import Response
     from agents.appointments.reports import build_fleet_rollup_data, render_fleet_rollup_markdown
-    md = render_fleet_rollup_markdown(build_fleet_rollup_data())
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    md = render_fleet_rollup_markdown(build_fleet_rollup_data(owner_username=username, is_admin=is_admin))
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return Response(
         content=md,
@@ -2465,9 +2494,11 @@ async def get_client_report_md(client_id: int, user: dict = Depends(get_current_
     from datetime import datetime, timezone
     from fastapi.responses import Response
     from agents.appointments.reports import build_client_report_data, render_client_report_markdown
-    data = build_client_report_data(client_id)
-    if not data:
+    client_obj = get_client_by_id(client_id)
+    if not client_obj:
         raise HTTPException(status_code=404, detail=f"Client #{client_id} not found.")
+    _check_client_access(client_obj, user)
+    data = build_client_report_data(client_id)
     md = render_client_report_markdown(data)
     passport = "".join(ch for ch in (data["client"].get("passport_number") or "client") if ch.isalnum())
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -2482,19 +2513,22 @@ async def get_client_report_md(client_id: int, user: dict = Depends(get_current_
 async def get_client_report_json(client_id: int, user: dict = Depends(get_current_user)):
     """Get live Tier-B Per-Client 8-Step Booking Lifecycle report."""
     from agents.appointments.reports import build_client_report_data
-    data = build_client_report_data(client_id)
-    if not data:
+    client_obj = get_client_by_id(client_id)
+    if not client_obj:
         raise HTTPException(status_code=404, detail=f"Client #{client_id} not found.")
-    return data
+    _check_client_access(client_obj, user)
+    return build_client_report_data(client_id)
 
 
 @app.get("/api/reports/export-all.md")
 async def export_all_reports_md(user: dict = Depends(get_current_user)):
-    """Download combined Fleet Rollup + all Per-Client 8-Step Reports as a single printable Markdown bundle."""
+    """Download combined Fleet Rollup + accessible Per-Client 8-Step Reports as a single Markdown bundle."""
     from datetime import datetime, timezone
     from fastapi.responses import Response
     from agents.appointments.reports import render_all_reports_markdown
-    md = render_all_reports_markdown()
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    md = render_all_reports_markdown(owner_username=username, is_admin=is_admin)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return Response(
         content=md,

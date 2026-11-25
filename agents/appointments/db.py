@@ -471,6 +471,9 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     "quarantined_until": "TEXT",
                     "last_error": "TEXT",
                 })
+                _ensure_cols("client_queue", {
+                    "owner_username": "TEXT DEFAULT 'admin'",
+                })
                 _ensure_cols("gvc_portal_accounts", {
                     "account_role": "TEXT DEFAULT 'HYBRID'",
                     "worker_persona_name": "TEXT DEFAULT ''",
@@ -518,6 +521,7 @@ def row_to_client(row: sqlite3.Row) -> ClientProfile:
         booked_by_account_id=row["booked_by_account_id"] if "booked_by_account_id" in keys else None,
         booked_by_worker_name=row["booked_by_worker_name"] if "booked_by_worker_name" in keys else "",
         booking_cost_pkr=row["booking_cost_pkr"] if "booking_cost_pkr" in keys else 0,
+        owner_username=(row["owner_username"] if "owner_username" in keys and row["owner_username"] else "admin"),
         created_at=row["created_at"],
     )
 
@@ -534,9 +538,9 @@ def add_client(client: ClientProfile, db_path: Path = DB_PATH) -> int:
                         passport_issue_date, passport_issue_place, gender, gender_id,
                         nationality, nationality_id, phone_number, phone_prefix_id, email,
                         destination, visa_type, vac_id, vac_city, preferred_date_start,
-                        preferred_date_end, status, notes, created_at
+                        preferred_date_end, status, notes, owner_username, created_at
                     ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     ON CONFLICT(passport_number) DO UPDATE SET
                         first_name=excluded.first_name,
@@ -559,7 +563,8 @@ def add_client(client: ClientProfile, db_path: Path = DB_PATH) -> int:
                         preferred_date_start=excluded.preferred_date_start,
                         preferred_date_end=excluded.preferred_date_end,
                         status=excluded.status,
-                        notes=excluded.notes
+                        notes=excluded.notes,
+                        owner_username=COALESCE(NULLIF(client_queue.owner_username, ''), excluded.owner_username)
                 """, (
                     client.first_name, client.last_name, client.dob, client.passport_number.upper().strip(),
                     client.passport_expiry, client.passport_issue_date, client.passport_issue_place,
@@ -567,27 +572,39 @@ def add_client(client: ClientProfile, db_path: Path = DB_PATH) -> int:
                     client.phone_number, client.phone_prefix_id, client.email,
                     client.destination, client.visa_type, client.vac_id, client.vac_city,
                     client.preferred_date_start, client.preferred_date_end, client.status,
-                    client.notes, client.created_at or datetime.utcnow().isoformat()
+                    client.notes, (client.owner_username or "admin").strip(), client.created_at or datetime.utcnow().isoformat()
                 ))
                 client_id = cursor.lastrowid
                 if not client_id:
                     r_id = conn.execute("SELECT id FROM client_queue WHERE passport_number = ?", (client.passport_number.upper().strip(),)).fetchone()
                     if r_id:
                         client_id = r_id["id"]
-                logger.info(f"[db] Added/updated client #{client_id}: {client.first_name} {client.last_name} ({client.passport_number})")
+                logger.info(f"[db] Added/updated client #{client_id}: {client.first_name} {client.last_name} ({client.passport_number}) [owner={client.owner_username or 'admin'}]")
                 return client_id
         finally:
             conn.close()
 
 
-def get_all_clients(status: Optional[str] = None, db_path: Path = DB_PATH) -> List[ClientProfile]:
-    """Retrieve all clients, optionally filtered by status."""
+def get_all_clients(
+    status: Optional[str] = None,
+    owner_username: Optional[str] = None,
+    is_admin: bool = True,
+    db_path: Path = DB_PATH,
+) -> List[ClientProfile]:
+    """Retrieve clients, optionally filtered by status and scoped to staff owner (admins see all)."""
     conn = get_connection(db_path)
     try:
+        clauses = []
+        params: list = []
         if status:
-            rows = conn.execute("SELECT * FROM client_queue WHERE status = ? ORDER BY id ASC", (status,)).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM client_queue ORDER BY id DESC").fetchall()
+            clauses.append("status = ?")
+            params.append(status)
+        if not is_admin and owner_username:
+            clauses.append("LOWER(COALESCE(owner_username, 'admin')) = LOWER(?)")
+            params.append(owner_username.strip())
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        order_sql = "ORDER BY id ASC" if status else "ORDER BY id DESC"
+        rows = conn.execute(f"SELECT * FROM client_queue {where_sql} {order_sql}", tuple(params)).fetchall()
         return [row_to_client(r) for r in rows]
     finally:
         conn.close()
@@ -1524,11 +1541,21 @@ def delete_client(client_id: int, db_path: Path = DB_PATH) -> bool:
             conn.close()
 
 
-def get_queue_stats(db_path: Path = DB_PATH) -> dict:
-    """Return counts of queued, in-progress, and booked clients."""
+def get_queue_stats(
+    owner_username: Optional[str] = None,
+    is_admin: bool = True,
+    db_path: Path = DB_PATH,
+) -> dict:
+    """Return counts of queued, in-progress, and booked clients (scoped to staff owner unless admin)."""
     conn = get_connection(db_path)
     try:
-        rows = conn.execute("SELECT status, COUNT(*) as count FROM client_queue GROUP BY status").fetchall()
+        if not is_admin and owner_username:
+            rows = conn.execute(
+                "SELECT status, COUNT(*) as count FROM client_queue WHERE LOWER(COALESCE(owner_username, 'admin')) = LOWER(?) GROUP BY status",
+                (owner_username.strip(),),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT status, COUNT(*) as count FROM client_queue GROUP BY status").fetchall()
         stats = {"QUEUED": 0, "IN_PROGRESS": 0, "BOOKED": 0, "FAILED": 0, "PAUSED": 0, "TOTAL": 0}
         total = 0
         for r in rows:

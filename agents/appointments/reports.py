@@ -69,13 +69,17 @@ def _format_utc_time(iso_str: Optional[str]) -> str:
     return s[:8]
 
 
-def build_fleet_rollup_data(db_path: Path = DB_PATH) -> Dict[str, Any]:
-    """Assemble live Tier-A Fleet & Client Queue rollup telemetry."""
+def build_fleet_rollup_data(
+    owner_username: str = "admin",
+    is_admin: bool = True,
+    db_path: Path = DB_PATH,
+) -> Dict[str, Any]:
+    """Assemble live Tier-A Fleet & Client Queue rollup telemetry (staff-scoped unless admin)."""
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     try:
         from .fleet_manager import fleet_manager
-        fleet_tel = fleet_manager.get_telemetry(owner_username="admin", is_admin=True)
+        fleet_tel = fleet_manager.get_telemetry(owner_username=owner_username, is_admin=is_admin)
     except Exception:
         fleet_tel = {"accounts": [], "active_workers_count": 0, "authenticated_accounts_count": 0}
 
@@ -91,11 +95,11 @@ def build_fleet_rollup_data(db_path: Path = DB_PATH) -> Dict[str, Any]:
         proxy_stats = {"total": 0, "active": 0, "quarantined": 0, "disabled": 0}
 
     try:
-        governance = get_gvc_accounts_telemetry_summary(owner_username="admin", is_admin=True, db_path=db_path)
+        governance = get_gvc_accounts_telemetry_summary(owner_username=owner_username, is_admin=is_admin, db_path=db_path)
     except Exception:
         governance = {"summary_text": "N/A"}
 
-    clients = get_all_clients(db_path=db_path)
+    clients = get_all_clients(owner_username=owner_username, is_admin=is_admin, db_path=db_path)
     counts = {"total": len(clients), "QUEUED": 0, "IN_PROGRESS": 0, "BOOKED": 0, "FAILED": 0, "PAUSED": 0}
     client_summaries = []
     for c in clients:
@@ -411,9 +415,13 @@ def archive_client_report_markdown(client_id: int, db_path: Path = DB_PATH, repo
     return str(filepath).replace("\\", "/")
 
 
-def render_all_reports_markdown(db_path: Path = DB_PATH) -> str:
-    """Render combined Fleet Rollup + every individual client's 8-step report for bulk printing."""
-    rollup = build_fleet_rollup_data(db_path=db_path)
+def render_all_reports_markdown(
+    owner_username: str = "admin",
+    is_admin: bool = True,
+    db_path: Path = DB_PATH,
+) -> str:
+    """Render combined Fleet Rollup + every accessible client's 8-step report for bulk printing."""
+    rollup = build_fleet_rollup_data(owner_username=owner_username, is_admin=is_admin, db_path=db_path)
     sections = [render_fleet_rollup_markdown(rollup)]
     for c in rollup.get("clients", []):
         c_data = build_client_report_data(c["id"], db_path=db_path)
