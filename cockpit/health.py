@@ -33,15 +33,20 @@ def run_health_check():
         print(f"[AUTH]   [ERROR] Login failed: {exc}")
         return
 
-    # 3. Service Guard
+    # 3. Service Guard & Proxy Pool
     try:
         sg = default_client.get("/api/system/service-guard")
         capsolver = sg.get("capsolver", {})
-        proxies = sg.get("proxies", {})
-        print(f"[GUARD]  CapSolver Bal   : ${capsolver.get('balance', 0.0):.2f} (Active: {capsolver.get('is_active')})")
-        print(f"[GUARD]  Proxy Pool      : {proxies.get('active_count', 0)} Active | {proxies.get('quarantined_count', 0)} Quarantined")
+        print(f"[GUARD]  CapSolver Bal   : ${capsolver.get('balance', 0.0):.2f} (Status: {'OK' if capsolver.get('ok') else 'FAIL'})")
     except Exception as exc:
         print(f"[GUARD]  [WARNING] Service Guard query error: {exc}")
+
+    try:
+        pdata = default_client.get("/api/proxies")
+        pstats = pdata.get("stats", {})
+        print(f"[PROXY]  Proxy Pool      : {pstats.get('total', 0)} Total ({pstats.get('active', 0)} Active, {pstats.get('quarantined', 0)} Quarantined, {pstats.get('disabled', 0)} Disabled)")
+    except Exception as exc:
+        print(f"[PROXY]  [WARNING] Proxy query error: {exc}")
 
     # 4. Fleet Readiness
     try:

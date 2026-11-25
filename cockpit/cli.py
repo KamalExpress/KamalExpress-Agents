@@ -18,6 +18,7 @@ from cockpit.fleet import run_fleet_overview
 from cockpit.slots import run_inspect_slots
 from cockpit.logs import run_tail_logs
 from cockpit.otp import inspect_latest_otp, submit_manual_code
+from cockpit.proxies import run_inspect_proxies, reset_cooldowns
 
 
 def main():
@@ -50,6 +51,10 @@ def main():
     otp_parser.add_argument("--phone", type=str, default=None)
     otp_parser.add_argument("--code", type=str, default=None)
 
+    # proxies
+    proxy_parser = subparsers.add_parser("proxies", help="Inspect managed proxy catalog and reset cooldowns")
+    proxy_parser.add_argument("--reset", action="store_true", help="Reset all quarantined proxies back to ACTIVE")
+
     args = parser.parse_args()
 
     if args.command == "health":
@@ -68,6 +73,11 @@ def main():
             submit_manual_code(phone=args.phone, code=args.code)
         else:
             inspect_latest_otp(phone=args.phone)
+    elif args.command == "proxies":
+        if args.reset:
+            reset_cooldowns()
+        else:
+            run_inspect_proxies()
     else:
         parser.print_help()
 
