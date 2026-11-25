@@ -62,14 +62,7 @@ class ProxyManager:
         except Exception as e:
             logger.warning(f"[proxy] Error reading active proxies from DB: {e}")
 
-        # Fallback to all proxies if all are quarantined
-        try:
-            all_rows = get_all_proxies()
-            if all_rows:
-                return [r["proxy_url"] for r in all_rows]
-        except Exception:
-            pass
-
+        # Never recycle DISABLED or QUARANTINED proxies once failed
         return []
 
     def mark_proxy_failed(
@@ -81,20 +74,18 @@ class ProxyManager:
         log_event: bool = True,
         quarantine_seconds: Optional[int] = None,
     ) -> None:
-        """Mark a proxy as failed in SQLite and quarantine it (default 5m or custom)."""
+        """Retire a failing proxy (status=DISABLED) so it is never reused automatically."""
         if not proxy_url:
             return
         try:
-            q_secs = int(quarantine_seconds) if quarantine_seconds is not None else int(self._cooldown_seconds)
             record_proxy_result(
                 proxy_url=proxy_url,
                 success=False,
                 error=error or "Imperva WAF / Timeout Block",
-                quarantine_seconds=q_secs,
+                permanent_disable_on_fail=True,
             )
             clean = proxy_url.split("@")[-1]
-            mins = max(1, q_secs // 60)
-            logger.warning(f"[proxy] [FAILED] Proxy {clean} marked failed in SQLite (quarantined {mins}m).")
+            logger.warning(f"[proxy] [RETIRED] Proxy {clean} permanently disabled after failure (will not be reused).")
             if error and ("407" in str(error) or "traffic limit" in str(error).lower() or "access denied" in str(error).lower()):
                 try:
                     from .service_guard import service_guard
@@ -108,10 +99,10 @@ class ProxyManager:
                 log_system_event(
                     level="WARNING",
                     category="PROXY",
-                    message=f"Quarantined residential proxy {clean} for {mins}m due to {error or 'WAF challenge'}. Active pool: {active_proxies}/{total} healthy proxies available.",
+                    message=f"Disabled failing residential proxy {clean} due to {error or 'WAF/network failure'} (will not be reused). Active pool: {active_proxies}/{total} fresh proxies remaining.",
                     account_id=account_id,
                     worker_name=worker_name or "",
-                    details={"quarantined_proxy": clean, "error": error, "active_pool": active_proxies, "total_pool": total, "quarantine_seconds": q_secs},
+                    details={"disabled_proxy": clean, "error": error, "active_pool": active_proxies, "total_pool": total},
                 )
         except Exception as e:
             logger.error(f"[proxy] Failed to record proxy failure in DB: {e}")

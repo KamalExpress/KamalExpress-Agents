@@ -1730,7 +1730,7 @@ def get_active_proxies(db_path: Path = DB_PATH) -> List[dict]:
             SELECT * FROM proxies 
             WHERE status = 'ACTIVE' 
               AND (quarantined_until IS NULL OR quarantined_until <= ?)
-            ORDER BY last_used_at ASC, id ASC
+            ORDER BY fail_count ASC, last_used_at ASC, id ASC
         """, (now_str,)).fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -1742,9 +1742,10 @@ def record_proxy_result(
     success: bool,
     error: Optional[str] = None,
     quarantine_seconds: int = 300,
+    permanent_disable_on_fail: bool = False,
     db_path: Path = DB_PATH,
 ) -> None:
-    """Update success/fail stats and quarantine status for a proxy in SQLite."""
+    """Update success/fail stats and status for a proxy in SQLite."""
     import datetime as dt
     now_dt = datetime.utcnow()
     now_str = now_dt.isoformat()
@@ -1763,6 +1764,16 @@ def record_proxy_result(
                             last_error = NULL
                         WHERE proxy_url = ?
                     """, (now_str, proxy_url))
+                elif permanent_disable_on_fail:
+                    conn.execute("""
+                        UPDATE proxies
+                        SET fail_count = fail_count + 1,
+                            last_failed_at = ?,
+                            last_error = ?,
+                            status = 'DISABLED',
+                            quarantined_until = NULL
+                        WHERE proxy_url = ?
+                    """, (now_str, error or "WAF / Timeout Error", proxy_url))
                 else:
                     quarantined_until = (now_dt + dt.timedelta(seconds=quarantine_seconds)).isoformat()
                     conn.execute("""

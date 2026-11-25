@@ -70,5 +70,26 @@ def test_clear_all_proxies_endpoint(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_failed_proxy_permanently_disabled_and_never_reused():
+    tmp = Path(tempfile.mktemp(suffix='.db'))
+    try:
+        init_db(tmp)
+        p1 = 'http://user:pass@10.0.0.1:10001'
+        p2 = 'http://user:pass@10.0.0.2:10002'
+        add_proxies_bulk([p1, p2], db_path=tmp)
+
+        # Fail p1 permanently (fail-once retirement rule)
+        record_proxy_result(p1, success=False, error='Imperva WAF challenge', permanent_disable_on_fail=True, db_path=tmp)
+
+        active = get_active_proxies(db_path=tmp)
+        assert [p['proxy_url'] for p in active] == [p2]
+        stats = get_proxy_stats(db_path=tmp)
+        assert stats['active'] == 1
+        assert stats['disabled'] == 1
+        assert stats['quarantined'] == 0
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 if __name__ == '__main__':
     run_test()
