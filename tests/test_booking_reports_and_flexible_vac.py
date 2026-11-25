@@ -129,5 +129,9 @@ def test_agent_monitor_and_report_api_endpoints():
         r_all = client.get("/api/reports/export-all.md")
         assert r_all.status_code == 200
         assert "Fleet & Queue Rollup Report" in r_all.text
+
+        # Ensure .md route matches BEFORE {client_id} int route (returns 404 for unknown ID, never 422)
+        r_client_md = client.get("/api/reports/clients/999999.md")
+        assert r_client_md.status_code == 404
     finally:
         app.dependency_overrides.pop(get_current_user, None)

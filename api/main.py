@@ -2457,16 +2457,6 @@ async def get_fleet_report_md(user: dict = Depends(get_current_user)):
     )
 
 
-@app.get("/api/reports/clients/{client_id}")
-async def get_client_report_json(client_id: int, user: dict = Depends(get_current_user)):
-    """Get live Tier-B Per-Client 8-Step Booking Lifecycle report."""
-    from agents.appointments.reports import build_client_report_data
-    data = build_client_report_data(client_id)
-    if not data:
-        raise HTTPException(status_code=404, detail=f"Client #{client_id} not found.")
-    return data
-
-
 @app.get("/api/reports/clients/{client_id}.md")
 async def get_client_report_md(client_id: int, user: dict = Depends(get_current_user)):
     """Download individual Per-Client 8-Step Booking Report as printable Markdown."""
@@ -2482,6 +2472,16 @@ async def get_client_report_md(client_id: int, user: dict = Depends(get_current_
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="client_{client_id}_{passport}_report.md"'},
     )
+
+
+@app.get("/api/reports/clients/{client_id}")
+async def get_client_report_json(client_id: int, user: dict = Depends(get_current_user)):
+    """Get live Tier-B Per-Client 8-Step Booking Lifecycle report."""
+    from agents.appointments.reports import build_client_report_data
+    data = build_client_report_data(client_id)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Client #{client_id} not found.")
+    return data
 
 
 @app.get("/api/reports/export-all.md")
