@@ -39,3 +39,4 @@ chromadb>=0.5.0
 python-dotenv>=1.0.0
 tenacity>=8.5.0       # Retry logic
 redis>=5.0.0          # Session storage
+mcp>=1.0.0            # Model Context Protocol (Cockpit Server)
