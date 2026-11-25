@@ -121,6 +121,12 @@ class GVCSolverWorker:
                     persona = candidate.get("worker_persona_name") or f"Operator #{acc_id}"
                     self._current_account_persona = persona
 
+                    if candidate.get("is_authenticated") and (candidate.get("auth_token") or candidate.get("bearer_token")):
+                        self._last_status = f"AUTHENTICATED ({persona})"
+                        logger.info(f"[solver_worker] Account #{acc_id} ({acc_email}) already has an authenticated session. Skipping redundant login.")
+                        await asyncio.sleep(15)
+                        continue
+
                     self._last_status = f"LOGGING_IN ({persona}: {acc_email})"
                     logger.info(f"[solver_worker] Attempting login with account #{acc_id}: '{persona}' ({acc_email})...")
 

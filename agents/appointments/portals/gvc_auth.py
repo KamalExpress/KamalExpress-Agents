@@ -53,6 +53,13 @@ class GVCAuthSolver:
         self.sitekey = os.getenv("TARGET_SITEKEY", "6LcnlCoUAAAAAJLjWXXaByTFyuOLf4K0gGu5r3d2")
         self.captcha_solver = CaptchaSolver()
         self.proxy_manager = ProxyManager()
+        self._login_locks: Dict[str, asyncio.Lock] = {}
+
+    def _get_login_lock(self, email: str) -> asyncio.Lock:
+        key = (email or "default").strip().lower()
+        if key not in self._login_locks:
+            self._login_locks[key] = asyncio.Lock()
+        return self._login_locks[key]
 
     def _get_headers(self) -> Dict[str, str]:
         return {
@@ -322,10 +329,11 @@ class GVCAuthSolver:
         max_retries: int = 3,
         proxy: Optional[str] = None,
         account_id: Optional[int] = None,
+        force: bool = False,
     ) -> Dict[str, Any]:
         """
         Execute automated login via CapSolver + GVC REST API with Pre-Flight Quota Protection.
-        Directly matches operator-agent/main_operator.py login mechanics.
+        Serialized per account email to prevent concurrent duplicate logins across fleet_manager and solver_worker.
         """
         creds = get_gvc_credentials()
         email = (email or creds.get("email") or "").strip()
@@ -337,6 +345,61 @@ class GVCAuthSolver:
                 "error": "No GVC account credentials configured. Please enter your GVC Account Email and Password in Option 3 settings.",
             }
 
+        lock = self._get_login_lock(email)
+        async with lock:
+            if not force:
+                existing_acc = None
+                try:
+                    from ..db import get_gvc_portal_account_by_id, get_gvc_portal_accounts
+                    if account_id:
+                        existing_acc = get_gvc_portal_account_by_id(account_id)
+                    else:
+                        for acc in get_gvc_portal_accounts(is_admin=True):
+                            if (acc.get("email") or "").strip().lower() == email.lower():
+                                existing_acc = acc
+                                break
+                except Exception:
+                    existing_acc = None
+
+                if existing_acc and existing_acc.get("is_authenticated") and (existing_acc.get("auth_token") or existing_acc.get("bearer_token")):
+                    existing_token = existing_acc.get("auth_token") or existing_acc.get("bearer_token") or ""
+                    existing_cookies = {}
+                    try:
+                        import json as _json
+                        raw_c = existing_acc.get("cookies_json")
+                        if isinstance(raw_c, str) and raw_c.strip().startswith("{"):
+                            existing_cookies = _json.loads(raw_c)
+                    except Exception:
+                        pass
+                    logger.info(f"[gvc_auth] [DEDUP] Existing authenticated session already active for '{email}'. Skipping redundant login.")
+                    return {
+                        "success": True,
+                        "reused_session": True,
+                        "auth_token": existing_token,
+                        "bearer_token": existing_acc.get("bearer_token") or existing_token,
+                        "masked_token": existing_token[:15] + "..." if len(existing_token) > 15 else existing_token,
+                        "cookies": existing_cookies,
+                        "source": "EXISTING_SESSION",
+                        "message": f"Reused active authenticated session for {email}.",
+                    }
+
+            return await self._execute_login_locked(
+                email=email,
+                password=password,
+                max_retries=max_retries,
+                proxy=proxy,
+                account_id=account_id,
+            )
+
+    async def _execute_login_locked(
+        self,
+        email: str,
+        password: str,
+        max_retries: int = 3,
+        proxy: Optional[str] = None,
+        account_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Internal login execution (must be called while holding per-email login lock)."""
         self.captcha_solver._refresh_config()
         if not self.captcha_solver.enabled:
             return {

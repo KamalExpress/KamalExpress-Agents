@@ -236,7 +236,8 @@ class AccountWorkerInstance:
                         self._last_status = "LOGGING_IN (CapSolver)"
                         login_res = await gvc_auth_solver.login_with_credentials(
                             email=acc["email"],
-                            password=acc["password"]
+                            password=acc["password"],
+                            account_id=self.account_id,
                         )
                         if login_res.get("success"):
                             update_gvc_account_session(
