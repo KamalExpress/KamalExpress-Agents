@@ -1024,9 +1024,11 @@ async def update_client_endpoint(client_id: int, client: ClientProfile, user: di
         raise HTTPException(status_code=404, detail="Client not found")
     _check_client_access(existing, user)
     
-    # If client.id not passed in body or differs, force path client_id & preserve owner
+    # If client.id not passed in body or differs, force path client_id
+    # Only admin can reassign owner_username; staff preserves existing owner
     client.id = client_id
-    client.owner_username = existing.owner_username
+    if user.get("role") != "admin" or not (client.owner_username or "").strip():
+        client.owner_username = existing.owner_username
     updated = update_client(client_id, client)
     if not updated:
         raise HTTPException(status_code=400, detail="Failed to update client")
@@ -1050,6 +1052,7 @@ async def update_client_endpoint(client_id: int, client: ClientProfile, user: di
         ("preferred_date_end", "End Date"),
         ("status", "Status"),
         ("notes", "Notes"),
+        ("owner_username", "Owner"),
     ]
 
     for field, label in fields_to_check:

@@ -1512,16 +1512,17 @@ def update_client(client_id: int, client: ClientProfile, db_path: Path = DB_PATH
                         preferred_date_start = ?,
                         preferred_date_end = ?,
                         status = ?,
-                        notes = ?
+                        notes = ?,
+                        owner_username = ?
                     WHERE id = ?
                 """, (
                     client.first_name, client.last_name, client.dob, client.passport_number.upper().strip(),
                     client.passport_expiry, client.passport_issue_date or "", client.passport_issue_place or "",
                     client.gender or "Male", client.gender_id or "2", client.nationality or "Pakistani", client.nationality_id or "197",
                     client.phone_number, client.phone_prefix_id or "197", client.email,
-                    client.destination or "Greece", client.visa_type or "26", client.vac_id or "138", client.vac_city or "Islamabad",
+                    client.destination or "Greece", client.visa_type or "26", client.vac_id or "137", client.vac_city or "Islamabad",
                     client.preferred_date_start, client.preferred_date_end, client.status or "QUEUED",
-                    client.notes or "", client_id
+                    client.notes or "", (client.owner_username or "admin").strip(), client_id
                 ))
                 logger.info(f"[db] Updated full client #{client_id}: {client.first_name} {client.last_name} ({client.passport_number})")
                 return cursor.rowcount > 0
