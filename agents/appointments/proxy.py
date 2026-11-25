@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import logging
 import random
+import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from config.settings import get_settings
 from .db import (
@@ -29,7 +30,12 @@ DEFAULT_IP_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "ips-
 class ProxyManager:
     """
     Build, manage, and rotate proxy configurations from SQLite or initial text list.
+    Uses a shared class-level allocator so concurrent workers always receive distinct unused proxies.
     """
+
+    _global_lock = threading.Lock()
+    _global_index: int = 0
+    _allocated_proxies: Set[str] = set()
 
     def __init__(self, proxy_file: Path = DEFAULT_IP_FILE) -> None:
         self._cfg = get_settings().proxy
@@ -84,6 +90,8 @@ class ProxyManager:
                 error=error or "Imperva WAF / Timeout Block",
                 permanent_disable_on_fail=True,
             )
+            with ProxyManager._global_lock:
+                ProxyManager._allocated_proxies.discard(proxy_url)
             clean = proxy_url.split("@")[-1]
             logger.warning(f"[proxy] [RETIRED] Proxy {clean} permanently disabled after failure (will not be reused).")
             if error and ("407" in str(error) or "traffic limit" in str(error).lower() or "access denied" in str(error).lower()):
@@ -119,12 +127,19 @@ class ProxyManager:
     # ── Public API ────────────────────────────────────────────────────
 
     def get_proxy_url(self) -> Optional[str]:
-        """Return the next healthy proxy URL from SQLite via round-robin failover."""
+        """Return a distinct unused healthy proxy URL across all workers (thread-safe global allocation)."""
         healthy = self._get_healthy_proxies()
         if healthy:
-            proxy = healthy[self._current_index % len(healthy)]
-            self._current_index += 1
-            return proxy
+            with ProxyManager._global_lock:
+                # 1. Prefer an untouched proxy not currently allocated to any other worker
+                for candidate in healthy:
+                    if candidate not in ProxyManager._allocated_proxies:
+                        ProxyManager._allocated_proxies.add(candidate)
+                        return candidate
+                # 2. If all healthy proxies are already assigned to active workers, spread via global round-robin
+                proxy = healthy[ProxyManager._global_index % len(healthy)]
+                ProxyManager._global_index += 1
+                return proxy
 
         return self._build_from_settings()
 

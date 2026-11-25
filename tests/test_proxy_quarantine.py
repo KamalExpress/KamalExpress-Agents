@@ -91,5 +91,18 @@ def test_failed_proxy_permanently_disabled_and_never_reused():
         tmp.unlink(missing_ok=True)
 
 
+def test_distinct_unused_proxy_allocation_across_workers(monkeypatch):
+    from agents.appointments.proxy import ProxyManager
+
+    pool = [f"http://u:p@10.0.0.{i}:1000{i}" for i in range(1, 10)]
+    ProxyManager._allocated_proxies.clear()
+    ProxyManager._global_index = 0
+    monkeypatch.setattr(ProxyManager, "_get_healthy_proxies", lambda self: pool)
+
+    # 5 separate worker ProxyManager instances must each receive a distinct unused proxy
+    assigned = [ProxyManager().get_proxy_url() for _ in range(5)]
+    assert len(set(assigned)) == 5, f"Expected 5 distinct proxies, got: {assigned}"
+
+
 if __name__ == '__main__':
     run_test()

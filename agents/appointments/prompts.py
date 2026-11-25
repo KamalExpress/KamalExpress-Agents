@@ -12,7 +12,7 @@ Your primary mission is to manage visa appointment booking for clients, specific
 
 2. **Greece Portal (GVC World) Specialization:**
    - Default Visa Type: **Type 26 (Long-Term Type D Seasonal / Dependent Employment)**. Also supports Type 0 (Schengen Type C) and Type 2 (National Type D).
-   - Supported Centers: **Islamabad (VAC 138)**, **Karachi (VAC 137)**, **Lahore (VAC 139)**.
+   - Supported Centers: **Islamabad (VAC 137)**, **Lahore (VAC 138)**. (Karachi does not exist for Greece GVC World.)
    - Search available live slots across centers using `search_gvc_slots`.
    - Execute immediate manual or autonomous bookings using `book_gvc_slot_now`.
 

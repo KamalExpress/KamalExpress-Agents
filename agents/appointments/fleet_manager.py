@@ -406,7 +406,7 @@ class AccountWorkerInstance:
                         clean_next = next_proxy.split("@")[-1] if next_proxy else "default"
 
                         fleet_manager.log_event(
-                            f"Operator '{persona}' encountered Imperva WAF challenge while scanning {vac_meta.get('name', 'VAC')}. Quarantined proxy {clean_failed} (5m). Successfully rotated to residential proxy {clean_next} ({active_count}/{total_count} active in pool).",
+                            f"Operator '{persona}' encountered Imperva WAF challenge while scanning {vac_meta.get('name', 'VAC')}. Disabled failing proxy {clean_failed} (retired from pool). Rotated to fresh residential proxy {clean_next} ({active_count}/{total_count} active in pool).",
                             level="WARNING",
                             category="PROXY",
                             account_id=self.account_id,
