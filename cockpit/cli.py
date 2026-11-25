@@ -14,11 +14,12 @@ from __future__ import annotations
 import argparse
 import sys
 from cockpit.health import run_health_check
-from cockpit.fleet import run_fleet_overview
+from cockpit.fleet import run_fleet_overview, master_control, pre_stage_fleet
 from cockpit.slots import run_inspect_slots
 from cockpit.logs import run_tail_logs
 from cockpit.otp import inspect_latest_otp, submit_manual_code
-from cockpit.proxies import run_inspect_proxies, reset_cooldowns
+from cockpit.proxies import run_inspect_proxies, reset_cooldowns, quarantine_dirty_proxies
+from cockpit.doctor import run_cockpit_doctor
 
 
 def main():
@@ -31,8 +32,12 @@ def main():
     # health
     subparsers.add_parser("health", help="Check live VPS platform and service guard health")
 
+    # doctor
+    subparsers.add_parser("doctor", help="Synthesized drop readiness audit, root cause analysis, and prescriptions")
+
     # fleet
-    subparsers.add_parser("fleet", help="Inspect active GVC booking operators and account status")
+    fleet_parser = subparsers.add_parser("fleet", help="Inspect active GVC booking operators and account status")
+    fleet_parser.add_argument("--action", choices=["overview", "pause-all", "resume-all", "pre-stage"], default="overview")
 
     # slots
     subparsers.add_parser("slots", help="Inspect currently discovered hot appointment slots")
@@ -54,13 +59,23 @@ def main():
     # proxies
     proxy_parser = subparsers.add_parser("proxies", help="Inspect managed proxy catalog and reset cooldowns")
     proxy_parser.add_argument("--reset", action="store_true", help="Reset all quarantined proxies back to ACTIVE")
+    proxy_parser.add_argument("--quarantine-dirty", action="store_true", help="Quarantine all proxies flagged by Imperva WAF")
 
     args = parser.parse_args()
 
     if args.command == "health":
         run_health_check()
+    elif args.command == "doctor":
+        run_cockpit_doctor()
     elif args.command == "fleet":
-        run_fleet_overview()
+        if args.action == "pause-all":
+            master_control("pause_all")
+        elif args.action == "resume-all":
+            master_control("resume_all")
+        elif args.action == "pre-stage":
+            pre_stage_fleet()
+        else:
+            run_fleet_overview()
     elif args.command == "slots":
         run_inspect_slots()
     elif args.command == "logs":
@@ -76,6 +91,8 @@ def main():
     elif args.command == "proxies":
         if args.reset:
             reset_cooldowns()
+        elif args.quarantine_dirty:
+            quarantine_dirty_proxies()
         else:
             run_inspect_proxies()
     else:

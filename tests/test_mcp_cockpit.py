@@ -48,6 +48,7 @@ async def test_mcp_server_tool_registration():
         "add_proxies",
         "reset_proxy_cooldowns",
         "toggle_monitor",
+        "get_doctor_diagnosis",
     ]
     
     for tool_name in expected_tools:

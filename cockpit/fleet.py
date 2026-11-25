@@ -48,5 +48,36 @@ def run_fleet_overview():
     print("=" * 80)
 
 
+def master_control(action: str):
+    act = action.strip().lower()
+    print("=" * 70)
+    print(f" [COCKPIT] FLEET MASTER CONTROL: {act.upper()}")
+    print("=" * 70)
+    try:
+        res = default_client.post("/api/gvc/accounts/master-control", json={"action": act})
+        if res.get("success"):
+            print(f"[SUCCESS] {res.get('message')}")
+        else:
+            print(f"[WARNING] Master control response: {res}")
+    except Exception as exc:
+        print(f"[ERROR] Failed to execute master control {act}: {exc}")
+    print("=" * 70)
+
+
+def pre_stage_fleet():
+    print("=" * 70)
+    print(" [COCKPIT] PRE-STAGING FLEET OPERATORS (HOT STANDBY)")
+    print("=" * 70)
+    try:
+        res = default_client.post("/api/gvc/fleet/pre-stage")
+        if res.get("success"):
+            print(f"[SUCCESS] {res.get('message')} (Staged count: {res.get('pre_staged_count', 0)})")
+        else:
+            print(f"[WARNING] Pre-stage response: {res}")
+    except Exception as exc:
+        print(f"[ERROR] Failed to pre-stage fleet: {exc}")
+    print("=" * 70)
+
+
 if __name__ == "__main__":
     run_fleet_overview()

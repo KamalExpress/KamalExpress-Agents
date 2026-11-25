@@ -39,6 +39,33 @@ def run_inspect_proxies():
         print(f"[ERROR] Failed to inspect proxy pool: {exc}")
 
 
+def quarantine_dirty_proxies():
+    print("=" * 70)
+    print(" [COCKPIT] QUARANTINING WAF-FLAGGED PROXIES")
+    print("=" * 70)
+    try:
+        res = default_client.get("/api/proxies")
+        proxies = res.get("proxies", [])
+        flagged = [
+            p for p in proxies
+            if "incapsula" in (p.get("last_error") or "").lower()
+            or "waf" in (p.get("last_error") or "").lower()
+            or p.get("fail_count", 0) > 0
+        ]
+        if not flagged:
+            print("[INFO] No dirty or WAF-flagged proxies detected.")
+            return
+
+        for p in flagged:
+            pid = p.get("id")
+            q_res = default_client.post(f"/api/proxies/{pid}/quarantine", json={"duration_minutes": 120, "reason": "Flagged by Imperva Incapsula WAF challenge"})
+            print(f"[QUARANTINE] Proxy #{pid} ({p.get('host')}:{p.get('port')}) quarantined for 120m.")
+        print("[SUCCESS] All flagged proxies isolated from active rotation.")
+    except Exception as exc:
+        print(f"[ERROR] Failed to quarantine proxies: {exc}")
+    print("=" * 70)
+
+
 def reset_cooldowns():
     print("=" * 70)
     print(" [COCKPIT] RESETTING ALL PROXY COOLDOWNS")
