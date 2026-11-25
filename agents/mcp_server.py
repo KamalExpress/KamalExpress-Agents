@@ -64,11 +64,11 @@ class KamalAPIClient:
             client = await self.get_client()
             resp = await client.post(
                 f"{self.base_url}/api/auth/login",
-                data={"username": self.username, "password": self.password},
+                json={"username": self.username, "password": self.password},
             )
             if resp.status_code == 200:
                 data = resp.json()
-                self.token = data.get("access_token", "")
+                self.token = data.get("token") or data.get("access_token", "")
                 return bool(self.token)
             logger.warning(f"[mcp_bridge] Login failed with status {resp.status_code}: {resp.text}")
             return False

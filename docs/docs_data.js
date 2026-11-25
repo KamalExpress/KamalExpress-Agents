@@ -325,6 +325,15 @@ window.DOCS_DATA = [
     "line_count": 25
   },
   {
+    "id": "cockpit-readme",
+    "title": "Mission Control Cockpit Toolkit (`cockpit/`)",
+    "category": "Cockpit",
+    "path": "cockpit/README.md",
+    "description": "Technical reference: Mission Control Cockpit Toolkit (`cockpit/`)",
+    "markdown": "# Mission Control Cockpit Toolkit (`cockpit/`)\n\nDedicated operational toolkit for piloting the live Kamal Express AI Platform during consular slot drops.\n\nConnects to live VPS: `https://keportal.alamiaconnect.com`\n\n---\n\n## 1. Quick Start Commands\n\nRun directly from repository root:\n\n```powershell\n# Live platform health & CapSolver check\npython -m cockpit.cli health\n\n# Worker fleet overview & account state\npython -m cockpit.cli fleet\n\n# Live slot discovery scanner (Islamabad 137, Lahore 138)\npython -m cockpit.cli slots\n\n# Real-time log stream\npython -m cockpit.cli logs --limit 30\n\n# Filter logs by severity or category\npython -m cockpit.cli logs --level ERROR --limit 50\npython -m cockpit.cli logs --category AUTH --limit 50\n\n# Continuous log tailing (Ctrl+C to stop)\npython -m cockpit.cli logs -f\n\n# Inspect latest SMS OTP received on SIM gateway\npython -m cockpit.cli otp latest\n\n# Emergency manual OTP code injection\npython -m cockpit.cli otp submit --phone \"03345112969\" --code \"123456\"\n```\n\n---\n\n## 2. Toolkit Architecture\n\n* **`cockpit/client.py`:** Shared authenticated HTTP client managing JWT session tokens against `/api/auth/login`.\n* **`cockpit/health.py`:** Diagnostics covering VPS reachability, service guard, CapSolver balance, and proxy health.\n* **`cockpit/fleet.py`:** Formatted tabular view of all GVC accounts, assigned VAC centers, visa types, and diagnostic error trails.\n* **`cockpit/logs.py`:** High-speed log tailing tool with filtering by level, category, and worker persona.\n* **`cockpit/slots.py`:** Active slot discovery monitor checking seat capacity across VAC 137 and 138.\n* **`cockpit/otp.py`:** Zero-latency SMS OTP verification and manual fulfillment.\n* **`cockpit/cli.py`:** Unified command-line router.\n",
+    "line_count": 50
+  },
+  {
     "id": "observation",
     "title": "Observation",
     "category": "Testing",
