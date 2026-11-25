@@ -294,6 +294,7 @@ class AccountWorkerInstance:
                     self._last_status = "HOT_STANDBY (Pre-Staged Booker)"
                     await asyncio.sleep(3)
                     continue
+                else:
                     # SLOT_CHECKER or HYBRID scanning
                     if not is_visa_type_active_today(visa_type):
                         visa_label = GVC_VISA_TYPES.get(str(visa_type), f"Type {visa_type}")
