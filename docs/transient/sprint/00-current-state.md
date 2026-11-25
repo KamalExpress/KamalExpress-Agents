@@ -1,47 +1,35 @@
 # Current Sprint State & Active Objectives
 
-> **Current Sprint:** Platform Hardening, Account Governance & WAF Resilience  
-> **Last Updated:** 2026-11-20  
-> **Active Branch:** `standalone-flow` (in strict parity with `main`)
+> **Current Sprint:** Live Slot-Drop Readiness, Mission Control Cockpit & Operational Hardening  
+> **Last Updated:** 2026-11-25  
+> **Active Branch:** `main` (`2374866`, synced with `origin/main` and deployed live via Portainer)
 
 ---
 
-## 1. Verified Live System State
-* **CapSolver Quota:** Confirmed positive balance of **\$5.94** (`ok: True`). reCAPTCHA v2 solving takes 15–20s.
-* **Pakistan Residential Proxy Pool:** Decodo Pakistan residential proxies active (**102/105 healthy**).
-* **Imperva Incapsula Early Detection:** Added to `agents/appointments/portals/gvc_auth.py`. Detects WAF anti-bot challenges (`iframe#main-iframe` / `_incapsula_resource` / `HTTP 472`) in <2s, halts execution before burning CapSolver balance, quarantines proxy for 5m, and returns `is_waf_challenge: True`.
-* **Sanctioned Operator Workflow:** Active GVC sessions are imported/synced via the **Sync GVC Account** modal in the dashboard.
-* **Zero-Emoji Compliance:** Completed platform-wide purge across all backend logs, fleet manager, and dashboard index.
-* **Documentation Hub:** In-browser documentation viewer active at `docs/index.html` (and `/documentation`), rendering Markdown via client-side `marked.min.js` and Highlight.js with dark/light themes.
-* **Alamia Documentation Skill:** Universal, project-agnostic skill created in `Alamia-Skills-System` and pushed to upstream repository.
+## 1. Verified Live System State (`https://keportal.alamiaconnect.com`)
+* **Fleet & Auth:** **15 / 16** GVC operator accounts are `ACTIVE`, `[AUTHENTICATED]`, and scanning December 2026 (`12/2026`) with zero errors. Account `#1` (`amr.shah@gmail.com`) is intentionally kept `DISABLED`.
+* **Client Queue:** **18** `QUEUED` clients (`#13`–`#33`), all scoped by `owner_username` (`admin`, `talha`, `zeeshan`) with `preferred_date_start = 01/12/2026`.
+* **CapSolver Quota:** **\$5.81** (`ok: True`), zero redundant login spend thanks to per-email login lock & session reuse (`33f213c`).
+* **Pakistan Residential Proxy Pool:** **438 / 496** active fresh proxies (`0` quarantined, `58` permanently retired). `ProxyManager.ensure_healthy_proxy()` is the sole authority for distinct per-worker proxy allocation (`52f874f`).
+* **Official GVC Center Invariant:** Enforced across backend, UI, and reports: **`137 = Islamabad VAC`**, **`138 = Lahore VAC`** (Karachi and `139` completely purged).
+* **Persistent Operational Calendar:** `OperationalCalendarService` (`agents/appointments/calendar_service.py`) persists precomputed month calendars in SQLite (`operational_calendar`) and atomic JSON (`data/operational_calendar.json`). Type 26 = Mon–Fri (23 dates in Dec 2026), Type 2 = Thu–Fri (9 dates in Dec 2026), Type 0 = Disabled.
+* **Live Agent Monitor & Reports:** `/agent-monitor` (`api/static/monitor.html`) linked from main dashboard, showing live Tier-A Fleet Rollup, Coverage Gap Warning Banner, 60s Staff-Scoped OTP Latency Alerts, and Tier-B Per-Client 8-Step Reports with timestamped `.md` downloads and `data/reports/` archival.
+* **Mission Control Cockpit:** Dedicated `cockpit/` CLI (`health`, `doctor`, `watch`, `fleet`, `logs`, `slots`, `proxies`, `clients`, `report`, `otp`), `agents/mcp_server.py` (16 MCP tools), and `/cockpit` skill (`.agents/skills/cockpit/SKILL.md`).
 
 ---
 
 ## 2. Test Verification Status
-* **Test Suite:** `pytest tests/test_service_guard.py tests/test_otp_gvc_spam_filtering.py tests/test_fleet_and_activity_stream.py`
-* **Result:** **16/16 Passed** (100% success rate).
-* **Alamia-Skills-System Test Suite:** `pytest E:\Alamia\Alamia-Skills-System\tests\`
-* **Result:** **28/28 Passed** (100% success rate).
+* **Full Test Suite (`pytest tests/`):** **65+ tests passing** (including `test_mcp_cockpit.py`, `test_booking_reports_and_flexible_vac.py`, `test_operational_calendar_service.py`, `test_proxy_quarantine.py`).
+* **Live OTP Webhook (Test 1):** `13 / 13` registered SIM numbers passed (`python -m cockpit.cli otp test-all`).
+* **Documentation Hub:** Synchronized via `python scripts/sync_docs.py` (`docs/docs_data.js`).
 
 ---
 
-## 3. High-Priority Sprint Objectives (ADR-004 Implementation)
-
-### Priority 1: Zero-Cost Pre-Flight Quota Guard (Critical)
-* Invert authentication order in `agents/appointments/portals/gvc_auth.py`.
-* Implement **Phase 1 Pre-Flight Probe**: test proxy connectivity and confirm absence of Imperva WAF challenge (`iframe#main-iframe`) at zero cost.
-* Only trigger CapSolver (**Phase 2**) after the proxy and DOM are verified healthy, eliminating the 96% quota waste rate.
-
-### Priority 2: Account Governance & Strict 4-State Lifecycle
-* Add explicit `status` (`ACTIVE`, `PAUSED`, `DISABLED`, `COOLDOWN`) and `cooldown_until` to `gvc_portal_accounts`.
-* Update web dashboard to support `DISABLED` and `PAUSED` toggles for all accounts.
-* Connect `GVCSolverWorker` to the dynamic account pool, deprecating the isolated `amr.shah@gmail.com` bypass.
-* Ensure all workers strictly ignore `PAUSED` and `DISABLED` accounts.
-
-### Priority 3: Dynamic Account Failover & Circuit Breaker
-* When an account fails authentication, mark it in `COOLDOWN` and automatically fail over to the next available `ACTIVE` account.
-* If zero accounts are active, halt worker execution with zero network calls.
-* Add exponential backoff and 3-cycle circuit breaker to `GVCSolverWorker`.
-
-### Priority 4: Database Proxy Pool Purge
-* Purge invalid placeholder/dummy proxies (`test.proxy.io`, `1.2.3.4`, `5.6.7.8`) from SQLite.
+## 3. Immediate Next Objectives
+1. **Test 2 (Physical Android SMS Forwarder Verification):**
+   * Verify real GVC-formatted manual SMS (`GERRYS - The OTP for your GVCW Appointment is: 55123`) sent to staff Android phones arrives as `[GVC OTP]` via `python -m cockpit.cli otp watch`.
+2. **Live December Slot-Drop Piloting:**
+   * Run `python -m cockpit.cli watch --interval 30 --auto-recover --otp-alert-seconds 60` during drop window.
+   * Monitor `/agent-monitor` for 8-step progression through booking confirmation and printable `.md` archival.
+3. **Optional Staff Review:**
+   * Coverage Gap Banner currently advises that Client `#28 FAKHAR JUNAIZ` prefers `VAC 137 (Islamabad) / Type 2` while 0 operators are assigned to `137 / Type 2` (covered via Flexible VAC fallback if `138 / Type 2` opens).
