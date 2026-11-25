@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Monitor & Booking Reports — Kamal Express AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --fg: #0f172a;
+      --muted: #64748b;
+      --primary: #0b5d94;
+      --primary-hover: #084b7a;
+      --success: #16a34a;
+      --success-bg: #dcfce7;
+      --warning: #d97706;
+      --warning-bg: #fef3c7;
+      --danger: #dc2626;
+      --danger-bg: #fee2e2;
+      --info: #0284c7;
+      --info-bg: #e0f2fe;
+      --secondary: #f1f5f9;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); font-size: 13px; line-height: 1.5; }
+    header {
+      background: var(--card); border-bottom: 1px solid var(--border);
+      padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+      position: sticky; top: 0; z-index: 20;
+    }
+    .hdr-left { display: flex; align-items: center; gap: 12px; }
+    .hdr-left h1 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .hdr-left p { font-size: 12px; color: var(--muted); }
+    .hdr-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--card); color: var(--fg); font-size: 12px; font-weight: 600;
+      cursor: pointer; text-decoration: none; transition: background 0.15s;
+    }
+    .btn:hover { background: var(--secondary); }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn .icon { width: 14px; height: 14px; }
+    main { max-width: 1400px; margin: 20px auto; padding: 0 24px 40px; display: flex; flex-direction: column; gap: 20px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .kpi-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .kpi-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--muted); letter-spacing: 0.03em; }
+    .kpi-val { font-size: 22px; font-weight: 700; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .card-hdr {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    }
+    .card-title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .card-title .icon { width: 16px; height: 16px; color: var(--primary); }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: var(--secondary); font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.03em; }
+    tr:last-child td { border-bottom: none; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover { background: #f8fafc; }
+    tr.selected-row { background: var(--info-bg); }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.02em; text-transform: uppercase;
+    }
+    .b-passed, .b-booked, .b-yes { background: var(--success-bg); color: var(--success); }
+    .b-failed, .b-blocked, .b-no { background: var(--danger-bg); color: var(--danger); }
+    .b-in_progress, .b-waiting, .b-queued { background: var(--warning-bg); color: var(--warning); }
+    .b-na, .b-paused { background: var(--secondary); color: var(--muted); }
+    .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .filter-pill {
+      padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--card);
+      font-size: 11.5px; font-weight: 600; cursor: pointer; color: var(--muted);
+    }
+    .filter-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .search-input {
+      padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+      font-size: 12px; min-width: 210px; outline: none;
+    }
+    .search-input:focus { border-color: var(--primary); }
+    .split-layout { display: grid; grid-template-columns: 1.05fr 1.25fr; gap: 18px; align-items: start; }
+    @media (max-width: 1024px) { .split-layout { grid-template-columns: 1fr; } }
+    .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; padding: 14px 16px; background: #f8fafc; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .meta-k { color: var(--muted); font-weight: 600; margin-right: 4px; }
+    .empty-state { padding: 36px 20px; text-align: center; color: var(--muted); }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); display: inline-block; }
+    .live-dot.paused { background: var(--muted); }
+    @media print {
+      header .hdr-actions, .toolbar, .no-print { display: none !important; }
+      body { background: #fff; }
+      main { max-width: 100%; margin: 0; padding: 0; }
+      .split-layout { grid-template-columns: 1fr; }
+      .card { border: 1px solid #cbd5e1; break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="hdr-left">
+      <a href="/" class="btn no-print"><i data-lucide="arrow-left" class="icon"></i> Dashboard</a>
+      <div>
+        <h1><i data-lucide="activity" class="icon" style="color:var(--primary)"></i> Live Agent Monitor &amp; Booking Reports</h1>
+        <p id="last-updated-text">Connecting to live platform...</p>
+      </div>
+    </div>
+    <div class="hdr-actions no-print">
+      <button class="btn" id="btn-toggle-refresh" onclick="toggleAutoRefresh()">
+        <span class="live-dot" id="refresh-dot"></span>
+        <span id="refresh-label">Auto-Refresh: ON (5s)</span>
+      </button>
+      <button class="btn" onclick="refreshAll()"><i data-lucide="refresh-cw" class="icon"></i> Refresh Now</button>
+      <a class="btn" href="/api/reports/fleet.md" target="_blank"><i data-lucide="file-text" class="icon"></i> Fleet .md</a>
+      <a class="btn" href="/api/reports/export-all.md" target="_blank"><i data-lucide="download" class="icon"></i> Export All .md</a>
+      <button class="btn btn-primary" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Tier A: KPI Rollup -->
+    <section class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-lbl">Total Clients</span><span class="kpi-val" id="kpi-total">0</span></div>
+      <div class="kpi-card"><span class="kpi-lbl">Queued</span><span class="kpi-val" id="kpi-queued" style="color:var(--warning)">0</span></div>
+      <div class="kpi-card"><span class="kpi-lbl">In Progress</span><span class="kpi-val" id="kpi-inprog" style="color:var(--info)">0</span></div>
+      <div class="kpi-card"><span class="kpi-lbl">Booked</span><span class="kpi-val" id="kpi-booked" style="color:var(--success)">0</span></div>
+      <div class="kpi-card"><span class="kpi-lbl">Failed</span><span class="kpi-val" id="kpi-failed" style="color:var(--danger)">0</span></div>
+      <div class="kpi-card"><span class="kpi-lbl">CapSolver Bal</span><span class="kpi-val" id="kpi-capsolver">$0.00</span></div>
+      <div class="kpi-card"><span class="kpi-lbl">Healthy Proxies</span><span class="kpi-val" id="kpi-proxies">0/0</span></div>
+    </section>
+
+    <!-- Tier A: Active Agents Table -->
+    <section class="card">
+      <div class="card-hdr">
+        <div class="card-title"><i data-lucide="cpu" class="icon"></i> Active Fleet Agents</div>
+        <span id="gov-summary" style="font-size:12px; color:var(--muted);">Loading...</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Persona</th><th>Email</th><th>Target</th><th>Status</th><th>Auth</th><th>Scans</th><th>Last Check</th>
+            </tr>
+          </thead>
+          <tbody id="agents-tbody">
+            <tr><td colspan="8" class="empty-state">Loading active agents...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Tier B: Client List + Selected Client 8-Step Report -->
+    <section class="split-layout">
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="users" class="icon"></i> Client Queue (<span id="client-count-lbl">0</span>)</div>
+          <div class="toolbar no-print">
+            <input class="search-input" id="client-search" type="text" placeholder="Search name or passport..." oninput="renderClientList()" />
+          </div>
+        </div>
+        <div class="card-hdr no-print" style="padding:8px 16px; background:#f8fafc;">
+          <div class="toolbar">
+            <button class="filter-pill active" onclick="setFilter('ALL', this)">All</button>
+            <button class="filter-pill" onclick="setFilter('BOOKED', this)">Booked</button>
+            <button class="filter-pill" onclick="setFilter('IN_PROGRESS', this)">In Progress</button>
+            <button class="filter-pill" onclick="setFilter('QUEUED', this)">Queued</button>
+            <button class="filter-pill" onclick="setFilter('FAILED', this)">Failed</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto; max-height: 540px; overflow-y: auto;">
+          <table>
+            <thead>
+              <tr><th>ID</th><th>Applicant</th><th>Pref VAC</th><th>Status</th><th>Last Step</th></tr>
+            </thead>
+            <tbody id="clients-tbody">
+              <tr><td colspan="5" class="empty-state">Loading clients...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="client-detail-card">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="clipboard-list" class="icon"></i> <span id="detail-title">Per-Client 8-Step Booking Report</span></div>
+          <div class="toolbar no-print" id="detail-actions" style="display:none;">
+            <a class="btn" id="btn-download-client-md" href="#" target="_blank"><i data-lucide="download" class="icon"></i> Download .md</a>
+          </div>
+        </div>
+        <div id="detail-body" class="empty-state">
+          Select any client from the queue on the left to inspect their live 8-step booking lifecycle and download their printable Markdown report.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let autoRefresh = true;
+    let refreshTimer = null;
+    let allClients = [];
+    let activeFilter = 'ALL';
+    let selectedClientId = null;
+
+    function badgeClass(val) {
+      const v = String(val || '').toLowerCase();
+      if (['passed', 'booked', 'yes', 'true'].includes(v)) return 'b-passed';
+      if (['failed', 'blocked', 'no', 'false'].includes(v)) return 'b-failed';
+      if (['in_progress', 'waiting', 'queued'].includes(v)) return 'b-queued';
+      return 'b-na';
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function setFilter(f, btn) {
+      activeFilter = f;
+      document.querySelectorAll('.filter-pill').forEach(el => el.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderClientList();
+    }
+
+    function toggleAutoRefresh() {
+      autoRefresh = !autoRefresh;
+      document.getElementById('refresh-dot').classList.toggle('paused', !autoRefresh);
+      document.getElementById('refresh-label').textContent = autoRefresh ? 'Auto-Refresh: ON (5s)' : 'Auto-Refresh: PAUSED';
+      if (autoRefresh) startTimer();
+      else if (refreshTimer) clearInterval(refreshTimer);
+    }
+
+    function startTimer() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(() => { if (autoRefresh) refreshAll(); }, 5000);
+    }
+
+    async function refreshAll() {
+      try {
+        const res = await fetch('/api/reports/fleet', { credentials: 'include' });
+        if (res.status === 401) {
+          document.getElementById('last-updated-text').textContent = 'Session expired. Please log in via the main Dashboard.';
+          return;
+        }
+        const data = await res.json();
+        document.getElementById('last-updated-text').textContent = 'Last Updated: ' + (data.generated_at_utc || 'just now');
+
+        const q = data.queue_counts || {};
+        document.getElementById('kpi-total').textContent = q.total || 0;
+        document.getElementById('kpi-queued').textContent = q.QUEUED || 0;
+        document.getElementById('kpi-inprog').textContent = q.IN_PROGRESS || 0;
+        document.getElementById('kpi-booked').textContent = q.BOOKED || 0;
+        document.getElementById('kpi-failed').textContent = q.FAILED || 0;
+        document.getElementById('kpi-capsolver').textContent = '$' + Number((data.capsolver || {}).balance || 0).toFixed(2);
+        const ps = data.proxy_stats || {};
+        document.getElementById('kpi-proxies').textContent = (ps.active || 0) + '/' + (ps.total || 0);
+        document.getElementById('gov-summary').textContent = (data.governance || {}).summary_text || '';
+
+        const agents = data.agents || [];
+        const atb = document.getElementById('agents-tbody');
+        if (!agents.length) {
+          atb.innerHTML = '<tr><td colspan="8" class="empty-state">No registered GVC agents.</td></tr>';
+        } else {
+          atb.innerHTML = agents.map(a => `
+            <tr>
+              <td><b>#${esc(a.account_id)}</b></td>
+              <td>${esc(a.worker_persona_name)}</td>
+              <td>${esc(a.email)}</td>
+              <td>VAC ${esc(a.vac_id)} / Type ${esc(a.visa_type)}</td>
+              <td><code>${esc(a.last_status)}</code></td>
+              <td><span class="badge ${badgeClass(a.is_authenticated ? 'yes' : 'no')}">${a.is_authenticated ? 'YES' : 'NO'}</span></td>
+              <td><b>${esc(a.total_scans)}</b></td>
+              <td>${esc(a.last_checked || 'Never')}</td>
+            </tr>
+          `).join('');
+        }
+
+        allClients = data.clients || [];
+        document.getElementById('client-count-lbl').textContent = allClients.length;
+        renderClientList();
+
+        if (selectedClientId) {
+          await loadClientDetail(selectedClientId);
+        } else if (allClients.length > 0) {
+          await loadClientDetail(allClients[0].id);
+        }
+      } catch (err) {
+        document.getElementById('last-updated-text').textContent = 'Refresh error: ' + err.message;
+      }
+    }
+
+    function renderClientList() {
+      const q = (document.getElementById('client-search').value || '').trim().toLowerCase();
+      const filtered = allClients.filter(c => {
+        if (activeFilter !== 'ALL' && c.status !== activeFilter) return false;
+        if (q && !(c.full_name.toLowerCase().includes(q) || c.passport_number.toLowerCase().includes(q))) return false;
+        return true;
+      });
+      const tb = document.getElementById('clients-tbody');
+      if (!filtered.length) {
+        tb.innerHTML = '<tr><td colspan="5" class="empty-state">No clients match current filter.</td></tr>';
+        return;
+      }
+      tb.innerHTML = filtered.map(c => `
+        <tr class="clickable ${c.id === selectedClientId ? 'selected-row' : ''}" onclick="loadClientDetail(${c.id})">
+          <td><b>#${c.id}</b></td>
+          <td><div><b>${esc(c.full_name)}</b></div><div style="font-size:11px;color:var(--muted)">${esc(c.passport_number)}</div></td>
+          <td>${esc(c.preferred_vac_label)}</td>
+          <td><span class="badge ${badgeClass(c.status)}">${esc(c.status)}</span></td>
+          <td style="font-size:11.5px;">Step ${c.last_step_number}: ${esc(c.last_step_name)}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadClientDetail(clientId) {
+      selectedClientId = clientId;
+      renderClientList();
+      try {
+        const res = await fetch('/api/reports/clients/' + clientId, { credentials: 'include' });
+        if (!res.ok) return;
+        const d = await res.json();
+        const c = d.client;
+        document.getElementById('detail-title').textContent = `Client #${c.id}: ${c.full_name} (${c.passport_number})`;
+        document.getElementById('detail-actions').style.display = 'flex';
+        document.getElementById('btn-download-client-md').href = `/api/reports/clients/${c.id}.md`;
+
+        const stepsHtml = (d.steps || []).map(s => `
+          <tr>
+            <td><b>${s.step_number}</b></td>
+            <td><b>${esc(s.step_name)}</b></td>
+            <td><span class="badge ${badgeClass(s.status)}">${esc(s.status)}</span></td>
+            <td><code>${esc(s.time_utc)}</code></td>
+            <td>${esc(s.summary)}</td>
+            <td style="color:${s.error_message && s.error_message !== 'None' ? 'var(--danger)' : 'var(--muted)'}">${esc(s.error_message)}</td>
+          </tr>
+        `).join('');
+
+        document.getElementById('detail-body').className = '';
+        document.getElementById('detail-body').innerHTML = `
+          <div class="meta-grid">
+            <div><span class="meta-k">Status:</span> <span class="badge ${badgeClass(c.status)}">${esc(c.status)}</span></div>
+            <div><span class="meta-k">Assigned Agent:</span> ${esc(d.assigned_worker)}</div>
+            <div><span class="meta-k">Preferred VAC:</span> ${esc(c.preferred_vac_label)}</div>
+            <div><span class="meta-k">Actual Slot VAC:</span> ${esc(c.actual_vac_label)} (${esc(c.match_tier)})</div>
+            <div><span class="meta-k">Visa Type:</span> ${esc(c.visa_label)}</div>
+            <div><span class="meta-k">Booking Ref:</span> <code>${esc(c.booking_reference || 'Pending')}</code></div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr><th>#</th><th>Step</th><th>Status</th><th>UTC</th><th>Evidence / Output</th><th>Issues</th></tr>
+              </thead>
+              <tbody>${stepsHtml}</tbody>
+            </table>
+          </div>
+          <div style="padding:12px 16px; border-top:1px solid var(--border); font-size:12px; color:var(--muted);">
+            <b>Confirmation Artifact:</b> <code>${esc(c.raw_confirmation_path || 'Not generated yet')}</code><br/>
+            <b>Notes:</b> ${esc(c.notes || 'None')}
+          </div>
+        `;
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    lucide.createIcons();
+    refreshAll();
+    startTimer();
+  </script>
+</body>
+</html>

@@ -401,6 +401,23 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_discovered_slots_ts ON discovered_slots_history(timestamp DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_discovered_slots_lookup ON discovered_slots_history(vac_id, visa_type, slot_date);")
 
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS client_booking_steps (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        client_id INTEGER NOT NULL,
+                        account_id INTEGER,
+                        worker_name TEXT DEFAULT '',
+                        step_number INTEGER NOT NULL,
+                        step_name TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        summary TEXT DEFAULT '',
+                        error_message TEXT DEFAULT '',
+                        details_json TEXT DEFAULT '{}',
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_booking_steps_client ON client_booking_steps(client_id, step_number);")
+
                 # ── Schema Migrations (Ensure columns exist on existing databases) ────
                 def _ensure_cols(table: str, col_defs: dict[str, str]):
                     try:
@@ -719,6 +736,185 @@ def claim_next_client_any_date(
                 return client
         finally:
             conn.close()
+
+
+def claim_next_client_flexible_vac(
+    destination: str = "Greece",
+    visa_type: str = "26",
+    vac_id: str = "138",
+    worker_id: str = "worker-1",
+    slot_date: Optional[str] = None,
+    db_path: Path = DB_PATH,
+) -> tuple[Optional[ClientProfile], str]:
+    """
+    Atomically claim the next eligible QUEUED client using 3-tier flexible VAC priority:
+      1. Preferred VAC (vac_id match) + matching preferred date range  -> 'PREFERRED_VAC_DATE'
+      2. Preferred VAC (vac_id match) + any date                       -> 'PREFERRED_VAC_ANY_DATE'
+      3. Fallback VAC (any Pakistan VAC, matching destination+visa)    -> 'FALLBACK_VAC'
+         (prefers date-range match first, then oldest queued client)
+    Returns (ClientProfile | None, match_tier_str).
+    """
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                rows = conn.execute("""
+                    SELECT * FROM client_queue
+                    WHERE status = 'QUEUED'
+                      AND (LOWER(COALESCE(destination, '')) = LOWER(?) OR destination IS NULL OR destination = '')
+                      AND (visa_type = ? OR visa_type IS NULL OR visa_type = '')
+                    ORDER BY id ASC
+                """, (destination, str(visa_type))).fetchall()
+
+                if not rows:
+                    return None, ""
+
+                target_vac = str(vac_id or "").strip()
+                pref_rows = [
+                    r for r in rows
+                    if str(r["vac_id"] or "").strip() in (target_vac, "")
+                ]
+                fallback_rows = [
+                    r for r in rows
+                    if str(r["vac_id"] or "").strip() not in (target_vac, "")
+                ]
+
+                matching_row = None
+                match_tier = ""
+
+                # Tier 1: Preferred VAC + date range match
+                for r in pref_rows:
+                    if _matches_date_range(slot_date, r["preferred_date_start"], r["preferred_date_end"]):
+                        matching_row = r
+                        match_tier = "PREFERRED_VAC_DATE"
+                        break
+
+                # Tier 2: Preferred VAC + any date
+                if not matching_row and pref_rows:
+                    matching_row = pref_rows[0]
+                    match_tier = "PREFERRED_VAC_ANY_DATE"
+
+                # Tier 3: Fallback VAC (prefer date range match first, then FIFO)
+                if not matching_row and fallback_rows:
+                    for r in fallback_rows:
+                        if _matches_date_range(slot_date, r["preferred_date_start"], r["preferred_date_end"]):
+                            matching_row = r
+                            match_tier = "FALLBACK_VAC"
+                            break
+                    if not matching_row:
+                        matching_row = fallback_rows[0]
+                        match_tier = "FALLBACK_VAC"
+
+                if not matching_row:
+                    return None, ""
+
+                client_id = matching_row["id"]
+                now_str = datetime.utcnow().isoformat()
+                conn.execute("""
+                    UPDATE client_queue
+                    SET status = 'IN_PROGRESS', locked_by_worker = ?, locked_at = ?
+                    WHERE id = ?
+                """, (worker_id, now_str, client_id))
+
+                client = row_to_client(matching_row)
+                client.status = "IN_PROGRESS"
+                logger.info(
+                    f"[db] Worker '{worker_id}' claimed client #{client_id} ({client.first_name} {client.last_name}) "
+                    f"for VAC {target_vac} via {match_tier} (preferred VAC: {client.vac_id})."
+                )
+                return client, match_tier
+        finally:
+            conn.close()
+
+
+# ── Per-Client 8-Step Booking Lifecycle Audit Persistence ─────────────────────
+
+def record_booking_step(
+    client_id: int,
+    step_number: int,
+    step_name: str,
+    status: str,
+    summary: str = "",
+    error_message: str = "",
+    account_id: Optional[int] = None,
+    worker_name: str = "",
+    details: Optional[dict] = None,
+    db_path: Path = DB_PATH,
+) -> dict:
+    """Persist an individual booking lifecycle step (1-8) for a client."""
+    now_str = datetime.utcnow().isoformat() + "Z"
+    clean_status = (status or "INFO").strip().upper()
+    details_str = json.dumps(details or {}, ensure_ascii=False)
+    with _lock:
+        conn = get_connection(db_path)
+        try:
+            with conn:
+                cur = conn.execute("""
+                    INSERT INTO client_booking_steps (
+                        client_id, account_id, worker_name, step_number, step_name,
+                        status, summary, error_message, details_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    client_id,
+                    account_id,
+                    worker_name or "",
+                    int(step_number),
+                    step_name,
+                    clean_status,
+                    summary or "",
+                    error_message or "",
+                    details_str,
+                    now_str,
+                ))
+                step_id = cur.lastrowid
+        finally:
+            conn.close()
+    return {
+        "id": step_id,
+        "client_id": client_id,
+        "account_id": account_id,
+        "worker_name": worker_name or "",
+        "step_number": int(step_number),
+        "step_name": step_name,
+        "status": clean_status,
+        "summary": summary or "",
+        "error_message": error_message or "",
+        "details": details or {},
+        "created_at": now_str,
+    }
+
+
+def get_client_booking_steps(client_id: int, db_path: Path = DB_PATH) -> List[dict]:
+    """Return all persisted booking lifecycle step entries for a client in chronological order."""
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute("""
+            SELECT * FROM client_booking_steps
+            WHERE client_id = ?
+            ORDER BY id ASC
+        """, (client_id,)).fetchall()
+        results = []
+        for r in rows:
+            try:
+                parsed_details = json.loads(r["details_json"]) if r["details_json"] else {}
+            except Exception:
+                parsed_details = {}
+            results.append({
+                "id": r["id"],
+                "client_id": r["client_id"],
+                "account_id": r["account_id"],
+                "worker_name": r["worker_name"],
+                "step_number": r["step_number"],
+                "step_name": r["step_name"],
+                "status": r["status"],
+                "summary": r["summary"],
+                "error_message": r["error_message"],
+                "details": parsed_details,
+                "created_at": r["created_at"],
+            })
+        return results
+    finally:
+        conn.close()
 
 
 # ── Hot Slot Ephemeral Persistence (Short TTL & Fast Auto-Purge) ──────────────

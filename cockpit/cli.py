@@ -20,6 +20,7 @@ from cockpit.logs import run_tail_logs
 from cockpit.otp import inspect_latest_otp, submit_manual_code
 from cockpit.proxies import run_inspect_proxies, reset_cooldowns, quarantine_dirty_proxies
 from cockpit.doctor import run_cockpit_doctor
+from cockpit.report import run_report
 
 
 def main():
@@ -61,6 +62,12 @@ def main():
     proxy_parser.add_argument("--reset", action="store_true", help="Reset all quarantined proxies back to ACTIVE")
     proxy_parser.add_argument("--quarantine-dirty", action="store_true", help="Quarantine all proxies flagged by Imperva WAF")
 
+    # report
+    report_parser = subparsers.add_parser("report", help="Generate live Fleet Rollup or Per-Client 8-Step Markdown report")
+    report_parser.add_argument("--client", type=int, default=None, help="Client ID for individual 8-step booking report")
+    report_parser.add_argument("--all", dest="export_all", action="store_true", help="Export Fleet Rollup + all client reports")
+    report_parser.add_argument("--save", type=str, default=None, help="Optional file path to save the .md report locally")
+
     args = parser.parse_args()
 
     if args.command == "health":
@@ -95,6 +102,8 @@ def main():
             quarantine_dirty_proxies()
         else:
             run_inspect_proxies()
+    elif args.command == "report":
+        run_report(client_id=args.client, save_path=args.save, export_all=args.export_all)
     else:
         parser.print_help()
 

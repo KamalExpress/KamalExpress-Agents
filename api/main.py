@@ -2429,6 +2429,74 @@ async def root():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/agent-monitor", include_in_schema=False)
+async def agent_monitor_page():
+    """Serve the standalone Live Agent Monitor & Per-Client Booking Reports UI."""
+    return FileResponse(STATIC_DIR / "monitor.html")
+
+
+# ── Live & Printable Agent / Per-Client Booking Reports ───────────────────────
+
+@app.get("/api/reports/fleet")
+async def get_fleet_report_json(user: dict = Depends(get_current_user)):
+    """Get live Tier-A Fleet & Client Queue rollup telemetry."""
+    from agents.appointments.reports import build_fleet_rollup_data
+    return build_fleet_rollup_data()
+
+
+@app.get("/api/reports/fleet.md")
+async def get_fleet_report_md(user: dict = Depends(get_current_user)):
+    """Download or view live Fleet & Queue Rollup report as Markdown."""
+    from fastapi.responses import Response
+    from agents.appointments.reports import build_fleet_rollup_data, render_fleet_rollup_markdown
+    md = render_fleet_rollup_markdown(build_fleet_rollup_data())
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": 'inline; filename="fleet_rollup_report.md"'},
+    )
+
+
+@app.get("/api/reports/clients/{client_id}")
+async def get_client_report_json(client_id: int, user: dict = Depends(get_current_user)):
+    """Get live Tier-B Per-Client 8-Step Booking Lifecycle report."""
+    from agents.appointments.reports import build_client_report_data
+    data = build_client_report_data(client_id)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Client #{client_id} not found.")
+    return data
+
+
+@app.get("/api/reports/clients/{client_id}.md")
+async def get_client_report_md(client_id: int, user: dict = Depends(get_current_user)):
+    """Download individual Per-Client 8-Step Booking Report as printable Markdown."""
+    from fastapi.responses import Response
+    from agents.appointments.reports import build_client_report_data, render_client_report_markdown
+    data = build_client_report_data(client_id)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Client #{client_id} not found.")
+    md = render_client_report_markdown(data)
+    passport = "".join(ch for ch in (data["client"].get("passport_number") or "client") if ch.isalnum())
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="client_{client_id}_{passport}_report.md"'},
+    )
+
+
+@app.get("/api/reports/export-all.md")
+async def export_all_reports_md(user: dict = Depends(get_current_user)):
+    """Download combined Fleet Rollup + all Per-Client 8-Step Reports as a single printable Markdown bundle."""
+    from fastapi.responses import Response
+    from agents.appointments.reports import render_all_reports_markdown
+    md = render_all_reports_markdown()
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="kamal_express_all_booking_reports.md"'},
+    )
+
+
 @app.get("/documentation", include_in_schema=False)
 async def documentation():
     """Redirect to standalone documentation viewer."""

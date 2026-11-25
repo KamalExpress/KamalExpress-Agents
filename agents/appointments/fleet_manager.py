@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Set
 from .db import (
     claim_next_client,
     claim_next_client_any_date,
+    claim_next_client_flexible_vac,
     get_client_by_id,
     _matches_date_range,
     record_discovered_hot_slots,
@@ -38,6 +39,7 @@ from .db import (
     save_raw_confirmation,
     record_worker_task,
     record_worker_error,
+    record_booking_step,
     get_system_setting,
     get_discovered_slots_history,
     record_discovered_slot_history,
@@ -420,21 +422,15 @@ class AccountWorkerInstance:
                         if slot.available_capacity <= 0:
                             continue
 
-                        # Atomically claim next client matching destination, visa type, VAC (fallback to any date)
-                        client = claim_next_client(
+                        # Atomically claim next client using 3-tier flexible VAC priority
+                        actual_vac_id = str(getattr(slot, "vac_id", None) or vac_id)
+                        client, match_tier = claim_next_client_flexible_vac(
                             destination="Greece",
                             visa_type=visa_type,
-                            vac_id=vac_id,
+                            vac_id=actual_vac_id,
                             worker_id=f"fleet-worker-{self.account_id}",
-                            slot_date=slot.date
+                            slot_date=slot.date,
                         )
-                        if not client:
-                            client = claim_next_client_any_date(
-                                destination="Greece",
-                                visa_type=visa_type,
-                                vac_id=vac_id,
-                                worker_id=f"fleet-worker-{self.account_id}"
-                            )
                         if not client:
                             continue
 
@@ -442,7 +438,38 @@ class AccountWorkerInstance:
                         target_phone = client.phone_number or acc.get("otp_phone_number")
                         masked_sim = mask_phone_pii(target_phone)
                         visa_label = GVC_VISA_TYPES.get(str(client.visa_type or visa_type), f"Type {client.visa_type or visa_type}")
-                        vac_name = vac_meta.get("name", f"VAC {vac_id}")
+                        vac_name = vac_meta.get("name", f"VAC {actual_vac_id}")
+                        open_slots_count = sum(1 for s in slots if s.available_capacity > 0)
+
+                        # Record Steps 1-5 for per-client 8-step lifecycle audit
+                        record_booking_step(
+                            client_id=client.id, step_number=1, step_name="Governance & Pre-Flight",
+                            status="PASSED", summary=f"Service Guard OK; active day rule verified for Type {visa_type}.",
+                            account_id=self.account_id, worker_name=persona,
+                        )
+                        record_booking_step(
+                            client_id=client.id, step_number=2, step_name="Session / Auth",
+                            status="PASSED", summary=f"Authenticated operator '{persona}' ({acc['email']}).",
+                            account_id=self.account_id, worker_name=persona,
+                        )
+                        record_booking_step(
+                            client_id=client.id, step_number=3, step_name="Slot Availability Check",
+                            status="PASSED", summary=f"Found {open_slots_count} genuine open slot(s) at {vac_name} (Type {visa_type}).",
+                            account_id=self.account_id, worker_name=persona,
+                            details={"vac_id": actual_vac_id, "visa_type": visa_type, "open_slots": open_slots_count},
+                        )
+                        record_booking_step(
+                            client_id=client.id, step_number=4, step_name="Booking Slot Selection",
+                            status="PASSED", summary=f"Selected Slot ID {slot.slot_id} on {slot.date} at {slot.time} (capacity={slot.available_capacity}).",
+                            account_id=self.account_id, worker_name=persona,
+                            details={"slot_id": slot.slot_id, "date": slot.date, "time": slot.time, "vac_id": actual_vac_id, "capacity": slot.available_capacity},
+                        )
+                        record_booking_step(
+                            client_id=client.id, step_number=5, step_name="Client Queue Claim",
+                            status="PASSED", summary=f"Claimed Client #{client.id} via {match_tier} (Preferred VAC: {client.vac_id}, Actual Slot VAC: {actual_vac_id}).",
+                            account_id=self.account_id, worker_name=persona,
+                            details={"match_tier": match_tier, "preferred_vac_id": client.vac_id, "actual_vac_id": actual_vac_id},
+                        )
 
                         max_otp_attempts = 3
                         otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
@@ -461,7 +488,7 @@ class AccountWorkerInstance:
                         for otp_attempt in range(1, max_otp_attempts + 1):
                             attempt_label = f" (Attempt {otp_attempt}/{max_otp_attempts})" if otp_attempt > 1 else ""
                             fleet_manager.log_event(
-                                f"[OPERATOR CLAIM] Operator '{persona}' claimed Client #{client.id} ({client.first_name} {client.last_name}). Triggering verification code{attempt_label} to SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} ({int(otp_timeout)}s window)...",
+                                f"[OPERATOR CLAIM] Operator '{persona}' claimed Client #{client.id} ({client.first_name} {client.last_name}, {match_tier}). Triggering verification code{attempt_label} to SIM {masked_sim} for {vac_name} ({visa_label}) on {slot.date} {slot.time} ({int(otp_timeout)}s window)...",
                                 level="INFO",
                                 category="BOOKING",
                                 account_id=self.account_id,
@@ -478,6 +505,12 @@ class AccountWorkerInstance:
                                 )
                             otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
                             if otp_code:
+                                record_booking_step(
+                                    client_id=client.id, step_number=6, step_name="OTP Dispatch & Capture",
+                                    status="PASSED", summary=f"Received OTP on SIM {masked_sim} (Attempt {otp_attempt}/{max_otp_attempts}).",
+                                    account_id=self.account_id, worker_name=persona,
+                                    details={"phone_masked": masked_sim, "attempt": otp_attempt},
+                                )
                                 fleet_manager.log_event(
                                     f"[SUCCESS] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {slot.date} {slot.time}.",
                                     level="SUCCESS",
@@ -490,6 +523,12 @@ class AccountWorkerInstance:
                         if not otp_code:
                             if captcha_task and not captcha_task.done():
                                 captcha_task.cancel()
+                            record_booking_step(
+                                client_id=client.id, step_number=6, step_name="OTP Dispatch & Capture",
+                                status="FAILED", summary=f"OTP timed out on SIM {masked_sim} after {max_otp_attempts} attempts.",
+                                error_message=f"OTP verification timed out after {max_otp_attempts} attempts. Reverted to QUEUED.",
+                                account_id=self.account_id, worker_name=persona,
+                            )
                             update_client_status(
                                 client_id=client.id,
                                 status="QUEUED",
@@ -515,21 +554,27 @@ class AccountWorkerInstance:
                         # Record executed booking task
                         record_worker_task(self.account_id)
 
-                        # Submit final booking using applicant's profile VAC & Visa Type
+                        # Submit final booking using actual open slot VAC (supports flexible VAC fallback)
                         result = await self._driver.submit_booking(
                             applicant=client,
                             slot_id=slot.slot_id,
                             target_date=slot.date,
                             target_time=slot.time,
                             otp_code=otp_code,
-                            vac_id=client.vac_id,
-                            visa_type=client.visa_type,
+                            vac_id=actual_vac_id,
+                            visa_type=client.visa_type or visa_type,
                             recaptcha_token=recaptcha_token,
                         )
 
                         if result.success:
                             self._total_booked += 1
                             mark_hot_slot_consumed(slot.slot_id)
+                            record_booking_step(
+                                client_id=client.id, step_number=7, step_name="Captcha & Booking Submit",
+                                status="PASSED", summary=f"Booking submitted for Slot ID {slot.slot_id} at {vac_name} ({slot.date} {slot.time}).",
+                                account_id=self.account_id, worker_name=persona,
+                                details={"slot_id": slot.slot_id, "vac_id": actual_vac_id, "reference": result.reference_number},
+                            )
                             # Save raw confirmation payload to disk
                             conf_path = save_raw_confirmation(
                                 client_id=client.id,
@@ -546,12 +591,23 @@ class AccountWorkerInstance:
                                 booking_reference=result.reference_number,
                                 booked_date=slot.date,
                                 booked_time=slot.time,
-                                notes=f"Auto-booked by {persona} (Account: {acc['email']}).",
+                                notes=f"Auto-booked by {persona} (Account: {acc['email']}, VAC {actual_vac_id}, Match: {match_tier}).",
                                 raw_confirmation_path=conf_path,
                                 booked_by_account_id=self.account_id,
                                 booked_by_worker_name=persona,
                                 booking_cost_pkr=rate_booking,
                             )
+                            record_booking_step(
+                                client_id=client.id, step_number=8, step_name="Confirmation Capture",
+                                status="PASSED", summary=f"ARN {result.reference_number} captured; saved {conf_path}.",
+                                account_id=self.account_id, worker_name=persona,
+                                details={"arn": result.reference_number, "confirmation_path": conf_path, "vac_id": actual_vac_id},
+                            )
+                            try:
+                                from .reports import archive_client_report_markdown
+                                archive_client_report_markdown(client.id)
+                            except Exception as rep_err:
+                                logger.warning(f"[fleet_worker #{self.account_id}] Report archive warning: {rep_err}")
                             fleet_manager.log_event(
                                 f"[SUCCESS] BOOKING SUCCESSFUL! Ref: {result.reference_number} for {client.first_name} {client.last_name} by Operator {persona} at {vac_meta.get('name', 'VAC')} on {slot.date} {slot.time}!",
                                 level="SUCCESS",
@@ -563,6 +619,13 @@ class AccountWorkerInstance:
                             slot.available_capacity -= 1
                         else:
                             record_worker_error(self.account_id)
+                            record_booking_step(
+                                client_id=client.id, step_number=7, step_name="Captcha & Booking Submit",
+                                status="FAILED", summary=f"Booking submission rejected for Slot ID {slot.slot_id}.",
+                                error_message=result.message or "Unknown booking submission failure",
+                                account_id=self.account_id, worker_name=persona,
+                                details={"slot_id": slot.slot_id, "vac_id": actual_vac_id},
+                            )
                             conf_path = save_raw_confirmation(
                                 client_id=client.id,
                                 booking_reference="FAILED",
@@ -578,6 +641,11 @@ class AccountWorkerInstance:
                                 booked_by_account_id=self.account_id,
                                 booked_by_worker_name=persona,
                             )
+                            try:
+                                from .reports import archive_client_report_markdown
+                                archive_client_report_markdown(client.id)
+                            except Exception as rep_err:
+                                logger.warning(f"[fleet_worker #{self.account_id}] Report archive warning: {rep_err}")
                             fleet_manager.log_event(
                                 f"[FAILED] Booking submission failed for {client.passport_number}: {result.message}",
                                 level="WARNING",
