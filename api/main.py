@@ -2447,19 +2447,22 @@ async def get_fleet_report_json(user: dict = Depends(get_current_user)):
 @app.get("/api/reports/fleet.md")
 async def get_fleet_report_md(user: dict = Depends(get_current_user)):
     """Download or view live Fleet & Queue Rollup report as Markdown."""
+    from datetime import datetime, timezone
     from fastapi.responses import Response
     from agents.appointments.reports import build_fleet_rollup_data, render_fleet_rollup_markdown
     md = render_fleet_rollup_markdown(build_fleet_rollup_data())
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return Response(
         content=md,
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": 'inline; filename="fleet_rollup_report.md"'},
+        headers={"Content-Disposition": f'inline; filename="fleet_rollup_report_{ts}.md"'},
     )
 
 
 @app.get("/api/reports/clients/{client_id}.md")
 async def get_client_report_md(client_id: int, user: dict = Depends(get_current_user)):
     """Download individual Per-Client 8-Step Booking Report as printable Markdown."""
+    from datetime import datetime, timezone
     from fastapi.responses import Response
     from agents.appointments.reports import build_client_report_data, render_client_report_markdown
     data = build_client_report_data(client_id)
@@ -2467,10 +2470,11 @@ async def get_client_report_md(client_id: int, user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail=f"Client #{client_id} not found.")
     md = render_client_report_markdown(data)
     passport = "".join(ch for ch in (data["client"].get("passport_number") or "client") if ch.isalnum())
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return Response(
         content=md,
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="client_{client_id}_{passport}_report.md"'},
+        headers={"Content-Disposition": f'attachment; filename="client_{client_id}_{passport}_report_{ts}.md"'},
     )
 
 
@@ -2487,13 +2491,15 @@ async def get_client_report_json(client_id: int, user: dict = Depends(get_curren
 @app.get("/api/reports/export-all.md")
 async def export_all_reports_md(user: dict = Depends(get_current_user)):
     """Download combined Fleet Rollup + all Per-Client 8-Step Reports as a single printable Markdown bundle."""
+    from datetime import datetime, timezone
     from fastapi.responses import Response
     from agents.appointments.reports import render_all_reports_markdown
     md = render_all_reports_markdown()
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return Response(
         content=md,
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="kamal_express_all_booking_reports.md"'},
+        headers={"Content-Disposition": f'attachment; filename="kamal_express_all_reports_{ts}.md"'},
     )
 
 

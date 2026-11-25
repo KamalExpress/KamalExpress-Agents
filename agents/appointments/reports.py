@@ -166,6 +166,76 @@ def build_client_report_data(client_id: int, db_path: Path = DB_PATH) -> Optiona
         if det.get("match_tier"):
             match_tier = str(det["match_tier"])
 
+    # For QUEUED clients without per-client step rows yet, synthesize live Steps 1-3 from real DB & fleet telemetry
+    live_step_overrides: Dict[int, dict] = {}
+    if client.status == "QUEUED" and not latest_by_num:
+        try:
+            from .fleet_manager import fleet_manager
+            from .service_guard import service_guard
+            from .portals.gvc import is_visa_type_active_today
+
+            sg = service_guard.get_status()
+            pstats = get_proxy_stats(db_path=db_path)
+            cap_bal = float((sg.get("capsolver") or {}).get("balance", 0.0))
+            sg_ok = bool(sg.get("can_proceed", True))
+            day_ok = is_visa_type_active_today(client.visa_type or "26")
+            halt_reason = sg.get("halt_reason") or ""
+
+            # Step 1: Real Governance & Pre-Flight telemetry
+            s1_ok = sg_ok and day_ok and pstats.get("active", 0) > 0
+            s1_err = halt_reason or ("" if day_ok else f"Visa Type {client.visa_type} inactive today") or ("" if pstats.get("active", 0) > 0 else "No active proxies in pool")
+            live_step_overrides[1] = {
+                "status": "PASSED" if s1_ok else "BLOCKED",
+                "time_utc": _format_utc_time(sg.get("last_checked_at") or now_utc),
+                "summary": f"CapSolver ${cap_bal:.2f}, Proxies {pstats.get('active', 0)}/{pstats.get('total', 0)}, Type {client.visa_type} {'active' if day_ok else 'inactive'} today",
+                "error_message": s1_err or "None",
+            }
+
+            # Step 2 & 3: Real active agent covering this client's visa type
+            fleet_accounts = fleet_manager.get_telemetry(owner_username="admin", is_admin=True).get("accounts", [])
+            matching_agents = [
+                a for a in fleet_accounts
+                if str(a.get("visa_type")) == str(client.visa_type) and a.get("is_authenticated") and a.get("is_worker_active")
+            ]
+            if not matching_agents:
+                matching_agents = [a for a in fleet_accounts if a.get("is_authenticated") and a.get("is_worker_active")]
+
+            if matching_agents:
+                agent = matching_agents[0]
+                if not assigned_worker:
+                    assigned_worker = f"{agent.get('worker_persona_name')} (Scanning)"
+                if not assigned_account_id:
+                    assigned_account_id = agent.get("account_id")
+
+                live_step_overrides[2] = {
+                    "status": "PASSED",
+                    "time_utc": _format_utc_time(agent.get("last_checked") or now_utc),
+                    "summary": f"Operator '{agent.get('worker_persona_name')}' (#{agent.get('account_id')}, {agent.get('email')}) authenticated & active",
+                    "error_message": agent.get("last_error") or "None",
+                }
+                scans = int(agent.get("total_scans") or 0)
+                live_step_overrides[3] = {
+                    "status": "PASSED" if scans > 0 else "WAITING",
+                    "time_utc": _format_utc_time(agent.get("last_checked")),
+                    "summary": f"Scans={scans} on VAC {agent.get('vac_id')} (Type {agent.get('visa_type')}): {agent.get('last_status', 'IDLE')}",
+                    "error_message": agent.get("last_error") or "None",
+                }
+            else:
+                live_step_overrides[2] = {
+                    "status": "BLOCKED",
+                    "time_utc": "—",
+                    "summary": f"No active authenticated operator assigned for Type {client.visa_type}",
+                    "error_message": "All operators for this visa type are unauthenticated or paused/disabled",
+                }
+                live_step_overrides[3] = {
+                    "status": "BLOCKED",
+                    "time_utc": "—",
+                    "summary": "Slot scanning paused until an operator is authenticated",
+                    "error_message": "No active authenticated operator",
+                }
+        except Exception as live_err:
+            logger.debug(f"[reports] Live telemetry synthesis fallback for client #{client_id}: {live_err}")
+
     normalized_steps = []
     for num, canonical_name in CANONICAL_STEPS:
         rec = latest_by_num.get(num)
@@ -179,9 +249,20 @@ def build_client_report_data(client_id: int, db_path: Path = DB_PATH) -> Optiona
                 "error_message": rec.get("error_message") or "None",
                 "details": rec.get("details") or {},
             })
+        elif num in live_step_overrides:
+            ov = live_step_overrides[num]
+            normalized_steps.append({
+                "step_number": num,
+                "step_name": canonical_name,
+                "status": ov["status"],
+                "time_utc": ov["time_utc"],
+                "summary": ov["summary"],
+                "error_message": ov["error_message"],
+                "details": {},
+            })
         else:
-            default_status = "WAITING" if client.status == "QUEUED" and num <= 3 else "N/A"
-            default_summary = "Awaiting open slot discovery" if client.status == "QUEUED" and num == 3 else "—"
+            default_status = "WAITING" if client.status == "QUEUED" and num == 4 else "N/A"
+            default_summary = "Awaiting genuine open slot (id>0, capacity>0)" if client.status == "QUEUED" and num == 4 else "—"
             normalized_steps.append({
                 "step_number": num,
                 "step_name": canonical_name,
@@ -322,7 +403,8 @@ def archive_client_report_markdown(client_id: int, db_path: Path = DB_PATH, repo
     reports_dir.mkdir(parents=True, exist_ok=True)
     passport = "".join(ch for ch in (data["client"].get("passport_number") or "NOPASS") if ch.isalnum())
     status = (data["client"].get("status") or "STATUS").upper()
-    filename = f"client_{client_id}_{passport}_{status}.md"
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"client_{client_id}_{passport}_{status}_{ts}.md"
     filepath = reports_dir / filename
     filepath.write_text(md, encoding="utf-8")
     logger.info(f"[reports] Archived client booking report to {filepath}")
