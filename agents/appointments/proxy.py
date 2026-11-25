@@ -126,6 +126,19 @@ class ProxyManager:
 
     # ── Public API ────────────────────────────────────────────────────
 
+    def ensure_healthy_proxy(self, current_proxy: Optional[str] = None) -> Optional[str]:
+        """
+        Single authoritative proxy gate for all drivers and workers:
+        - Keeps `current_proxy` ONLY if it is still ACTIVE in the healthy DB pool.
+        - Otherwise (None, DISABLED, or QUARANTINED), allocates a fresh distinct unused proxy.
+        """
+        healthy = self._get_healthy_proxies()
+        if current_proxy and current_proxy in healthy:
+            with ProxyManager._global_lock:
+                ProxyManager._allocated_proxies.add(current_proxy)
+            return current_proxy
+        return self.get_proxy_url()
+
     def get_proxy_url(self) -> Optional[str]:
         """Return a distinct unused healthy proxy URL across all workers (thread-safe global allocation)."""
         healthy = self._get_healthy_proxies()

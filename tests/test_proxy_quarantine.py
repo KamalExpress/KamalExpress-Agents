@@ -103,6 +103,11 @@ def test_distinct_unused_proxy_allocation_across_workers(monkeypatch):
     assigned = [ProxyManager().get_proxy_url() for _ in range(5)]
     assert len(set(assigned)) == 5, f"Expected 5 distinct proxies, got: {assigned}"
 
+    # ensure_healthy_proxy must reject a stale/disabled proxy not in pool and allocate a fresh one
+    stale_proxy = "http://u:p@10.0.0.99:10099"
+    fresh = ProxyManager().ensure_healthy_proxy(stale_proxy)
+    assert fresh != stale_proxy and fresh in pool and fresh not in assigned
+
 
 if __name__ == '__main__':
     run_test()
