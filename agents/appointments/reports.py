@@ -101,12 +101,39 @@ def build_fleet_rollup_data(
 
     clients = get_all_clients(owner_username=owner_username, is_admin=is_admin, db_path=db_path)
     counts = {"total": len(clients), "QUEUED": 0, "IN_PROGRESS": 0, "BOOKED": 0, "FAILED": 0, "PAUSED": 0}
+    fleet_accounts = fleet_tel.get("accounts", [])
+    sg_ok = bool(sg.get("can_proceed", True))
     client_summaries = []
     for c in clients:
         st = (c.status or "QUEUED").upper()
         counts[st] = counts.get(st, 0) + 1
         steps = get_client_booking_steps(c.id, db_path=db_path) if c.id else []
         last_step = steps[-1] if steps else None
+
+        if last_step:
+            step_num = last_step["step_number"]
+            step_name = last_step["step_name"]
+            step_status = last_step["status"]
+        else:
+            # Synthesize real live step (1-4) from fleet & Service Guard telemetry (no "Step 0")
+            matching = [
+                a for a in fleet_accounts
+                if str(a.get("visa_type")) == str(c.visa_type) and a.get("is_authenticated") and a.get("is_worker_active")
+            ]
+            if not matching:
+                matching = [a for a in fleet_accounts if a.get("is_authenticated") and a.get("is_worker_active")]
+
+            if matching:
+                scans = max(int(a.get("total_scans") or 0) for a in matching)
+                if scans > 0:
+                    step_num, step_name, step_status = 3, "Slot Availability Check (Awaiting Open Slot)", "PASSED"
+                else:
+                    step_num, step_name, step_status = 2, "Session / Auth", "PASSED"
+            else:
+                step_num = 1
+                step_name = "Governance & Pre-Flight"
+                step_status = "WAITING" if sg_ok else "BLOCKED"
+
         client_summaries.append({
             "id": c.id,
             "full_name": f"{c.first_name} {c.last_name}".strip(),
@@ -120,9 +147,9 @@ def build_fleet_rollup_data(
             "booked_date": c.booked_date or "",
             "booked_time": c.booked_time or "",
             "booked_by_worker_name": c.booked_by_worker_name or "",
-            "last_step_number": last_step["step_number"] if last_step else 0,
-            "last_step_name": last_step["step_name"] if last_step else "Queued (Awaiting Slot)",
-            "last_step_status": last_step["status"] if last_step else "WAITING",
+            "last_step_number": step_num,
+            "last_step_name": step_name,
+            "last_step_status": step_status,
             "notes": c.notes or "",
         })
 
