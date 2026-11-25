@@ -153,12 +153,41 @@ def build_fleet_rollup_data(
             "notes": c.notes or "",
         })
 
+    # Compute coverage-gap advisories (queued clients whose preferred VAC + visa_type has 0 active authenticated scouts)
+    covered_pairs = {
+        (str(a.get("vac_id") or ""), str(a.get("visa_type") or ""))
+        for a in fleet_accounts
+        if a.get("is_authenticated") and a.get("is_worker_active")
+    }
+    queued_by_pair: Dict[tuple[str, str], int] = {}
+    for c in clients:
+        if (c.status or "QUEUED").upper() == "QUEUED":
+            pair = (str(c.vac_id or "137"), str(c.visa_type or "26"))
+            queued_by_pair[pair] = queued_by_pair.get(pair, 0) + 1
+
+    coverage_gaps = []
+    for (q_vac, q_visa), q_count in sorted(queued_by_pair.items()):
+        if (q_vac, q_visa) not in covered_pairs:
+            coverage_gaps.append({
+                "vac_id": q_vac,
+                "vac_label": _vac_label(q_vac),
+                "visa_type": q_visa,
+                "visa_label": _visa_label(q_visa),
+                "queued_clients_count": q_count,
+                "message": (
+                    f"{q_count} queued client(s) prefer {_vac_label(q_vac)} / Type {q_visa}, "
+                    f"but 0 active authenticated operators are currently assigned to that center+visa. "
+                    f"(Flexible VAC fallback will still cover them if another center opens for Type {q_visa}.)"
+                ),
+            })
+
     return {
         "generated_at_utc": now_utc,
-        "agents": fleet_tel.get("accounts", []),
+        "agents": fleet_accounts,
         "governance": governance,
         "queue_counts": counts,
         "clients": client_summaries,
+        "coverage_gaps": coverage_gaps,
         "capsolver": sg.get("capsolver", {}),
         "proxy_stats": proxy_stats,
         "service_guard_ok": sg.get("can_proceed", True),
@@ -376,6 +405,12 @@ def render_fleet_rollup_markdown(data: Dict[str, Any]) -> str:
             f"| #{a.get('account_id')} | {a.get('worker_persona_name', '-')} | {a.get('email', '-')} | "
             f"{target} | `{a.get('last_status', 'IDLE')}` | `{auth_tag}` | {a.get('total_scans', 0)} | {last_chk} |"
         )
+
+    gaps = data.get("coverage_gaps", [])
+    if gaps:
+        lines.extend(["", "## Coverage Gap Advisories (For Staff Review)", ""])
+        for g in gaps:
+            lines.append(f"- **[ADVISORY]** {g['message']}")
 
     lines.extend([
         "",

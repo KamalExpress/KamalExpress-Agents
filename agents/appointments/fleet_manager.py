@@ -205,6 +205,10 @@ class AccountWorkerInstance:
 
     async def _loop(self) -> None:
         """Independent polling and auto-booking loop."""
+        # Stagger cold-start so 1 scout populates the 3m shared slot_cache before sibling workers poll
+        stagger_s = (self.account_id % 8) * 2.0
+        if stagger_s > 0:
+            await asyncio.sleep(stagger_s)
         while self._running:
             try:
                 acc = get_gvc_portal_account_by_id(self.account_id)

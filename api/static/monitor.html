@@ -138,6 +138,14 @@
       <div class="kpi-card"><span class="kpi-lbl">Healthy Proxies</span><span class="kpi-val" id="kpi-proxies">0/0</span></div>
     </section>
 
+    <!-- Tier A: Coverage Gap Advisory Banner (read-only for staff review) -->
+    <section id="coverage-gaps-box" class="card" style="display:none; border-color:#f59e0b; background:#fffbeb;">
+      <div class="card-hdr" style="border-bottom-color:#fde68a; background:#fef3c7;">
+        <div class="card-title" style="color:#92400e;"><i data-lucide="alert-triangle" class="icon" style="color:#d97706;"></i> Coverage Gap Advisories (For Staff Review)</div>
+      </div>
+      <div id="coverage-gaps-list" style="padding:12px 16px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:#78350f;"></div>
+    </section>
+
     <!-- Tier A: Active Agents Table -->
     <section class="card">
       <div class="card-hdr">
@@ -262,6 +270,17 @@
         const ps = data.proxy_stats || {};
         document.getElementById('kpi-proxies').textContent = (ps.active || 0) + '/' + (ps.total || 0);
         document.getElementById('gov-summary').textContent = (data.governance || {}).summary_text || '';
+
+        const gaps = data.coverage_gaps || [];
+        const gapBox = document.getElementById('coverage-gaps-box');
+        if (gaps.length > 0) {
+          gapBox.style.display = 'block';
+          document.getElementById('coverage-gaps-list').innerHTML = gaps.map(g =>
+            `<div><b>[ADVISORY]</b> ${esc(g.message)}</div>`
+          ).join('');
+        } else {
+          gapBox.style.display = 'none';
+        }
 
         const agents = data.agents || [];
         const atb = document.getElementById('agents-tbody');
