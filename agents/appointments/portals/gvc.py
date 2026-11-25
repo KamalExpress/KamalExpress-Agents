@@ -75,14 +75,12 @@ def clean_portal_error_text(text: Optional[str]) -> str:
     return t[:200]
 
 
-# Official GVC Center Mappings for Pakistan
+# Official GVC Center Mappings for Pakistan (Karachi does NOT exist for Greece GVC World)
 GVC_VACS = {
-    "138": {"id": 138, "name": "Islamabad VAC", "city": "Islamabad"},
-    "137": {"id": 137, "name": "Karachi VAC", "city": "Karachi"},
-    "139": {"id": 139, "name": "Lahore VAC", "city": "Lahore"},
-    "islamabad": {"id": 138, "name": "Islamabad VAC", "city": "Islamabad"},
-    "karachi": {"id": 137, "name": "Karachi VAC", "city": "Karachi"},
-    "lahore": {"id": 139, "name": "Lahore VAC", "city": "Lahore"},
+    "137": {"id": 137, "name": "Islamabad VAC", "city": "Islamabad"},
+    "138": {"id": 138, "name": "Lahore VAC", "city": "Lahore"},
+    "islamabad": {"id": 137, "name": "Islamabad VAC", "city": "Islamabad"},
+    "lahore": {"id": 138, "name": "Lahore VAC", "city": "Lahore"},
 }
 
 # Official GVC Visa Type Codes

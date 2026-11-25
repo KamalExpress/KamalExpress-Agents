@@ -803,9 +803,8 @@ async def get_client_queue_template(user: dict = Depends(get_current_user)):
         "vac_id,preferred_date_start,preferred_date_end,notes\n"
     )
     sample_rows = (
-        "Muhammad,Ahmed,15/08/1992,AB1234567,10/10/2030,10/10/2020,Islamabad,Male,Pakistani,3001234567,ahmed.pk@example.com,Greece,26,138,07/10/2026,30/10/2026,Agricultural seasonal employment\n"
-        "Fatima,Khan,22/03/1995,CD7654321,15/05/2031,15/05/2021,Lahore,Female,Pakistani,3345112969,fatima.k@example.com,Greece,26,139,07/10/2026,31/10/2026,Long-term dependent visa\n"
-        "Yaqoob,Masih,05/11/1988,EF9876543,20/12/2029,20/12/2019,Karachi,Male,Pakistani,3219876543,yaqoob.m@example.com,Greece,26,137,07/10/2026,30/10/2026,Driver seasonal employment\n"
+        "Muhammad,Ahmed,15/08/1992,AB1234567,10/10/2030,10/10/2020,Islamabad,Male,Pakistani,3001234567,ahmed.pk@example.com,Greece,26,137,07/10/2026,30/10/2026,Agricultural seasonal employment\n"
+        "Fatima,Khan,22/03/1995,CD7654321,15/05/2031,15/05/2021,Lahore,Female,Pakistani,3345112969,fatima.k@example.com,Greece,26,138,07/10/2026,31/10/2026,Long-term dependent visa\n"
     )
     content = csv_headers + sample_rows
     return Response(
@@ -887,15 +886,12 @@ async def bulk_upload_clients(
     errors = []
 
     vac_map = {
-        "islamabad": "138",
-        "isb": "138",
-        "138": "138",
-        "lahore": "139",
-        "lhe": "139",
-        "139": "139",
-        "karachi": "137",
-        "khi": "137",
+        "islamabad": "137",
+        "isb": "137",
         "137": "137",
+        "lahore": "138",
+        "lhe": "138",
+        "138": "138",
     }
 
     for idx, row in enumerate(rows_to_process, start=1):
@@ -933,9 +929,9 @@ async def bulk_upload_clients(
             pref_start = _norm_date(row.get("preferred_date_start") or row.get("date_start") or row.get("start_date") or "")
             pref_end = _norm_date(row.get("preferred_date_end") or row.get("date_end") or row.get("end_date") or "")
 
-            raw_vac = str(row.get("vac_id") or row.get("vac_city") or row.get("vac") or "138").lower().strip()
-            vac_id = vac_map.get(raw_vac, "138")
-            vac_city = "Islamabad" if vac_id == "138" else ("Lahore" if vac_id == "139" else "Karachi")
+            raw_vac = str(row.get("vac_id") or row.get("vac_city") or row.get("vac") or "137").lower().strip()
+            vac_id = vac_map.get(raw_vac, "137")
+            vac_city = "Islamabad" if vac_id == "137" else "Lahore"
 
             visa_type = str(row.get("visa_type") or row.get("visa_category") or "26").strip()
 

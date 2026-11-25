@@ -33,7 +33,7 @@ class ClientProfile(BaseModel):
     
     destination: str = Field(default="Greece", description="Target destination country")
     visa_type: str = Field(default="26", description="GVC appointment type code: '26'=Seasonal/Dependent D, '0'=Schengen C, '2'=National D")
-    vac_id: str = Field(default="138", description="Visa Application Center ID: '138'=Islamabad, '137'=Karachi, '139'=Lahore")
+    vac_id: str = Field(default="137", description="Visa Application Center ID: '137'=Islamabad, '138'=Lahore")
     vac_city: str = Field(default="Islamabad", description="VAC city name")
     
     preferred_date_start: Optional[str] = Field(default=None, description="Earliest desired appointment date (DD/MM/YYYY)")
