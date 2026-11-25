@@ -120,8 +120,15 @@ class GVCAuthSolver:
                 clean_proxy = proxy.split("@")[-1] if proxy else "direct"
                 logger.info(f"[gvc_auth] [PRE-FLIGHT] Probing proxy {clean_proxy} on {target_url} (Zero CapSolver spend)...")
                 try:
-                    page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
-                    page.wait_for_timeout(2000)
+                    resp = page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+                    # Allow Imperva client-side challenge to resolve and load real portal page
+                    try:
+                        page.wait_for_selector(
+                            "input[name='username'], form, iframe#main-iframe, h1, title",
+                            timeout=6000,
+                        )
+                    except Exception:
+                        pass
                 except Exception as net_err:
                     browser.close()
                     err_msg = str(net_err)
@@ -133,10 +140,21 @@ class GVCAuthSolver:
                         "quarantine_seconds": 900,
                     }
 
-                # Check for Incapsula anti-bot challenge
+                # Check for genuine Incapsula anti-bot challenge block
                 page_html = page.content().lower()
-                has_incap_iframe = page.locator("iframe#main-iframe").count() > 0
-                if has_incap_iframe or "_incapsula_resource" in page_html or "error title" in page_html:
+                status_code = resp.status if resp else 200
+                has_incap_iframe = (
+                    page.locator("iframe#main-iframe").count() > 0
+                    or page.locator("iframe[src*='incapsula']").count() > 0
+                )
+                has_incident = (
+                    "incident id" in page_html
+                    or "access denied" in page_html
+                    or "request unsuccessful" in page_html
+                )
+                is_status_blocked = status_code in (403, 472)
+
+                if has_incap_iframe or has_incident or is_status_blocked:
                     browser.close()
                     logger.warning(f"[gvc_auth] [PRE-FLIGHT BLOCKED] Imperva Incapsula WAF challenge detected on proxy {clean_proxy}. Quarantining 60m.")
                     return {
@@ -213,12 +231,26 @@ class GVCAuthSolver:
                 target_url = f"{self.base_url}/?lang=en_US"
                 logger.info(f"[gvc_auth] Navigating browser to {target_url} for WAF clearance...")
                 page.goto(target_url, wait_until="domcontentloaded", timeout=35000)
-                page.wait_for_timeout(2500)
+                try:
+                    page.wait_for_selector(
+                        "input[name='username'], form, iframe#main-iframe, h1, title",
+                        timeout=6000,
+                    )
+                except Exception:
+                    pass
 
-                # Check if page is blocked by Incapsula anti-bot challenge
+                # Check if page is blocked by genuine Incapsula anti-bot challenge
                 page_html = page.content().lower()
-                has_incap_iframe = page.locator("iframe#main-iframe").count() > 0
-                if has_incap_iframe or "_incapsula_resource" in page_html or "error title" in page_html:
+                has_incap_iframe = (
+                    page.locator("iframe#main-iframe").count() > 0
+                    or page.locator("iframe[src*='incapsula']").count() > 0
+                )
+                has_incident = (
+                    "incident id" in page_html
+                    or "access denied" in page_html
+                    or "request unsuccessful" in page_html
+                )
+                if has_incap_iframe or has_incident:
                     cookies = {c["name"]: c["value"] for c in context.cookies()}
                     browser.close()
                     logger.warning(f"[gvc_auth] Imperva Incapsula anti-bot challenge detected on target origin ({target_url}).")
