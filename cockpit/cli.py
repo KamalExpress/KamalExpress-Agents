@@ -21,7 +21,7 @@ from cockpit.otp import inspect_latest_otp, submit_manual_code, run_test_all_num
 from cockpit.proxies import run_inspect_proxies, reset_cooldowns, quarantine_dirty_proxies
 from cockpit.doctor import run_cockpit_doctor
 from cockpit.report import run_report
-from cockpit.clients import list_clients, list_client_contacts_by_staff, reassign_clients_owner
+from cockpit.clients import list_clients, list_client_contacts_by_staff, set_clients_start_date, reassign_clients_owner
 
 
 def main():
@@ -73,6 +73,7 @@ def main():
     # clients
     clients_parser = subparsers.add_parser("clients", help="List live clients or reassign staff ownership")
     clients_parser.add_argument("--contacts", action="store_true", help="List phone numbers and emails grouped by staff owner")
+    clients_parser.add_argument("--set-start-date", type=str, default=None, help="Set preferred_date_start (DD/MM/YYYY) on all clients")
     clients_parser.add_argument("--set-owner", type=str, default=None, help="Target staff username to assign")
     clients_parser.add_argument("--ids", type=int, nargs="*", default=None, help="Client IDs to reassign")
     clients_parser.add_argument("--names", type=str, nargs="*", default=None, help="Full client names to reassign")
@@ -120,6 +121,8 @@ def main():
     elif args.command == "clients":
         if args.set_owner:
             reassign_clients_owner(owner=args.set_owner, ids=args.ids, names=args.names)
+        elif args.set_start_date:
+            set_clients_start_date(args.set_start_date)
         elif args.contacts:
             list_client_contacts_by_staff()
         else:

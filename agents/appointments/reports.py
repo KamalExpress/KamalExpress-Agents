@@ -203,22 +203,32 @@ def build_client_report_data(client_id: int, db_path: Path = DB_PATH) -> Optiona
         try:
             from .fleet_manager import fleet_manager
             from .service_guard import service_guard
-            from .portals.gvc import is_visa_type_active_today
+            from .calendar_service import operational_calendar
 
             sg = service_guard.get_status()
             pstats = get_proxy_stats(db_path=db_path)
             cap_bal = float((sg.get("capsolver") or {}).get("balance", 0.0))
             sg_ok = bool(sg.get("can_proceed", True))
-            day_ok = is_visa_type_active_today(client.visa_type or "26")
+            type_enabled = operational_calendar.is_visa_type_enabled(client.visa_type or "26")
+            valid_dates, target_month = operational_calendar.resolve_worker_scan_dates(
+                visa_type=client.visa_type or "26",
+                fallback_start_date=client.preferred_date_start,
+                max_dates=0,
+            )
             halt_reason = sg.get("halt_reason") or ""
 
-            # Step 1: Real Governance & Pre-Flight telemetry
-            s1_ok = sg_ok and day_ok and pstats.get("active", 0) > 0
-            s1_err = halt_reason or ("" if day_ok else f"Visa Type {client.visa_type} inactive today") or ("" if pstats.get("active", 0) > 0 else "No active proxies in pool")
+            # Step 1: Real Governance & Pre-Flight telemetry (target-month calendar, not "today")
+            s1_ok = sg_ok and type_enabled and len(valid_dates) > 0 and pstats.get("active", 0) > 0
+            s1_err = (
+                halt_reason
+                or ("" if type_enabled else f"Visa Type {client.visa_type} disabled by policy")
+                or ("" if valid_dates else f"No valid operational dates for Type {client.visa_type} in {target_month}")
+                or ("" if pstats.get("active", 0) > 0 else "No active proxies in pool")
+            )
             live_step_overrides[1] = {
                 "status": "PASSED" if s1_ok else "BLOCKED",
                 "time_utc": _format_utc_time(sg.get("last_checked_at") or now_utc),
-                "summary": f"CapSolver ${cap_bal:.2f}, Proxies {pstats.get('active', 0)}/{pstats.get('total', 0)}, Type {client.visa_type} {'active' if day_ok else 'inactive'} today",
+                "summary": f"CapSolver ${cap_bal:.2f}, Proxies {pstats.get('active', 0)}/{pstats.get('total', 0)}, Type {client.visa_type}: {len(valid_dates)} valid date(s) in {target_month or 'target month'}",
                 "error_message": s1_err or "None",
             }
 

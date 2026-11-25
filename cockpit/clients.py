@@ -53,6 +53,25 @@ def list_client_contacts_by_staff():
     print("=" * 100)
 
 
+def set_clients_start_date(start_date: str):
+    """Set preferred_date_start (DD/MM/YYYY) across all live queued clients."""
+    clean_date = start_date.strip()
+    res = default_client.get("/api/clients")
+    clients = res.get("clients", [])
+    updated = 0
+    for cl in clients:
+        cid = cl.get("id")
+        cl["preferred_date_start"] = clean_date
+        put_res = default_client.request("PUT", f"/api/clients/{cid}", json=cl)
+        ok = put_res.get("success", False)
+        tag = "[SUCCESS]" if ok else "[ERROR]"
+        full = f"{cl.get('first_name', '')} {cl.get('last_name', '')}".strip()
+        print(f"{tag} Client #{cid} {full}: preferred_date_start -> {clean_date}")
+        if ok:
+            updated += 1
+    print(f"[SUMMARY] Updated preferred_date_start='{clean_date}' on {updated}/{len(clients)} client(s).")
+
+
 def reassign_clients_owner(
     owner: str,
     ids: Optional[List[int]] = None,

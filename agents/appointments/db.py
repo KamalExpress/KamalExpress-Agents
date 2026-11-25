@@ -418,6 +418,21 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_booking_steps_client ON client_booking_steps(client_id, step_number);")
 
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS operational_calendar (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        month_key TEXT NOT NULL,
+                        visa_type TEXT NOT NULL,
+                        date_str TEXT NOT NULL,
+                        weekday_num INTEGER NOT NULL,
+                        weekday_name TEXT NOT NULL,
+                        is_valid INTEGER NOT NULL DEFAULT 1,
+                        created_at TEXT NOT NULL,
+                        UNIQUE(month_key, visa_type, date_str)
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_opcal_lookup ON operational_calendar(month_key, visa_type, is_valid);")
+
                 # ── Schema Migrations (Ensure columns exist on existing databases) ────
                 def _ensure_cols(table: str, col_defs: dict[str, str]):
                     try:

@@ -299,19 +299,15 @@ class AccountWorkerInstance:
                     continue
                 else:
                     # SLOT_CHECKER or HYBRID scanning
-                    if not is_visa_type_active_today(visa_type):
+                    from .calendar_service import operational_calendar
+                    if not operational_calendar.is_visa_type_enabled(visa_type):
                         visa_label = GVC_VISA_TYPES.get(str(visa_type), f"Type {visa_type}")
-                        rule = GVC_VISA_DAY_RULES.get(str(visa_type), {})
-                        allowed_names = ", ".join(rule.get("allowed_weekday_names", [])) or "None"
-                        now_day_name = datetime.now().strftime("%A")
-                        
-                        self._last_status = f"STANDBY_INACTIVE_DAY ({now_day_name} closed)"
-                        
+                        self._last_status = f"STANDBY_DISABLED_TYPE (Type {visa_type} disabled)"
                         last_inactive_log = getattr(self, "_last_inactive_day_log", 0)
                         if time.time() - last_inactive_log > 900:
                             self._last_inactive_day_log = time.time()
                             fleet_manager.log_event(
-                                f"Operator '{persona}' on standby: {vac_meta.get('name', 'VAC')} ({visa_label}) is inactive today ({now_day_name}). Active monitoring days: {allowed_names}. Polling paused to preserve proxy & rate limits.",
+                                f"Operator '{persona}' on standby: {vac_meta.get('name', 'VAC')} ({visa_label}) is disabled by operational policy. Polling paused.",
                                 level="INFO",
                                 category="FLEET",
                                 account_id=self.account_id,
@@ -325,12 +321,51 @@ class AccountWorkerInstance:
                         await asyncio.sleep(15)
                         continue
 
-                    self._last_status = "POLLING_SLOTS"
+                    # Resolve precomputed valid target dates from persistent OperationalCalendarService
+                    fallback_start = None
+                    if not acc.get("target_date_from"):
+                        try:
+                            from .db import get_all_clients
+                            q_clients = [
+                                c for c in get_all_clients(status="QUEUED")
+                                if str(c.visa_type) == str(visa_type) and c.preferred_date_start
+                            ]
+                            if q_clients:
+                                fallback_start = q_clients[0].preferred_date_start
+                        except Exception:
+                            fallback_start = None
+
+                    scan_dates, scan_month = operational_calendar.resolve_worker_scan_dates(
+                        visa_type=visa_type,
+                        target_date_from=acc.get("target_date_from") or None,
+                        fallback_start_date=fallback_start,
+                        max_dates=6,
+                    )
+                    if not scan_dates:
+                        scan_dates = [acc.get("target_date_from") or (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")]
+
+                    self._last_status = f"POLLING_SLOTS ({scan_month or scan_dates[0]})"
                     self._total_scans += 1
                     self._last_checked = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                    slots = await self._driver.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=acc.get("target_date_from") or None)
-                    status_info = getattr(self._driver, "last_search_status", {})
+                    slots = []
+                    status_info = {}
+                    for d_idx, probe_date in enumerate(scan_dates):
+                        if not self._running:
+                            break
+                        probe_slots = await self._driver.search_slots(
+                            vac_id=vac_id,
+                            visa_type=visa_type,
+                            date_from=probe_date,
+                        )
+                        status_info = getattr(self._driver, "last_search_status", {})
+                        if status_info.get("status") in ("UNAUTHENTICATED", "WAF_CHALLENGE"):
+                            break
+                        if probe_slots and any(s.available_capacity > 0 for s in probe_slots):
+                            slots.extend(probe_slots)
+                            break
+                        if d_idx < len(scan_dates) - 1:
+                            await asyncio.sleep(2.5)
 
                     if status_info.get("status") == "UNAUTHENTICATED":
                         self._last_status = "SESSION_EXPIRED"

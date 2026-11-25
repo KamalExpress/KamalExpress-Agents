@@ -248,16 +248,20 @@ class AutonomousSlotMonitor:
 
             if dest.lower() == "greece":
                 try:
-                    # Resolve candidate operational dates
-                    from standalone_workers.utils.calendar_loader import get_valid_dates_in_range, get_valid_dates_for_month
+                    # Resolve precomputed candidate operational dates from persistent OperationalCalendarService
+                    from .calendar_service import operational_calendar
                     candidate_dates = []
                     if self.start_date and self.end_date:
-                        candidate_dates = get_valid_dates_in_range(self.start_date, self.end_date, visa_type)
+                        candidate_dates = operational_calendar.get_valid_dates_in_range(self.start_date, self.end_date, visa_type)
                     elif self.start_date:
-                        candidate_dates = [self.start_date]
+                        candidate_dates, _ = operational_calendar.resolve_worker_scan_dates(
+                            visa_type=visa_type,
+                            target_date_from=self.start_date,
+                            max_dates=0,
+                        )
                     else:
                         curr_m = datetime.now().strftime("%m/%Y")
-                        candidate_dates = get_valid_dates_for_month(curr_m, visa_type)
+                        candidate_dates = operational_calendar.get_valid_dates_for_month(curr_m, visa_type)
 
                     slots = []
                     dates_to_scan = candidate_dates if (self.start_date and self.end_date) else candidate_dates[:8]
