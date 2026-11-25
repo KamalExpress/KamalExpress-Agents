@@ -128,11 +128,11 @@ class GVCAuthSolver:
                 logger.info(f"[gvc_auth] [PRE-FLIGHT] Probing proxy {clean_proxy} on {target_url} (Zero CapSolver spend)...")
                 try:
                     resp = page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
-                    # Allow Imperva client-side challenge to resolve and load real portal page
+                    # Allow Imperva client-side challenge to resolve and load real login form
                     try:
                         page.wait_for_selector(
-                            "input[name='username'], form, iframe#main-iframe, h1, title",
-                            timeout=6000,
+                            "input[name='username'], input[type='email'], input[name='email'], form, iframe#main-iframe",
+                            timeout=10000,
                         )
                     except Exception:
                         pass
@@ -240,9 +240,11 @@ class GVCAuthSolver:
                 page.goto(target_url, wait_until="domcontentloaded", timeout=35000)
                 try:
                     page.wait_for_selector(
-                        "input[name='username'], form, iframe#main-iframe, h1, title",
-                        timeout=6000,
+                        "input[name='username'], input[type='email'], input[name='email'], form, iframe#main-iframe",
+                        timeout=10000,
                     )
+                    # Allow Imperva JS clearance cookies (incap_ses / reese84) to settle before login POST
+                    page.wait_for_timeout(1500)
                 except Exception:
                     pass
 
@@ -347,19 +349,30 @@ class GVCAuthSolver:
 
         lock = self._get_login_lock(email)
         async with lock:
-            if not force:
+            existing_acc = None
+            try:
+                from ..db import get_gvc_portal_account_by_id, get_gvc_portal_accounts
+                if account_id:
+                    existing_acc = get_gvc_portal_account_by_id(account_id)
+                else:
+                    for acc in get_gvc_portal_accounts(is_admin=True):
+                        if (acc.get("email") or "").strip().lower() == email.lower():
+                            existing_acc = acc
+                            account_id = acc.get("id")
+                            break
+            except Exception:
                 existing_acc = None
-                try:
-                    from ..db import get_gvc_portal_account_by_id, get_gvc_portal_accounts
-                    if account_id:
-                        existing_acc = get_gvc_portal_account_by_id(account_id)
-                    else:
-                        for acc in get_gvc_portal_accounts(is_admin=True):
-                            if (acc.get("email") or "").strip().lower() == email.lower():
-                                existing_acc = acc
-                                break
-                except Exception:
-                    existing_acc = None
+
+            if not force:
+                if existing_acc:
+                    acc_status = (existing_acc.get("status") or "").upper()
+                    if acc_status in ("DISABLED", "PAUSED", "BLOCKED") or not existing_acc.get("is_worker_active", 1):
+                        logger.warning(f"[gvc_auth] [GOVERNANCE GUARD] Refusing autonomous login for '{email}' (Account #{existing_acc.get('id')} is {acc_status}). Zero CapSolver/proxy spend.")
+                        return {
+                            "success": False,
+                            "error": f"Account '{email}' is {acc_status}; autonomous login blocked by governance.",
+                            "reason": "ACCOUNT_DISABLED",
+                        }
 
                 if existing_acc and existing_acc.get("is_authenticated") and (existing_acc.get("auth_token") or existing_acc.get("bearer_token")):
                     existing_token = existing_acc.get("auth_token") or existing_acc.get("bearer_token") or ""
@@ -411,8 +424,15 @@ class GVCAuthSolver:
         logger.info(f"[gvc_auth] Initiating autonomous GVC login for account: {email} (Account ID: {account_id or 'Standalone'})...")
 
         last_error = None
+        pending_next_proxy: Optional[str] = None
         for attempt in range(1, max_retries + 1):
-            chosen_proxy = proxy or self.proxy_manager.get_proxy_url()
+            if proxy:
+                chosen_proxy = proxy
+            elif pending_next_proxy:
+                chosen_proxy = pending_next_proxy
+                pending_next_proxy = None
+            else:
+                chosen_proxy = self.proxy_manager.get_proxy_url()
             if not chosen_proxy:
                 try:
                     from standalone_workers.utils.proxy_loader import get_proxy_for_worker
@@ -486,6 +506,7 @@ class GVCAuthSolver:
                         self.proxy_manager.mark_proxy_failed(chosen_proxy, error="Imperva WAF challenge on login", quarantine_seconds=3600, account_id=account_id, log_event=False)
                     clean_proxy = chosen_proxy.split("@")[-1] if chosen_proxy else "direct"
                     next_proxy = self.proxy_manager.get_proxy_url()
+                    pending_next_proxy = next_proxy
                     clean_next = next_proxy.split("@")[-1] if next_proxy else "default"
                     active_count = len(self.proxy_manager._get_healthy_proxies())
                     total_count = self.proxy_manager.total_proxies

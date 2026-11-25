@@ -622,23 +622,12 @@ class GVCPortalDriver:
                         logger.warning(f"[gvc] Retry after WAF refresh failed: {re_err}")
 
                 if is_unauthorized:
-                    logger.warning(f"[gvc] Session token was rejected (HTTP 401 Unauthorized). The token has expired or is bound to a different client IP.")
-                    invalidate_gvc_session()
+                    logger.warning(f"[gvc] Session token was rejected (HTTP 401 Unauthorized). Returning UNAUTHENTICATED so FleetManager re-authenticates the owning worker account.")
                     self._bearer_token = None
-
-                    # If Auto-Solver mode is enabled, trigger autonomous login immediately
-                    if get_gvc_auth_mode() == "auto_solver":
-                        logger.info("[gvc] Auto-Solver mode active. Triggering background login renewal...")
-                        from .gvc_auth import gvc_auth_solver
-                        login_res = await gvc_auth_solver.login_with_credentials()
-                        if login_res.get("success"):
-                            logger.info("[gvc] [SUCCESS] Re-authentication succeeded. Retrying slot search with fresh session...")
-                            return await self.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=date_from, date_to=date_to)
-
                     self.last_search_status = {
                         "status": "UNAUTHENTICATED",
                         "code": 401,
-                        "error": "GVC session is unauthenticated or expired. Please sync your active GVC token via Option 1 or switch to Auto-Solver (Option 3).",
+                        "error": "GVC session is unauthenticated or expired. Awaiting governed worker re-authentication.",
                     }
                     return []
 

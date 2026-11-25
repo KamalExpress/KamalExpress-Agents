@@ -957,13 +957,23 @@ class GVCFleetManager:
                 # Try auto-login on first registered account if auto_solver mode
                 accounts = get_gvc_portal_accounts(is_admin=True)
                 for acc in accounts:
-                    if acc.get("auth_mode") == "auto_solver" and acc.get("email") and acc.get("password"):
+                    if (
+                        acc.get("status") == "ACTIVE"
+                        and acc.get("is_worker_active", True)
+                        and acc.get("auth_mode") == "auto_solver"
+                        and acc.get("email")
+                        and acc.get("password")
+                    ):
                         self.log_event(
                             f"Manual booking trigger: Attempting auto-login for Operator '{acc.get('account_label')}'...",
                             level="INFO",
                             category="AUTH",
                         )
-                        login_res = await gvc_auth_solver.login_with_credentials(email=acc["email"], password=acc["password"])
+                        login_res = await gvc_auth_solver.login_with_credentials(
+                            email=acc["email"],
+                            password=acc["password"],
+                            account_id=acc["id"],
+                        )
                         if login_res.get("success"):
                             self.refresh_workers()
                             worker = self._workers.get(acc["id"])
