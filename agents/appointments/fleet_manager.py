@@ -548,7 +548,7 @@ class AccountWorkerInstance:
                                     client_id=client.id, step_number=6, step_name="OTP Dispatch & Capture",
                                     status="PASSED", summary=f"Received OTP on SIM {masked_sim} (Attempt {otp_attempt}/{max_otp_attempts}).",
                                     account_id=self.account_id, worker_name=persona,
-                                    details={"phone_masked": masked_sim, "attempt": otp_attempt},
+                                    details={"phone_masked": masked_sim, "attempt": otp_attempt, "owner_username": getattr(client, "owner_username", "admin")},
                                 )
                                 fleet_manager.log_event(
                                     f"[SUCCESS] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {slot.date} {slot.time}.",
@@ -558,6 +558,16 @@ class AccountWorkerInstance:
                                     worker_name=persona,
                                 )
                                 break
+                            else:
+                                client_owner = getattr(client, "owner_username", "admin") or "admin"
+                                fleet_manager.log_event(
+                                    f"[OTP LATENCY ALERT -> Notify: {client_owner} & admin] No OTP received after {int(otp_timeout)}s on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}, Attempt {otp_attempt}/{max_otp_attempts}). Staff '{client_owner}' or admin may inject OTP manually.",
+                                    level="WARNING",
+                                    category="OTP",
+                                    account_id=self.account_id,
+                                    worker_name=persona,
+                                    details={"client_id": client.id, "owner_username": client_owner, "phone_masked": masked_sim, "attempt": otp_attempt},
+                                )
 
                         if not otp_code:
                             if captcha_task and not captcha_task.done():

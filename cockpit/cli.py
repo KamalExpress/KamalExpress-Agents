@@ -22,6 +22,7 @@ from cockpit.proxies import run_inspect_proxies, reset_cooldowns, quarantine_dir
 from cockpit.doctor import run_cockpit_doctor
 from cockpit.report import run_report
 from cockpit.clients import list_clients, list_client_contacts_by_staff, set_clients_start_date, reassign_clients_owner
+from cockpit.watch import run_watchdog
 
 
 def main():
@@ -78,6 +79,13 @@ def main():
     clients_parser.add_argument("--ids", type=int, nargs="*", default=None, help="Client IDs to reassign")
     clients_parser.add_argument("--names", type=str, nargs="*", default=None, help="Full client names to reassign")
 
+    # watch
+    watch_parser = subparsers.add_parser("watch", help="Proactive anomaly watchdog, 60s OTP latency alerts, and safe auto-recovery")
+    watch_parser.add_argument("--interval", type=int, default=30, help="Poll interval in seconds (default: 30)")
+    watch_parser.add_argument("--once", action="store_true", help="Run a single diagnostic sweep and exit")
+    watch_parser.add_argument("--auto-recover", action="store_true", help="Auto-revert clients stuck IN_PROGRESS >5m back to QUEUED")
+    watch_parser.add_argument("--otp-alert-seconds", type=int, default=60, help="OTP latency alert threshold in seconds (default: 60)")
+
     args = parser.parse_args()
 
     if args.command == "health":
@@ -127,6 +135,13 @@ def main():
             list_client_contacts_by_staff()
         else:
             list_clients()
+    elif args.command == "watch":
+        run_watchdog(
+            interval_seconds=args.interval,
+            once=args.once,
+            auto_recover=args.auto_recover,
+            otp_alert_seconds=args.otp_alert_seconds,
+        )
     else:
         parser.print_help()
 

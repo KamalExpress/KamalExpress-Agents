@@ -138,6 +138,9 @@ def build_fleet_rollup_data(
             "id": c.id,
             "full_name": f"{c.first_name} {c.last_name}".strip(),
             "passport_number": c.passport_number,
+            "owner_username": getattr(c, "owner_username", "admin") or "admin",
+            "phone_masked": mask_phone_pii(c.phone_number),
+            "preferred_date_start": c.preferred_date_start or "",
             "destination": c.destination,
             "visa_type": c.visa_type,
             "preferred_vac_id": c.vac_id,
@@ -152,6 +155,44 @@ def build_fleet_rollup_data(
             "last_step_status": step_status,
             "notes": c.notes or "",
         })
+
+    # Compute staff-scoped Step 6 OTP latency alerts (>= 60s wait on IN_PROGRESS clients)
+    otp_alerts = []
+    now_dt_utc = datetime.now(timezone.utc)
+    for c in clients:
+        if (c.status or "").upper() != "IN_PROGRESS" or not c.id:
+            continue
+        steps = get_client_booking_steps(c.id, db_path=db_path)
+        has_otp_passed = any(s.get("step_number") == 6 and s.get("status") == "PASSED" for s in steps)
+        if has_otp_passed:
+            continue
+        # Measure elapsed wait since Step 5 (Client Queue Claim) or earliest step
+        ref_step = next((s for s in reversed(steps) if s.get("step_number") in (5, 6)), None)
+        if not ref_step or not ref_step.get("created_at"):
+            continue
+        try:
+            ref_dt = datetime.fromisoformat(str(ref_step["created_at"]).replace("Z", "+00:00"))
+            if ref_dt.tzinfo is None:
+                ref_dt = ref_dt.replace(tzinfo=timezone.utc)
+            wait_sec = int((now_dt_utc - ref_dt).total_seconds())
+        except Exception:
+            continue
+        if wait_sec >= 60:
+            owner = getattr(c, "owner_username", "admin") or "admin"
+            masked = mask_phone_pii(c.phone_number)
+            otp_alerts.append({
+                "client_id": c.id,
+                "full_name": f"{c.first_name} {c.last_name}".strip(),
+                "owner_username": owner,
+                "notify_targets": [owner, "admin"] if owner != "admin" else ["admin"],
+                "phone_masked": masked,
+                "wait_seconds": wait_sec,
+                "message": (
+                    f"[OTP LATENCY ALERT -> Notify: {owner} & admin] Client #{c.id} "
+                    f"({c.first_name} {c.last_name}) awaiting OTP on {masked} for {wait_sec}s. "
+                    f"Submit manually via Dashboard OTP tab or 'python -m cockpit.cli otp submit'."
+                ),
+            })
 
     # Compute coverage-gap advisories (queued clients whose preferred VAC + visa_type has 0 active authenticated scouts)
     covered_pairs = {
@@ -188,6 +229,7 @@ def build_fleet_rollup_data(
         "queue_counts": counts,
         "clients": client_summaries,
         "coverage_gaps": coverage_gaps,
+        "otp_alerts": otp_alerts,
         "capsolver": sg.get("capsolver", {}),
         "proxy_stats": proxy_stats,
         "service_guard_ok": sg.get("can_proceed", True),
