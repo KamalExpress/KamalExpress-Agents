@@ -27,6 +27,32 @@ def list_clients():
     print("=" * 90)
 
 
+def list_client_contacts_by_staff():
+    """List phone numbers and emails for all clients grouped by staff owner."""
+    res = default_client.get("/api/clients")
+    clients = res.get("clients", [])
+    grouped = {}
+    for cl in clients:
+        owner = cl.get("owner_username") or "admin"
+        grouped.setdefault(owner, []).append(cl)
+
+    print("=" * 100)
+    print(" [COCKPIT] CLIENT CONTACTS GROUPED BY STAFF OWNER")
+    print("=" * 100)
+    for owner in sorted(grouped.keys()):
+        print(f"\nSTAFF: {owner} ({len(grouped[owner])} client(s))")
+        print("-" * 100)
+        print(f"{'ID':<5} {'FULL NAME':<24} {'PASSPORT':<13} {'PHONE':<16} {'EMAIL'}")
+        print("-" * 100)
+        for cl in grouped[owner]:
+            full = f"{cl.get('first_name', '')} {cl.get('last_name', '')}".strip()[:23]
+            print(
+                f"#{cl.get('id'):<4} {full:<24} {cl.get('passport_number', '-'):<13} "
+                f"{cl.get('phone_number', '-'):<16} {cl.get('email', '-')}"
+            )
+    print("=" * 100)
+
+
 def reassign_clients_owner(
     owner: str,
     ids: Optional[List[int]] = None,

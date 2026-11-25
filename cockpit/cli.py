@@ -17,11 +17,11 @@ from cockpit.health import run_health_check
 from cockpit.fleet import run_fleet_overview, master_control, pre_stage_fleet
 from cockpit.slots import run_inspect_slots
 from cockpit.logs import run_tail_logs
-from cockpit.otp import inspect_latest_otp, submit_manual_code
+from cockpit.otp import inspect_latest_otp, submit_manual_code, run_test_all_numbers, watch_otp_stream
 from cockpit.proxies import run_inspect_proxies, reset_cooldowns, quarantine_dirty_proxies
 from cockpit.doctor import run_cockpit_doctor
 from cockpit.report import run_report
-from cockpit.clients import list_clients, reassign_clients_owner
+from cockpit.clients import list_clients, list_client_contacts_by_staff, reassign_clients_owner
 
 
 def main():
@@ -53,10 +53,11 @@ def main():
     log_parser.add_argument("--follow", "-f", action="store_true", help="Continuously poll new logs")
 
     # otp
-    otp_parser = subparsers.add_parser("otp", help="OTP gateway inspector and manual submission")
-    otp_parser.add_argument("subaction", choices=["latest", "submit"], nargs="?", default="latest")
+    otp_parser = subparsers.add_parser("otp", help="OTP gateway inspector, webhook test, watcher, and manual submission")
+    otp_parser.add_argument("subaction", choices=["latest", "submit", "test-all", "watch"], nargs="?", default="latest")
     otp_parser.add_argument("--phone", type=str, default=None)
     otp_parser.add_argument("--code", type=str, default=None)
+    otp_parser.add_argument("--once", action="store_true", help="For watch: print snapshot once and exit")
 
     # proxies
     proxy_parser = subparsers.add_parser("proxies", help="Inspect managed proxy catalog and reset cooldowns")
@@ -71,6 +72,7 @@ def main():
 
     # clients
     clients_parser = subparsers.add_parser("clients", help="List live clients or reassign staff ownership")
+    clients_parser.add_argument("--contacts", action="store_true", help="List phone numbers and emails grouped by staff owner")
     clients_parser.add_argument("--set-owner", type=str, default=None, help="Target staff username to assign")
     clients_parser.add_argument("--ids", type=int, nargs="*", default=None, help="Client IDs to reassign")
     clients_parser.add_argument("--names", type=str, nargs="*", default=None, help="Full client names to reassign")
@@ -100,6 +102,10 @@ def main():
                 print("[ERROR] Both --phone and --code are required for OTP submit.")
                 sys.exit(1)
             submit_manual_code(phone=args.phone, code=args.code)
+        elif args.subaction == "test-all":
+            run_test_all_numbers()
+        elif args.subaction == "watch":
+            watch_otp_stream(follow=not args.once)
         else:
             inspect_latest_otp(phone=args.phone)
     elif args.command == "proxies":
@@ -114,6 +120,8 @@ def main():
     elif args.command == "clients":
         if args.set_owner:
             reassign_clients_owner(owner=args.set_owner, ids=args.ids, names=args.names)
+        elif args.contacts:
+            list_client_contacts_by_staff()
         else:
             list_clients()
     else:
