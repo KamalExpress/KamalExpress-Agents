@@ -1041,10 +1041,45 @@ class GVCFleetManager:
                         "visa_type": visa_type,
                     }
                 else:
-                    # BLITZ DROP MODE: Proceed with direct strike on configured drop date/time or client preferred date
-                    blitz_date = get_system_setting("blitz_target_date", "")
+                    # BLITZ DROP MODE: Resolve a strictly valid future operational date (never use stale past dates)
+                    from .calendar_service import calendar_service
+                    today_date = datetime.utcnow().date()
+
+                    def _parse_dmy(val: Optional[str]):
+                        if not val:
+                            return None
+                        s = str(val).strip()
+                        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+                            try:
+                                return datetime.strptime(s, fmt).date()
+                            except ValueError:
+                                continue
+                        return None
+
+                    blitz_raw = get_system_setting("blitz_target_date", "")
+                    blitz_dt = _parse_dmy(blitz_raw)
+                    client_start_dt = _parse_dmy(client.preferred_date_start)
+
+                    # Prefer valid future blitz_date only if >= today; otherwise use client's preferred_date_start (>= today)
+                    chosen_dt = None
+                    if blitz_dt and blitz_dt >= today_date:
+                        chosen_dt = blitz_dt
+                    elif client_start_dt and client_start_dt >= today_date:
+                        chosen_dt = client_start_dt
+                    else:
+                        chosen_dt = today_date + timedelta(days=1)
+
+                    # Snap to the first valid operational weekday >= chosen_dt for this visa_type
+                    valid_month_dates = calendar_service.get_valid_dates_for_month(chosen_dt.month, chosen_dt.year, str(visa_type))
+                    snapped_str = None
+                    for d_str in valid_month_dates:
+                        d_obj = _parse_dmy(d_str)
+                        if d_obj and d_obj >= chosen_dt:
+                            snapped_str = d_str
+                            break
+                    target_date = snapped_str or chosen_dt.strftime("%d/%m/%Y")
+
                     blitz_time = get_system_setting("blitz_target_time", "")
-                    target_date = blitz_date or client.preferred_date_start or (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
                     target_time = blitz_time or "09:30"
                     target_slot_id = "0"
                     self.log_event(
