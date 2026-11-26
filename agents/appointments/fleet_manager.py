@@ -127,6 +127,9 @@ class AccountWorkerInstance:
         self._last_status = "IDLE"
         self._last_error: Optional[str] = None
         self._last_checked: Optional[str] = None
+        self._last_checked_date: Optional[str] = None
+        self._last_checked_dates: List[str] = []
+        self._last_checked_times: List[str] = []
         self._total_scans = 0
         self._total_booked = 0
         self._is_pre_staged = False
@@ -166,6 +169,9 @@ class AccountWorkerInstance:
             "last_status": self._last_status,
             "last_error": self._last_error or acc.get("last_error"),
             "last_checked": self._last_checked or acc.get("last_checked_at"),
+            "last_checked_date": self._last_checked_date,
+            "last_checked_dates": list(self._last_checked_dates),
+            "last_checked_times": list(self._last_checked_times),
             "total_scans": self._total_scans,
             "total_booked": acc.get("total_booked_count", 0),
         }
@@ -358,12 +364,16 @@ class AccountWorkerInstance:
                     self._last_status = f"POLLING_SLOTS ({scan_month or scan_dates[0]})"
                     self._total_scans += 1
                     self._last_checked = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    self._last_checked_dates = []
+                    self._last_checked_times = []
 
                     slots = []
                     status_info = {}
                     for d_idx, probe_date in enumerate(scan_dates):
                         if not self._running:
                             break
+                        self._last_checked_date = probe_date
+                        self._last_checked_dates.append(probe_date)
                         probe_slots = await self._driver.search_slots(
                             vac_id=vac_id,
                             visa_type=visa_type,
@@ -374,6 +384,11 @@ class AccountWorkerInstance:
                             break
                         if probe_slots and any(s.available_capacity > 0 for s in probe_slots):
                             slots.extend(probe_slots)
+                            self._last_checked_times = [
+                                f"{s.date} {s.time}" if getattr(s, "time", None) else str(s.date)
+                                for s in probe_slots
+                                if getattr(s, "available_capacity", 0) > 0
+                            ]
                             break
                         if d_idx < len(scan_dates) - 1:
                             await asyncio.sleep(2.5)

@@ -326,10 +326,23 @@ def build_client_report_data(client_id: int, db_path: Path = DB_PATH) -> Optiona
                     "error_message": agent.get("last_error") or "None",
                 }
                 scans = int(agent.get("total_scans") or 0)
+                checked_dates = agent.get("last_checked_dates") or []
+                last_probe_date = agent.get("last_checked_date") or (checked_dates[-1] if checked_dates else None)
+                checked_times = agent.get("last_checked_times") or []
+                if len(checked_dates) > 1:
+                    date_desc = f"{checked_dates[0]}..{checked_dates[-1]} ({len(checked_dates)} dates, last: {last_probe_date})"
+                elif last_probe_date:
+                    date_desc = str(last_probe_date)
+                else:
+                    date_desc = agent.get("target_date_from") or "Pending"
+                times_desc = ", ".join(checked_times[:5]) if checked_times else "None open"
                 live_step_overrides[3] = {
                     "status": "PASSED" if scans > 0 else "WAITING",
                     "time_utc": _format_utc_time(agent.get("last_checked")),
-                    "summary": f"Scans={scans} on VAC {agent.get('vac_id')} (Type {agent.get('visa_type')}): {agent.get('last_status', 'IDLE')}",
+                    "summary": (
+                        f"Scans={scans} on VAC {agent.get('vac_id')} (Type {agent.get('visa_type')}) | "
+                        f"Date(s): {date_desc} | Slot Time(s): {times_desc} | {agent.get('last_status', 'IDLE')}"
+                    ),
                     "error_message": agent.get("last_error") or "None",
                 }
             else:
