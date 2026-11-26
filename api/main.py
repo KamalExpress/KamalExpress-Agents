@@ -1506,19 +1506,28 @@ class OperationalModeRequest(BaseModel):
     blitz_target_visa_type: Optional[str] = None
     blitz_target_date: Optional[str] = None
     blitz_target_time: Optional[str] = None
+    scan_mode: Optional[str] = None
+    scan_date_strategy: Optional[str] = None
 
 
 @app.get("/api/settings/operational-mode")
 async def get_operational_mode_endpoint(user: dict = Depends(get_current_user)):
-    """Retrieve active operational mode (Safe vs Blitz Mode) and target settings."""
+    """Retrieve active operational mode (Safe vs Blitz Mode), scan pacing mode, and target settings."""
     from agents.appointments.db import get_system_setting
     req_check_raw = get_system_setting("require_slot_availability_check", "true")
     is_safe = str(req_check_raw).lower() in ["true", "1", "yes", "on"]
+    scan_mode = (get_system_setting("scan_mode", "normal") or "normal").strip().lower()
+    scan_strategy = (
+        get_system_setting("scan_date_strategy", "priority_plus_periodic_sweep")
+        or "priority_plus_periodic_sweep"
+    ).strip().lower()
 
     return {
         "require_slot_availability_check": is_safe,
         "mode": "SAFE_MODE" if is_safe else "BLITZ_DROP_MODE",
         "mode_label": "Safe Mode (Verified Slots Only)" if is_safe else "Blitz Drop Mode (Blind Strikes Enabled)",
+        "scan_mode": scan_mode,
+        "scan_date_strategy": scan_strategy,
         "blitz_target_vac_id": get_system_setting("blitz_target_vac_id", ""),
         "blitz_target_visa_type": get_system_setting("blitz_target_visa_type", ""),
         "blitz_target_date": get_system_setting("blitz_target_date", ""),
@@ -1528,7 +1537,7 @@ async def get_operational_mode_endpoint(user: dict = Depends(get_current_user)):
 
 @app.post("/api/settings/operational-mode")
 async def set_operational_mode_endpoint(req: OperationalModeRequest, user: dict = Depends(get_current_user)):
-    """Update operational mode (Safe vs Blitz Mode) and target settings."""
+    """Update operational mode (Safe vs Blitz Mode), scan pacing mode, and target settings."""
     from agents.appointments.db import set_system_setting
     username = user.get("username", "staff")
 
@@ -1541,6 +1550,30 @@ async def set_operational_mode_endpoint(req: OperationalModeRequest, user: dict 
             category="FLEET",
             message=f"Staff '{username}' switched operational mode to: {mode_str}.",
             details={"require_slot_availability_check": val, "triggered_by": username},
+        )
+
+    if req.scan_mode is not None:
+        sm = str(req.scan_mode).strip().lower()
+        if sm not in ("normal", "drop_window"):
+            raise HTTPException(status_code=400, detail="scan_mode must be 'normal' or 'drop_window'")
+        set_system_setting("scan_mode", sm)
+        log_system_event(
+            level="INFO",
+            category="FLEET",
+            message=f"Staff '{username}' switched fleet scan_mode to '{sm}'.",
+            details={"scan_mode": sm, "triggered_by": username},
+        )
+
+    if req.scan_date_strategy is not None:
+        st = str(req.scan_date_strategy).strip().lower()
+        if st not in ("priority_plus_periodic_sweep", "target_dates_only"):
+            raise HTTPException(status_code=400, detail="scan_date_strategy must be 'priority_plus_periodic_sweep' or 'target_dates_only'")
+        set_system_setting("scan_date_strategy", st)
+        log_system_event(
+            level="INFO",
+            category="FLEET",
+            message=f"Staff '{username}' switched fleet scan_date_strategy to '{st}'.",
+            details={"scan_date_strategy": st, "triggered_by": username},
         )
 
     if req.blitz_target_vac_id is not None:

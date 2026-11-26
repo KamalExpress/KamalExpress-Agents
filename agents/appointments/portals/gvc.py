@@ -18,6 +18,7 @@ Handles:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -51,52 +52,34 @@ from ..db import (
     invalidate_gvc_session,
     save_gvc_session,
 )
+from ..otp import normalize_phone
 from ..proxy import ProxyManager
 from ..schemas import AvailableSlot, BookingResult, ClientProfile
+from .playwright_client import (
+    install_bandwidth_saver_route,
+    refresh_origin_cookies,
+    run_stealth_browser_fetch,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def install_bandwidth_saver_route(page: Any, allow_app_js: bool = False) -> None:
-    """
-    Attach a Playwright route interceptor that cuts residential proxy bandwidth by >95%
-    (from ~25.7 MB uncompressed / ~7 MB wire per GVC page load down to <150 KB)
-    without interfering with Imperva WAF clearance (_Incapsula_Resource / reese84) or /api/ calls.
-    """
-    blocked_types = {"image", "media", "font", "stylesheet"}
-    tracker_hosts = ("google-analytics.com", "googletagmanager.com", "doubleclick.net", "facebook.net", "hotjar.com")
-    waf_allow_tokens = ("_incapsula_resource", "reese84", "incap", "imperva")
-
-    def _handler(route: Any) -> None:
-        try:
-            req = route.request
-            rtype = (req.resource_type or "").lower()
-            url_l = (req.url or "").lower()
-
-            if any(h in url_l for h in tracker_hosts):
-                route.abort()
-                return
-            if rtype in blocked_types:
-                route.abort()
-                return
-            if not allow_app_js:
-                # For WAF cookie refresh & in-browser /api/v1/periodslot/slots queries,
-                # block GVC's 18.7 MB Angular JS bundles and static asset JSONs while allowing
-                # Imperva WAF scripts and all /api/ endpoints.
-                if rtype == "script" and not any(tok in url_l for tok in waf_allow_tokens):
-                    route.abort()
-                    return
-                if ("/assets/" in url_l or "/i18n/" in url_l or "/static/" in url_l) and "/api/" not in url_l:
-                    route.abort()
-                    return
-            route.continue_()
-        except Exception:
-            try:
-                route.continue_()
-            except Exception:
-                pass
-
-    page.route("**/*", _handler)
+def decode_jwt_subject(tok: Optional[str]) -> Optional[str]:
+    """Safely decode the subject/email claim from a GVC JWT Bearer token."""
+    if not tok:
+        return None
+    raw = str(tok).replace("Bearer ", "").strip()
+    if "." not in raw:
+        return None
+    try:
+        parts = raw.split(".")
+        if len(parts) >= 2:
+            padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+            payload_json = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
+            return payload_json.get("sub") or payload_json.get("username") or payload_json.get("email")
+    except Exception:
+        return None
+    return None
 
 
 def clean_portal_error_text(text: Optional[str]) -> str:
@@ -334,12 +317,14 @@ class GVCPortalDriver:
     Supports direct REST queries with residential proxies and optional CDP browser fallback.
     """
 
-    def __init__(self, base_url: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None, strict_isolation: bool = False):
         self.base_url = base_url or os.getenv("BOOKING_PORTAL_URL", "https://pk-gr-services.gvcworld.eu").rstrip("/")
         self.sitekey = os.getenv("TARGET_SITEKEY", "6LcnlCoUAAAAAJLjWXXaByTFyuOLf4K0gGu5r3d2")
         self.captcha_solver = CaptchaSolver()
         self.proxy_manager = ProxyManager()
         self._cfg = get_settings().browser
+        self._strict_isolation: bool = bool(strict_isolation)
+        self._bound_account_id: Optional[int] = None
         self._session_cookies: Dict[str, str] = {}
         self._bearer_token: Optional[str] = None
         self._session_proxy: Optional[str] = None
@@ -350,8 +335,41 @@ class GVCPortalDriver:
 
     # ── Multi-Source Session Management ─────────────────────────
 
+    def bind_account_session(
+        self,
+        account_id: Optional[int],
+        bearer_token: Optional[str],
+        cookies: Optional[Dict[str, str]] = None,
+        proxy_url: Optional[str] = None,
+        strict_isolation: bool = True,
+    ) -> None:
+        """
+        Bind a specific fleet account's JWT token, cookies, and sticky proxy onto this driver.
+        When `strict_isolation=True`, this driver physically refuses to read the legacy global
+        `gvc_sessions` table, preventing cross-worker JWT/cookie collisions.
+        """
+        self._strict_isolation = bool(strict_isolation)
+        self._bound_account_id = account_id
+        clean_tok = (bearer_token or "").replace("Bearer ", "").strip() or None
+        self._bearer_token = clean_tok
+        if isinstance(cookies, dict):
+            self._session_cookies = dict(cookies)
+        elif cookies is None and not self._session_cookies:
+            self._session_cookies = {}
+        if clean_tok and "auth_token" not in self._session_cookies:
+            self._session_cookies["auth_token"] = clean_tok
+        if proxy_url:
+            self._session_proxy = proxy_url
+
+    def get_bound_jwt_subject(self) -> Optional[str]:
+        """Return the decoded JWT subject/email currently bound to this driver."""
+        return decode_jwt_subject(self._bearer_token)
+
     def _load_active_session_from_db(self) -> bool:
         """Load active session token, cookies, and sticky proxy from persistent SQLite database if not set."""
+        if self._strict_isolation:
+            # Strict fleet isolation: NEVER read from the legacy global `gvc_sessions` table.
+            return bool(self._bearer_token)
         if self._bearer_token and self._session_cookies:
             return True
         sess = get_active_gvc_session()
@@ -464,88 +482,32 @@ class GVCPortalDriver:
 
     async def refresh_waf_cookies(self, proxy: Optional[str] = None) -> Dict[str, str]:
         """
-        Execute headless Playwright flow with stealth evasion to solve Imperva JS challenge and extract fresh Incapsula cookies.
-        Directly adapted from operator-agent/main_operator.py.
+        Execute headless Playwright flow via centralized `playwright_client.refresh_origin_cookies()`
+        to solve Imperva JS challenge and extract fresh Incapsula cookies.
         """
-        logger.info("[gvc] Refreshing Imperva WAF cookies via Headless Playwright...")
-
-        def _sync_worker():
-            try:
-                from playwright.sync_api import sync_playwright
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(
-                        headless=True,
-                        args=[
-                            "--disable-blink-features=AutomationControlled",
-                            "--no-sandbox",
-                            "--disable-dev-shm-usage",
-                            "--disable-gpu",
-                        ]
+        logger.info("[gvc] Refreshing Imperva WAF cookies via centralized Stealth Playwright...")
+        fresh_cookies = await asyncio.to_thread(
+            refresh_origin_cookies,
+            self.base_url,
+            proxy,
+            False,
+            35000,
+        )
+        if fresh_cookies:
+            self._session_cookies.update(fresh_cookies)
+            if not self._strict_isolation:
+                active_sess = get_active_gvc_session()
+                if active_sess and (active_sess.get("auth_token") or active_sess.get("bearer_token")):
+                    self._session_proxy = proxy
+                    save_gvc_session(
+                        auth_token=active_sess.get("auth_token"),
+                        bearer_token=active_sess.get("bearer_token"),
+                        cookies=self._session_cookies,
+                        proxy_url=proxy,
+                        source=active_sess.get("source", "MANUAL_SYNC"),
+                        synced_by="waf_refresher",
                     )
-                    context_kwargs = {
-                        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "viewport": {"width": 1280, "height": 720},
-                        "extra_http_headers": {
-                            "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                            "sec-ch-ua-mobile": "?0",
-                            "sec-ch-ua-platform": '"Windows"',
-                        }
-                    }
-                    if proxy:
-                        from urllib.parse import urlparse
-                        parsed = urlparse(proxy)
-                        if parsed.hostname:
-                            proxy_conf = {"server": f"http://{parsed.hostname}:{parsed.port}"}
-                            if parsed.username:
-                                proxy_conf["username"] = parsed.username
-                                proxy_conf["password"] = parsed.password
-                            context_kwargs["proxy"] = proxy_conf
-
-                    context = browser.new_context(**context_kwargs)
-                    page = context.new_page()
-                    install_bandwidth_saver_route(page, allow_app_js=False)
-
-                    # Apply Playwright Stealth evasion
-                    try:
-                        from playwright_stealth import Stealth
-                        Stealth().apply_stealth_sync(page)
-                    except ImportError:
-                        try:
-                            from playwright_stealth import stealth_sync
-                            stealth_sync(page)
-                        except ImportError:
-                            logger.warning("[gvc] playwright_stealth not found, WAF might still detect headless.")
-
-                    target_url = f"{self.base_url}/?lang=en_US"
-                    logger.info(f"[gvc] Navigating to {target_url} to clear Imperva challenge...")
-                    page.goto(target_url, wait_until="load", timeout=35000)
-                    page.wait_for_timeout(3000)
-                    logger.info("[gvc] Portal origin loaded; extracting fresh Imperva clearance cookies.")
-
-                    cookies = context.cookies()
-                    for c in cookies:
-                        self._session_cookies[c["name"]] = c["value"]
-
-                    browser.close()
-
-                    # Update SQLite database session with the fresh cookies and proxy
-                    active_sess = get_active_gvc_session()
-                    if active_sess and (active_sess.get("auth_token") or active_sess.get("bearer_token")):
-                        self._session_proxy = proxy
-                        save_gvc_session(
-                            auth_token=active_sess.get("auth_token"),
-                            bearer_token=active_sess.get("bearer_token"),
-                            cookies=self._session_cookies,
-                            proxy_url=proxy,
-                            source=active_sess.get("source", "MANUAL_SYNC"),
-                            synced_by="waf_refresher",
-                        )
-                    return self._session_cookies
-            except Exception as err:
-                logger.warning(f"[gvc] Headless Playwright WAF cookie refresh encountered: {err}")
-                return self._session_cookies
-
-        return await asyncio.to_thread(_sync_worker)
+        return self._session_cookies
 
     # ── Session Health Check ────────────────────────────────────
 
@@ -660,78 +622,19 @@ class GVCPortalDriver:
                     )
                 )
 
-                # If WAF block, clear Imperva in Playwright on /?lang=en_US and execute PUT /api/v1/periodslot/slots directly inside page context
+                # If WAF block, clear Imperva in centralized Stealth Playwright and execute PUT /api/v1/periodslot/slots inside page context
                 if is_waf_block:
-                    logger.warning(f"[gvc] Imperva WAF challenge encountered on {proxy or 'direct'}. Executing in-browser slot query via Playwright...")
-                    def _browser_slot_query_sync() -> Dict[str, Any]:
-                        try:
-                            from playwright.sync_api import sync_playwright
-                            from urllib.parse import urlparse
-                            with sync_playwright() as pw:
-                                browser = pw.chromium.launch(
-                                    headless=True,
-                                    args=[
-                                        "--disable-blink-features=AutomationControlled",
-                                        "--no-sandbox",
-                                        "--disable-dev-shm-usage",
-                                        "--disable-gpu",
-                                    ],
-                                )
-                                ctx_kwargs: Dict[str, Any] = {
-                                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                                    "viewport": {"width": 1280, "height": 720},
-                                }
-                                if proxy:
-                                    parsed = urlparse(proxy)
-                                    if parsed.hostname:
-                                        pconf = {"server": f"http://{parsed.hostname}:{parsed.port}"}
-                                        if parsed.username:
-                                            pconf["username"] = parsed.username
-                                            pconf["password"] = parsed.password
-                                        ctx_kwargs["proxy"] = pconf
-                                context = browser.new_context(**ctx_kwargs)
-                                page = context.new_page()
-                                install_bandwidth_saver_route(page, allow_app_js=False)
-                                try:
-                                    from playwright_stealth import Stealth
-                                    Stealth().apply_stealth_sync(page)
-                                except Exception:
-                                    pass
-                                page.goto(f"{self.base_url}/?lang=en_US", wait_until="load", timeout=35000)
-                                page.wait_for_timeout(3000)
-                                auth_hdr = f"Bearer {self._bearer_token}" if self._bearer_token and not str(self._bearer_token).startswith("Bearer ") else str(self._bearer_token or "")
-                                js_put = """
-                                async (args) => {
-                                    try {
-                                        const res = await fetch('/api/v1/periodslot/slots', {
-                                            method: 'PUT',
-                                            headers: {
-                                                'Content-Type': 'application/json; charset=UTF-8',
-                                                'Accept': 'application/json, text/plain, */*',
-                                                'X-Requested-With': 'XMLHttpRequest',
-                                                'Authorization': args.auth
-                                            },
-                                            body: JSON.stringify(args.payload)
-                                        });
-                                        const text = await res.text();
-                                        return { status: res.status, text: text };
-                                    } catch (err) {
-                                        return { status: 0, text: '', error: String(err) };
-                                    }
-                                }
-                                """
-                                res_dict = page.evaluate(js_put, {"auth": auth_hdr, "payload": payload})
-                                fresh_cookies = {c["name"]: c["value"] for c in context.cookies()}
-                                browser.close()
-                                if not isinstance(res_dict, dict):
-                                    res_dict = {"status": 0, "text": ""}
-                                res_dict["cookies"] = fresh_cookies
-                                return res_dict
-                        except Exception as bw_err:
-                            logger.warning(f"[gvc] Playwright in-browser slot query error: {bw_err}")
-                            return {"status": 0, "text": "", "cookies": {}}
-
-                    bw_res = await asyncio.to_thread(_browser_slot_query_sync)
+                    logger.warning(f"[gvc] Imperva WAF challenge encountered on {proxy or 'direct'}. Executing in-browser slot query via centralized Playwright...")
+                    bw_res = await asyncio.to_thread(
+                        run_stealth_browser_fetch,
+                        self.base_url,
+                        "PUT",
+                        "/api/v1/periodslot/slots",
+                        payload,
+                        self._bearer_token,
+                        proxy,
+                        False,
+                    )
                     if bw_res.get("cookies"):
                         self._session_cookies.update(bw_res["cookies"])
                     bw_status = int(bw_res.get("status") or 0)
@@ -920,25 +823,18 @@ class GVCPortalDriver:
 
     async def trigger_booking_otp(self, phone_number: str, prefix_id: str = "197", max_retries: int = 3) -> Dict[str, Any]:
         """
-        Request GVC to send an SMS/WhatsApp OTP for appointment confirmation with automatic proxy failover.
-        Properly sanitizes Pakistan phone numbers (e.g. strips +92, 0092, 92, leading 0, dashes)
-        to ensure exact 10-digit format for GVC API prefix 197.
+        Request GVC to send an SMS/WhatsApp OTP for appointment confirmation with automatic
+        Playwright WAF fallback and residential proxy failover.
         """
         self._load_active_session_from_db()
-        digits = re.sub(r"\D", "", str(phone_number or ""))
-        if digits.startswith("0092"):
-            digits = digits[4:]
-        elif digits.startswith("92") and len(digits) >= 11:
-            digits = digits[2:]
-        elif digits.startswith("0") and len(digits) >= 10:
-            digits = digits[1:]
-        phone_clean = digits.lstrip("0")
+        phone_clean = normalize_phone(phone_number)
 
         if not phone_clean:
             logger.error(f"[gvc] Cannot trigger OTP: invalid or empty phone number '{phone_number}'")
             return {"success": False, "error": f"Invalid phone number format: '{phone_number}'"}
 
-        url = f"{self.base_url}/api/v1/onetimepassword/sendOtpBookAppointment/{phone_clean}/{prefix_id}"
+        path = f"/api/v1/onetimepassword/sendOtpBookAppointment/{phone_clean}/{prefix_id}"
+        url = f"{self.base_url}{path}"
         logger.info(f"[gvc] Triggering OTP at URL: {url} (for +92-{phone_clean})...")
 
         last_err = None
@@ -948,19 +844,50 @@ class GVCPortalDriver:
             try:
                 async with AsyncSession(impersonate="chrome120") as session:
                     resp = await session.post(url, headers=self._get_headers(), cookies=self._session_cookies, proxies=proxies, timeout=25)
-                    if resp.status_code in [200, 204]:
-                        if proxy:
-                            self.proxy_manager.mark_proxy_success(proxy)
-                        logger.info(f"[gvc] [SUCCESS] OTP successfully triggered for +92-{phone_clean} on GVC API (HTTP {resp.status_code}).")
-                        return {"success": True, "phone": phone_clean, "message": "OTP sent successfully."}
-                    elif resp.status_code in [403, 429]:
-                        logger.warning(f"[gvc] Proxy blocked/rate-limited (HTTP {resp.status_code}) on {proxy}. Quarantining and retrying...")
-                        if proxy:
-                            self.proxy_manager.mark_proxy_failed(proxy)
-                    else:
-                        clean_err = clean_portal_error_text(resp.text)
-                        logger.warning(f"[gvc] GVC OTP trigger returned HTTP {resp.status_code}: {clean_err}")
-                        return {"success": False, "status_code": resp.status_code, "message": f"GVC returned HTTP {resp.status_code}: {clean_err}"}
+                    resp_status = resp.status_code
+                    resp_text = (resp.text or "").strip()
+
+                is_waf_html = (
+                    resp_status in (403, 472)
+                    or "_incapsula_resource" in resp_text.lower()
+                    or (resp_status == 200 and resp_text.lower().startswith("<html"))
+                )
+                if is_waf_html:
+                    logger.warning(f"[gvc] Imperva WAF challenge on OTP trigger via {proxy or 'direct'}. Retrying via centralized Stealth Playwright...")
+                    bw_res = await asyncio.to_thread(
+                        run_stealth_browser_fetch,
+                        self.base_url,
+                        "POST",
+                        path,
+                        None,
+                        self._bearer_token,
+                        proxy,
+                        False,
+                    )
+                    if bw_res.get("cookies"):
+                        self._session_cookies.update(bw_res["cookies"])
+                    resp_status = int(bw_res.get("status") or 0)
+                    resp_text = (bw_res.get("text") or "").strip()
+                    is_waf_html = (
+                        resp_status in (0, 403, 472)
+                        or "_incapsula_resource" in resp_text.lower()
+                        or (resp_status == 200 and resp_text.lower().startswith("<html"))
+                    )
+
+                if resp_status in (200, 204) and not is_waf_html:
+                    if proxy:
+                        self.proxy_manager.mark_proxy_success(proxy)
+                    logger.info(f"[gvc] [SUCCESS] OTP successfully triggered for +92-{phone_clean} on GVC API (HTTP {resp_status}).")
+                    return {"success": True, "phone": phone_clean, "message": "OTP sent successfully."}
+                elif is_waf_html or resp_status == 429:
+                    logger.warning(f"[gvc] Proxy blocked/rate-limited (HTTP {resp_status}) on {proxy}. Retiring and retrying...")
+                    if proxy:
+                        self.proxy_manager.mark_proxy_failed(proxy, error=f"OTP WAF/HTTP {resp_status}")
+                    last_err = f"HTTP {resp_status} WAF/rate-limit"
+                else:
+                    clean_err = clean_portal_error_text(resp_text)
+                    logger.warning(f"[gvc] GVC OTP trigger returned HTTP {resp_status}: {clean_err}")
+                    return {"success": False, "status_code": resp_status, "message": f"GVC returned HTTP {resp_status}: {clean_err}"}
             except Exception as e:
                 logger.warning(f"[gvc] Proxy error on {proxy}: {e}. Retrying on next proxy...")
                 if proxy:
@@ -987,19 +914,12 @@ class GVCPortalDriver:
         Submit HAR-compliant final booking payload to GVC World with automatic proxy failover.
         """
         self._load_active_session_from_db()
-        # Applicant profile is the primary source of truth for VAC center and Visa Category
-        vac_key = str(applicant.vac_id or vac_id or "138")
-        vac_meta = GVC_VACS.get(vac_key.lower(), GVC_VACS.get("138", {"id": 138, "name": "Islamabad", "city": "Islamabad"}))
+        # Actual slot VAC takes strict precedence (required for FALLBACK_VAC so vac matches periodslotid)
+        vac_key = str(vac_id or applicant.vac_id or "138")
+        vac_meta = GVC_VACS.get(vac_key.lower(), GVC_VACS.get("138", {"id": 138, "name": "Lahore VAC", "city": "Lahore"}))
         app_type = str(applicant.visa_type or visa_type or "26")
-        
-        digits = re.sub(r"\D", "", str(applicant.phone_number or ""))
-        if digits.startswith("0092"):
-            digits = digits[4:]
-        elif digits.startswith("92") and len(digits) >= 11:
-            digits = digits[2:]
-        elif digits.startswith("0") and len(digits) >= 10:
-            digits = digits[1:]
-        phone_clean = digits.lstrip("0")
+
+        phone_clean = normalize_phone(applicant.phone_number)
         def _format_gvc_date(d_str: Optional[str]) -> str:
             if not d_str:
                 return "01/01/2000"
@@ -1022,22 +942,8 @@ class GVCPortalDriver:
             else:
                 logger.warning("[gvc] [WARNING] Captcha solver returned None for reCAPTCHA v2 token.")
 
-        # Determine the authenticating user email for the top-level payload
         # GVC enforces that top-level 'email' matches the subject in the Bearer token (JWT sub)
-        def _get_token_subject(tok: Optional[str]) -> Optional[str]:
-            if not tok or "." not in tok:
-                return None
-            try:
-                parts = tok.split(".")
-                if len(parts) >= 2:
-                    padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
-                    payload_json = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
-                    return payload_json.get("sub") or payload_json.get("username") or payload_json.get("email")
-            except Exception:
-                pass
-            return None
-
-        auth_email = _get_token_subject(self._bearer_token)
+        auth_email = decode_jwt_subject(self._bearer_token)
         booking_email = auth_email or applicant.email or "applicant@email.com"
 
         sub_payload = {
@@ -1079,82 +985,108 @@ class GVCPortalDriver:
             try:
                 async with AsyncSession(impersonate="chrome120") as session:
                     resp = await session.post(url, json=sub_payload, headers=self._get_headers(), cookies=self._session_cookies, proxies=proxies, timeout=30)
-                    
-                    if resp.status_code in [200, 201]:
+                    resp_status = resp.status_code
+                    resp_text = (resp.text or "").strip()
+                    data = None
+                    try:
+                        data = resp.json()
+                    except Exception:
                         data = None
+
+                is_waf_block = (
+                    resp_status in (403, 472)
+                    or "_incapsula_resource" in resp_text.lower()
+                    or (resp_status in (200, 201) and not isinstance(data, dict))
+                )
+                if is_waf_block:
+                    logger.warning(f"[gvc] Imperva WAF challenge during booking submission on {proxy or 'direct'}. Retrying via centralized Stealth Playwright...")
+                    bw_res = await asyncio.to_thread(
+                        run_stealth_browser_fetch,
+                        self.base_url,
+                        "POST",
+                        "/api/v1/appointments",
+                        sub_payload,
+                        self._bearer_token,
+                        proxy,
+                        False,
+                    )
+                    if bw_res.get("cookies"):
+                        self._session_cookies.update(bw_res["cookies"])
+                    resp_status = int(bw_res.get("status") or 0)
+                    resp_text = (bw_res.get("text") or "").strip()
+                    data = bw_res.get("json")
+                    if data is None and resp_text:
                         try:
-                            data = resp.json()
+                            data = json.loads(resp_text)
                         except Exception:
-                            pass
+                            data = None
 
-                        # If response is HTML or not JSON, it was rejected by WAF on this proxy - rotate to next proxy
-                        if not isinstance(data, dict):
-                            clean_err = clean_portal_error_text(resp.text)
-                            logger.warning(f"[gvc] GVC returned HTML/WAF challenge on proxy {proxy or 'direct'} (Attempt {attempt + 1}/{max_retries}). Rotating proxy...")
-                            if proxy:
-                                self.proxy_manager.mark_proxy_failed(proxy, error="WAF challenge during booking submission")
-                            last_error = clean_err
-                            continue
-
-                        code = str(data.get("code") or "").upper()
-                        msg = data.get("message") or ""
-                        ret = data.get("returnobject") or {}
-
-                        # Check for success
-                        if code == "SUCCESS" or (isinstance(ret, dict) and (ret.get("referenceno") or ret.get("bookingReference") or ret.get("arn"))):
-                            if proxy:
-                                self.proxy_manager.mark_proxy_success(proxy)
-                            ref_no = None
-                            if isinstance(ret, dict):
-                                ref_no = ret.get("referenceno") or ret.get("bookingReference") or ret.get("arn") or ret.get("id")
-                            if not ref_no and isinstance(ret, str) and ret:
-                                ref_no = ret
-                            if not ref_no:
-                                ref_no = "GVC-GR-" + "".join(random.choices("0123456789ABCDEF", k=8))
-
-                            logger.info(f"[gvc] [SUCCESS] BOOKING CONFIRMED! Reference: {ref_no}")
-                            return BookingResult(
-                                success=True,
-                                client_id=applicant.id,
-                                client_name=f"{applicant.first_name} {applicant.last_name}",
-                                reference_number=str(ref_no),
-                                vac_city=vac_meta.get("city", "Islamabad"),
-                                visa_type=str(app_type),
-                                booked_date=target_date,
-                                booked_time=target_time,
-                                message=f"Appointment successfully confirmed at {vac_meta['name']} on {target_date} {target_time}. Reference: {ref_no}",
-                                raw_payload=data,
-                            )
-                        else:
-                            # GVC returned an application-level rejection (e.g. INVALID OTP, Slot Taken, etc.)
-                            clean_err = msg or f"GVC code: {code}"
-                            logger.warning(f"[gvc] GVC booking rejected with code '{code}': {clean_err}")
-                            return BookingResult(
-                                success=False,
-                                client_id=applicant.id,
-                                client_name=f"{applicant.first_name} {applicant.last_name}",
-                                vac_city=vac_meta.get("city", "Islamabad"),
-                                visa_type=str(app_type),
-                                message=f"GVC rejected booking: {clean_err}",
-                                raw_payload=data,
-                            )
-
-                    elif resp.status_code in [403, 429]:
+                if resp_status in (200, 201):
+                    if not isinstance(data, dict):
+                        clean_err = clean_portal_error_text(resp_text)
+                        logger.warning(f"[gvc] GVC returned HTML/WAF challenge on proxy {proxy or 'direct'} (Attempt {attempt + 1}/{max_retries}). Rotating proxy...")
                         if proxy:
-                            self.proxy_manager.mark_proxy_failed(proxy, error=f"HTTP {resp.status_code}")
-                        last_error = f"HTTP {resp.status_code}"
+                            self.proxy_manager.mark_proxy_failed(proxy, error="WAF challenge during booking submission")
+                        last_error = clean_err
                         continue
+
+                    code = str(data.get("code") or "").upper()
+                    msg = data.get("message") or ""
+                    ret = data.get("returnobject") or {}
+
+                    if code == "SUCCESS" or (isinstance(ret, dict) and (ret.get("referenceno") or ret.get("bookingReference") or ret.get("arn"))):
+                        if proxy:
+                            self.proxy_manager.mark_proxy_success(proxy)
+                        ref_no = None
+                        if isinstance(ret, dict):
+                            ref_no = ret.get("referenceno") or ret.get("bookingReference") or ret.get("arn") or ret.get("id")
+                        if not ref_no and isinstance(ret, str) and ret:
+                            ref_no = ret
+                        if not ref_no:
+                            ref_no = "GVC-GR-" + "".join(random.choices("0123456789ABCDEF", k=8))
+
+                        logger.info(f"[gvc] [SUCCESS] BOOKING CONFIRMED! Reference: {ref_no}")
+                        return BookingResult(
+                            success=True,
+                            client_id=applicant.id,
+                            client_name=f"{applicant.first_name} {applicant.last_name}",
+                            reference_number=str(ref_no),
+                            vac_city=vac_meta.get("city", "Islamabad"),
+                            visa_type=str(app_type),
+                            booked_date=target_date,
+                            booked_time=target_time,
+                            message=f"Appointment successfully confirmed at {vac_meta['name']} on {target_date} {target_time}. Reference: {ref_no}",
+                            raw_payload=data,
+                        )
                     else:
-                        clean_err = clean_portal_error_text(resp.text)
+                        clean_err = msg or f"GVC code: {code}"
+                        logger.warning(f"[gvc] GVC booking rejected with code '{code}': {clean_err}")
                         return BookingResult(
                             success=False,
                             client_id=applicant.id,
                             client_name=f"{applicant.first_name} {applicant.last_name}",
                             vac_city=vac_meta.get("city", "Islamabad"),
                             visa_type=str(app_type),
-                            message=f"GVC rejected booking with HTTP {resp.status_code}: {clean_err}",
-                            raw_payload=resp.text,
+                            message=f"GVC rejected booking: {clean_err}",
+                            raw_payload=data,
                         )
+
+                elif resp_status in (403, 429, 472):
+                    if proxy:
+                        self.proxy_manager.mark_proxy_failed(proxy, error=f"HTTP {resp_status}")
+                    last_error = f"HTTP {resp_status}"
+                    continue
+                else:
+                    clean_err = clean_portal_error_text(resp_text)
+                    return BookingResult(
+                        success=False,
+                        client_id=applicant.id,
+                        client_name=f"{applicant.first_name} {applicant.last_name}",
+                        vac_city=vac_meta.get("city", "Islamabad"),
+                        visa_type=str(app_type),
+                        message=f"GVC rejected booking with HTTP {resp_status}: {clean_err}",
+                        raw_payload=resp_text,
+                    )
             except Exception as e:
                 if proxy:
                     self.proxy_manager.mark_proxy_failed(proxy)

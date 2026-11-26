@@ -245,18 +245,22 @@ async def wait_for_otp(
     phone: Optional[str] = None,
     timeout: float = 60.0,
     max_age_seconds: float = 90.0,
+    min_timestamp: Optional[float] = None,
 ) -> Optional[str]:
     """
     Asynchronously await arrival of an OTP for the given phone number with timeout.
-    If a fresh OTP already arrived in the last `max_age_seconds`, returns it immediately.
+    If a fresh OTP already arrived in the last `max_age_seconds` (and at or after `min_timestamp`
+    when provided), returns it immediately.
     """
     clean_phone = normalize_phone(phone)
 
     # 1. Check if a very recent OTP is already in cache
     candidate = OTP_STORE.get(clean_phone) or (OTP_STORE.get("latest") if not clean_phone else None)
     if candidate and candidate.get("is_otp"):
-        age = time.time() - candidate.get("timestamp", 0)
-        if age <= max_age_seconds:
+        cand_ts = float(candidate.get("timestamp", 0) or 0)
+        age = time.time() - cand_ts
+        is_after_min = (min_timestamp is None) or (cand_ts >= float(min_timestamp))
+        if age <= max_age_seconds and is_after_min:
             logger.info(
                 f"[otp] [SUCCESS] Using recent cached OTP '{candidate['code']}' (age: {age:.1f}s) "
                 f"for phone +92-{clean_phone}"

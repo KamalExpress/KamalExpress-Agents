@@ -42,3 +42,10 @@
 ## 4. Testing & Verification Protocol
 * **Zero Regression Rule:** The test suite (`pytest tests/`) must pass with 100% success before merging changes or concluding an engineering turn.
 * **Deprecation Notice:** Use timezone-aware UTC datetime representations: `datetime.now(datetime.UTC)` over deprecated `datetime.utcnow()`.
+* **Centralization & Isolation Invariants (Enforced by `tests/test_golden_worker_e2e.py`):**
+  * **Single Booking Pipeline:** All booking entrypoints (`AccountWorkerInstance._loop()`, `trigger_client_booking()`, `quick_book_slot()`, `AutonomousSlotMonitor`) MUST delegate to `agents/appointments/booking_engine.py:execute_booking()`. Never copy-paste OTP/captcha/submit logic.
+  * **Single Stealth Playwright Engine:** All Playwright WAF probes, cookie refreshes, and in-browser `fetch()` fallbacks MUST use `agents/appointments/portals/playwright_client.py`.
+  * **Strict Per-Worker Session Isolation:** Every fleet worker constructs `GVCPortalDriver(strict_isolation=True)` and binds its own `gvc_portal_accounts` JWT, cookies, and sticky proxy via `bind_account_session()`. Fleet workers MUST NEVER read the legacy global `gvc_sessions` table.
+  * **Zero Negative-Cache Poisoning:** `WAF_CHALLENGE`, `RATE_LIMITED`, and `ERROR` responses MUST NEVER write empty `[]` entries to `SlotDiscoveryCache`.
+  * **AST Undefined-Name Gate:** Every module under `agents/appointments/` and `cockpit/` must pass the automated AST undefined-name check with zero unresolved globals.
+

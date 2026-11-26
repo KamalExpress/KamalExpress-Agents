@@ -304,7 +304,9 @@ class AutonomousSlotMonitor:
                             level="SUCCESS"
                         )
 
-                        # Match available slots with waiting clients
+                        # Match available slots with waiting clients via centralized BookingExecutor
+                        from .booking_engine import execute_booking
+
                         for slot in slots:
                             if slot.available_capacity <= 0:
                                 continue
@@ -324,75 +326,26 @@ class AutonomousSlotMonitor:
                                 f"Autonomous Booker dispatching: Preparing booking on {slot.date} @ {slot.time} for {client.first_name} {client.last_name} ({client.passport_number})..."
                             )
 
-                            # 1. Request GVC portal to dispatch SMS OTP to applicant's phone
-                            otp_trigger_res = await self._gvc_driver.trigger_booking_otp(phone_number=client.phone_number)
-                            if not otp_trigger_res.get("success"):
-                                self.log_event(
-                                    f"️ OTP trigger returned note for {client.passport_number} (+92-{client.phone_number}): {otp_trigger_res.get('message') or otp_trigger_res.get('error')}",
-                                    level="WARNING"
-                                )
-                            else:
-                                self.log_event(
-                                    f" OTP dispatched to +92-{client.phone_number}. Awaiting SMS forwarder / staff input (up to 75s)...",
-                                    level="INFO"
-                                )
-
-                            # 2. Await OTP arrival from Android SMS forwarder webhook or dashboard manual submit
-                            otp_code = await wait_for_otp(phone=client.phone_number, timeout=75.0)
-
-                            if not otp_code:
-                                update_client_status(
-                                    client_id=client.id,
-                                    status="FAILED",
-                                    notes="Auto-booking aborted: OTP verification code timed out after 75s."
-                                )
-                                self.log_event(
-                                    f" Auto-booking aborted for {client.passport_number}: No OTP received within 75s.",
-                                    level="WARNING"
-                                )
-                                continue
-
-                            self.log_event(
-                                f" OTP '{otp_code}' intercepted for +92-{client.phone_number}! Submitting final booking to GVC...",
-                                level="SUCCESS"
-                            )
-
-                            result = await self._gvc_driver.submit_booking(
-                                applicant=client,
+                            exec_res = await execute_booking(
+                                driver=self._gvc_driver,
+                                client=client,
                                 slot_id=slot.slot_id,
                                 target_date=slot.date,
                                 target_time=slot.time,
-                                otp_code=otp_code,
-                                vac_id=vac_id,
-                                visa_type=visa_type
+                                actual_vac_id=str(getattr(slot, "vac_id", None) or vac_id),
+                                visa_type=str(visa_type),
+                                account_id=None,
+                                account_email=self._gvc_driver.get_bound_jwt_subject() or "",
+                                persona="Autonomous Slot Monitor",
+                                target_phone=client.phone_number,
+                                match_tier="MONITOR",
+                                triggered_by="auto-monitor",
+                                open_slots_count=len(slots),
+                                slot_capacity=slot.available_capacity,
                             )
-
-                            if result.success:
+                            if exec_res.get("success"):
                                 self._total_auto_booked += 1
-                                update_client_status(
-                                    client_id=client.id,
-                                    status="BOOKED",
-                                    booking_reference=result.reference_number,
-                                    booked_date=slot.date,
-                                    booked_time=slot.time,
-                                    notes=f"Auto-booked via Slot Monitor at {result.vac_city}."
-                                )
-                                self.log_event(
-                                    f" AUTO-BOOKING SUCCESSFUL for {client.first_name} {client.last_name}! Reference: {result.reference_number}",
-                                    level="SUCCESS",
-                                    details={"arn": result.reference_number, "client": client.passport_number}
-                                )
                                 slot.available_capacity -= 1
-                            else:
-                                update_client_status(
-                                    client_id=client.id,
-                                    status="FAILED",
-                                    notes=f"Auto-booking failed: {result.message}"
-                                )
-                                self.log_event(
-                                    f" Auto-booking attempt failed for {client.passport_number}: {result.message}",
-                                    level="WARNING"
-                                )
                     else:
                         self.log_event(
                             f" [Scan #{self._total_scans}] Polled {vac_meta['name']} ({type_name}) — 0 slots open. (Next scan in {self.interval_seconds}s)"

@@ -253,12 +253,18 @@ def test_quick_book_slot_endpoint():
             "vac_id": "138",
             "visa_type": "26",
         }
+        from unittest.mock import patch, AsyncMock
         from agents.appointments.service_guard import service_guard
         prev_halted = service_guard._is_halted
         service_guard._is_halted = False
         try:
-            resp = client.post("/api/slots/quick-book", json=payload, headers=headers)
-            assert resp.status_code == 200
+            with patch(
+                "agents.appointments.fleet_manager.execute_booking",
+                new_callable=AsyncMock,
+                return_value={"success": False, "status": "OTP_TIMEOUT", "error": "Mocked OTP timeout"},
+            ):
+                resp = client.post("/api/slots/quick-book", json=payload, headers=headers)
+                assert resp.status_code == 200
         finally:
             service_guard._is_halted = prev_halted
         data = resp.json()

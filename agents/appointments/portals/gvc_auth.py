@@ -79,101 +79,13 @@ class GVCAuthSolver:
         Phase 1: Pre-flight probe to verify proxy connectivity and Imperva Incapsula clearance
         BEFORE invoking or paying for CapSolver tokens. Cost: $0.00.
         """
-        try:
-            from playwright.sync_api import sync_playwright
-            from playwright_stealth import Stealth
-            from urllib.parse import urlparse
-
-            proxy_dict = None
-            if proxy:
-                p = urlparse(proxy)
-                if p.hostname:
-                    proxy_dict = {"server": f"http://{p.hostname}:{p.port}"}
-                    if p.username:
-                        proxy_dict["username"] = p.username
-                        proxy_dict["password"] = p.password
-
-            with sync_playwright() as pw:
-                browser = pw.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                    ]
-                )
-                ctx_kwargs = {
-                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "viewport": {"width": 1280, "height": 720},
-                    "extra_http_headers": {
-                        "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                        "sec-ch-ua-mobile": "?0",
-                        "sec-ch-ua-platform": '"Windows"',
-                    }
-                }
-                if proxy_dict:
-                    ctx_kwargs["proxy"] = proxy_dict
-
-                context = browser.new_context(**ctx_kwargs)
-                page = context.new_page()
-                try:
-                    from .gvc import install_bandwidth_saver_route
-                    install_bandwidth_saver_route(page, allow_app_js=True)
-                except Exception:
-                    pass
-
-                try:
-                    Stealth().apply_stealth_sync(page)
-                except Exception:
-                    pass
-
-                target_url = f"{self.base_url}/?lang=en_US"
-                clean_proxy = proxy.split("@")[-1] if proxy else "direct"
-                logger.info(f"[gvc_auth] [PRE-FLIGHT] Probing proxy {clean_proxy} on {target_url} (Zero CapSolver spend)...")
-                try:
-                    resp = page.goto(target_url, wait_until="load", timeout=30000)
-                    # Let Imperva JS clearance script & any automatic reload complete (proven in standalone-flow)
-                    page.wait_for_timeout(3000)
-                    if page.locator("iframe#main-iframe").count() > 0:
-                        try:
-                            page.wait_for_selector(
-                                "input[name='username'], input[type='email'], input[name='email'], form",
-                                timeout=8000,
-                            )
-                        except Exception:
-                            pass
-                except Exception as net_err:
-                    browser.close()
-                    err_msg = str(net_err)
-                    logger.warning(f"[gvc_auth] [PRE-FLIGHT FAILED] Proxy {clean_proxy} connection error: {err_msg}")
-                    return {
-                        "clear": False,
-                        "is_waf": False,
-                        "error": err_msg,
-                        "quarantine_seconds": 900,
-                    }
-
-                # Only abort pre-flight on hard HTTP 403/472 blocks (GVCW embeds Imperva iframe even on valid HTTP 200 sessions)
-                status_code = resp.status if resp else 200
-                is_status_blocked = status_code in (403, 472)
-
-                if is_status_blocked:
-                    browser.close()
-                    logger.warning(f"[gvc_auth] [PRE-FLIGHT BLOCKED] HTTP {status_code} WAF block detected on proxy {clean_proxy}. Quarantining 60m.")
-                    return {
-                        "clear": False,
-                        "is_waf": True,
-                        "error": f"HTTP {status_code} Imperva WAF block on target origin",
-                        "quarantine_seconds": 3600,
-                    }
-
-                browser.close()
-                logger.info(f"[gvc_auth] [PRE-FLIGHT PASSED] Proxy {clean_proxy} reached target origin (HTTP {status_code}). Proceeding to CAPTCHA solve.")
-                return {"clear": True}
-        except Exception as e:
-            logger.error(f"[gvc_auth] Pre-flight exception on proxy {proxy}: {e}")
-            return {"clear": False, "is_waf": False, "error": str(e), "quarantine_seconds": 900}
+        from .playwright_client import probe_origin_waf
+        return probe_origin_waf(
+            base_url=self.base_url,
+            proxy=proxy,
+            allow_app_js=True,
+            timeout_ms=30000,
+        )
 
     def _browser_login_sync(
         self,
@@ -184,126 +96,25 @@ class GVCAuthSolver:
     ) -> Dict[str, Any]:
         """
         Execute full stealth browser login handshake inside the Playwright Chromium context.
-        This ensures Imperva Incapsula TLS fingerprinting, JS challenge tokens, and cookies
-        are seamlessly bound to the origin session when calling /api/v1/auth/login.
+        Delegates to the centralized `playwright_client.run_stealth_browser_fetch()`.
         """
-        try:
-            from playwright.sync_api import sync_playwright
-            from playwright_stealth import Stealth
-            from urllib.parse import urlparse
-
-            proxy_dict = None
-            if proxy:
-                p = urlparse(proxy)
-                if p.hostname:
-                    proxy_dict = {"server": f"http://{p.hostname}:{p.port}"}
-                    if p.username:
-                        proxy_dict["username"] = p.username
-                        proxy_dict["password"] = p.password
-
-            with sync_playwright() as pw:
-                browser = pw.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                    ]
-                )
-                ctx_kwargs = {
-                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "viewport": {"width": 1280, "height": 720},
-                    "extra_http_headers": {
-                        "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                        "sec-ch-ua-mobile": "?0",
-                        "sec-ch-ua-platform": '"Windows"',
-                    }
-                }
-                if proxy_dict:
-                    ctx_kwargs["proxy"] = proxy_dict
-
-                context = browser.new_context(**ctx_kwargs)
-                page = context.new_page()
-                try:
-                    from .gvc import install_bandwidth_saver_route
-                    install_bandwidth_saver_route(page, allow_app_js=True)
-                except Exception:
-                    pass
-
-                try:
-                    Stealth().apply_stealth_sync(page)
-                except Exception:
-                    pass
-
-                # Warm up session and let Incapsula JS challenge resolve on origin (proven in standalone-flow)
-                target_url = f"{self.base_url}/?lang=en_US"
-                logger.info(f"[gvc_auth] Navigating browser to {target_url} for WAF clearance...")
-                page.goto(target_url, wait_until="load", timeout=35000)
-                page.wait_for_timeout(3000)
-                if page.locator("iframe#main-iframe").count() > 0:
-                    try:
-                        page.wait_for_selector(
-                            "input[name='username'], input[type='email'], input[name='email'], form",
-                            timeout=8000,
-                        )
-                        page.wait_for_timeout(1500)
-                    except Exception:
-                        pass
-
-                # Execute login directly inside page execution context (matches proven standalone-flow handshake)
-                # Do not abort prematurely on DOM iframe#main-iframe; let /api/v1/auth/login response determine outcome.
-                js_login = """
-                async (args) => {
-                    try {
-                        const res = await fetch('/api/v1/auth/login', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json; charset=UTF-8',
-                                'Accept': '*/*',
-                                'X-Requested-With': 'XMLHttpRequest'
-                            },
-                            body: JSON.stringify({
-                                username: args.username,
-                                password: args.password,
-                                'g-recaptcha-response': args.token
-                            })
-                        });
-                        const auth = res.headers.get('authorization') || res.headers.get('Authorization') || '';
-                        let bodyText = '';
-                        let json = null;
-                        try {
-                            bodyText = await res.text();
-                            json = JSON.parse(bodyText);
-                        } catch(e) {}
-                        return {
-                            status: res.status,
-                            auth: auth,
-                            json: json,
-                            text: bodyText
-                        };
-                    } catch(err) {
-                        return {
-                            status: 0,
-                            error: err.message
-                        };
-                    }
-                }
-                """
-                logger.info(f"[gvc_auth] Submitting login payload via browser page evaluate for {email}...")
-                result = page.evaluate(js_login, {"username": email, "password": password, "token": captcha_token})
-
-                cookies = {c["name"]: c["value"] for c in context.cookies()}
-                browser.close()
-
-                if not isinstance(result, dict):
-                    result = {"status": 0, "error": "Invalid evaluate result"}
-
-                result["cookies"] = cookies
-                return result
-        except Exception as err:
-            logger.error(f"[gvc_auth] Browser login exception: {err}")
-            return {"status": 0, "error": str(err), "cookies": {}}
+        from .playwright_client import run_stealth_browser_fetch
+        logger.info(f"[gvc_auth] Submitting login payload via centralized stealth browser for {email}...")
+        return run_stealth_browser_fetch(
+            base_url=self.base_url,
+            method="POST",
+            path="/api/v1/auth/login",
+            payload={
+                "username": email,
+                "password": password,
+                "g-recaptcha-response": captcha_token,
+            },
+            proxy=proxy,
+            allow_app_js=True,
+            extra_headers={"Accept": "*/*"},
+            wait_for_login_form=True,
+            timeout_ms=35000,
+        )
 
     async def login_with_credentials(
         self,
@@ -524,18 +335,14 @@ class GVCAuthSolver:
                     if token:
                         if chosen_proxy:
                             self.proxy_manager.mark_proxy_success(chosen_proxy)
-                        saved = save_gvc_session(
-                            auth_token=token,
-                            cookies=session_cookies,
-                            bearer_token=token,
-                            proxy_url=chosen_proxy,
-                            source="AUTO_SOLVER",
-                            synced_by="auto_solver",
-                            notes=f"Autonomous login successful for {email}",
-                        )
+                        session_id = None
                         if account_id:
                             import json
-                            from ..db import update_gvc_account_session, set_gvc_account_status
+                            from ..db import (
+                                update_gvc_account_session,
+                                update_gvc_portal_account,
+                                set_gvc_account_status,
+                            )
                             update_gvc_account_session(
                                 account_id=account_id,
                                 auth_token=token,
@@ -543,18 +350,32 @@ class GVCAuthSolver:
                                 cookies_json=json.dumps(session_cookies),
                                 is_authenticated=True,
                             )
+                            if chosen_proxy:
+                                update_gvc_portal_account(account_id, {"assigned_proxy_url": chosen_proxy})
                             set_gvc_account_status(account_id, "ACTIVE", reason="Authenticated successfully")
+                            session_id = account_id
+                        else:
+                            saved = save_gvc_session(
+                                auth_token=token,
+                                cookies=session_cookies,
+                                bearer_token=token,
+                                proxy_url=chosen_proxy,
+                                source="AUTO_SOLVER",
+                                synced_by="auto_solver",
+                                notes=f"Autonomous login successful for {email}",
+                            )
+                            session_id = saved["id"]
 
-                        logger.info(f"[gvc_auth] Successfully authenticated GVC session (ID: {saved['id']}) for {email}!")
+                        logger.info(f"[gvc_auth] Successfully authenticated GVC session (ID: {session_id}) for {email}!")
                         log_system_event(
                             level="SUCCESS",
                             category="AUTH",
                             message=f"Autonomous login successful for account '{email}'. Session token synced and active.",
-                            details={"email": email, "session_id": saved["id"], "account_id": account_id},
+                            details={"email": email, "session_id": session_id, "account_id": account_id},
                         )
                         return {
                             "success": True,
-                            "session_id": saved["id"],
+                            "session_id": session_id,
                             "auth_token": token,
                             "bearer_token": token,
                             "masked_token": token[:15] + "..." if len(token) > 15 else token,

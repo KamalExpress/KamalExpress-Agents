@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 from cockpit.health import run_health_check
-from cockpit.fleet import run_fleet_overview, master_control, pre_stage_fleet
+from cockpit.fleet import run_fleet_overview, master_control, pre_stage_fleet, set_scan_mode
 from cockpit.slots import run_inspect_slots
 from cockpit.logs import run_tail_logs
 from cockpit.otp import inspect_latest_otp, submit_manual_code, run_test_all_numbers, watch_otp_stream
@@ -41,6 +41,8 @@ def main():
     # fleet
     fleet_parser = subparsers.add_parser("fleet", help="Inspect active GVC booking operators and account status")
     fleet_parser.add_argument("--action", choices=["overview", "pause-all", "resume-all", "pre-stage"], default="overview")
+    fleet_parser.add_argument("--scan-mode", choices=["normal", "drop_window"], default=None, help="Set fleet polling mode (normal vs drop_window)")
+    fleet_parser.add_argument("--scan-strategy", choices=["priority_plus_periodic_sweep", "target_dates_only"], default=None, help="Set date sweep strategy")
 
     # slots
     subparsers.add_parser("slots", help="Inspect currently discovered hot appointment slots")
@@ -100,7 +102,9 @@ def main():
     elif args.command == "doctor":
         run_cockpit_doctor()
     elif args.command == "fleet":
-        if args.action == "pause-all":
+        if args.scan_mode or args.scan_strategy:
+            set_scan_mode(scan_mode=args.scan_mode, scan_strategy=args.scan_strategy)
+        elif args.action == "pause-all":
             master_control("pause_all")
         elif args.action == "resume-all":
             master_control("resume_all")

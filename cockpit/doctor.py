@@ -63,15 +63,41 @@ def run_cockpit_doctor():
     disabled_acc = [a for a in accounts if a.get("status") == "DISABLED"]
     auth_acc = [a for a in accounts if a.get("is_authenticated")]
 
-    # 3. Synthesize Proxy WAF Health
+    # 3. Synthesize Proxy WAF Health (exclude already-DISABLED retired proxies)
     waf_flagged_proxies = [
         p for p in proxies
-        if "incapsula" in (p.get("last_error") or "").lower()
-        or "waf" in (p.get("last_error") or "").lower()
-        or "incapsula" in (p.get("quarantine_reason") or "").lower()
-        or p.get("fail_count", 0) > 0
+        if (p.get("status") or "").upper() != "DISABLED"
+        and (
+            "incapsula" in (p.get("last_error") or "").lower()
+            or "waf" in (p.get("last_error") or "").lower()
+            or "incapsula" in (p.get("quarantine_reason") or "").lower()
+            or p.get("fail_count", 0) > 0
+        )
     ]
-    untested_proxies = [p for p in proxies if p.get("fail_count", 0) == 0 and p not in waf_flagged_proxies]
+    untested_proxies = [
+        p for p in proxies
+        if (p.get("status") or "").upper() == "ACTIVE"
+        and p.get("fail_count", 0) == 0
+        and p not in waf_flagged_proxies
+    ]
+
+    # 3b. Synthesize Per-Worker JWT Isolation Health
+    jwt_issues: List[str] = []
+    seen_subjects: Dict[str, List[int]] = {}
+    telem_accounts = telemetry.get("accounts", []) if isinstance(telemetry, dict) else []
+    for ta in telem_accounts:
+        if not (ta.get("is_worker_active") and ta.get("is_authenticated")):
+            continue
+        acc_id = ta.get("account_id")
+        acc_email = (ta.get("email") or "").strip().lower()
+        bound_sub = (ta.get("bound_jwt_subject") or "").strip().lower()
+        if bound_sub:
+            seen_subjects.setdefault(bound_sub, []).append(acc_id)
+            if acc_email and bound_sub != acc_email:
+                jwt_issues.append(f"Account #{acc_id} ({acc_email}) is bound to mismatched JWT subject '{bound_sub}'.")
+    for sub, acc_ids in seen_subjects.items():
+        if len(acc_ids) > 1:
+            jwt_issues.append(f"Duplicate JWT subject '{sub}' shared across accounts {acc_ids} (session isolation violation).")
 
     # Calculate Readiness Score (0 - 100%)
     score = 0
@@ -99,6 +125,10 @@ def run_cockpit_doctor():
     else:
         reasons.append("High proportion of residential proxies flagged by Imperva WAF.")
 
+    if jwt_issues:
+        score = max(0, score - 25)
+        reasons.extend(jwt_issues)
+
     # 4. Display Readiness Level
     print("\n1. MISSION READINESS EVALUATION")
     print("-" * 80)
@@ -123,6 +153,11 @@ def run_cockpit_doctor():
         print("    - Operational Consequence: Platform is currently blind. If slots drop right now,")
         print("      zero notifications will trigger and zero bookings can execute.")
 
+    if jwt_issues:
+        print("\n[CRITICAL] PER-WORKER JWT ISOLATION VIOLATION:")
+        for ji in jwt_issues:
+            print(f"    - {ji}")
+
     if waf_flagged_proxies:
         print(f"\n[!] PROXY POOL WAF CHALLENGE ALERT:")
         flagged_ids = [f"#{p['id']} ({p['host']}:{p['port']})" for p in waf_flagged_proxies]
@@ -134,6 +169,11 @@ def run_cockpit_doctor():
     print("\n3. REQUIRED OPERATOR ACTIONS BEFORE TOMORROW'S DROP")
     print("-" * 80)
     step = 1
+
+    if jwt_issues:
+        print(f" Step {step}: RESOLVE WORKER JWT ISOLATION VIOLATIONS")
+        print("         Re-authenticate affected accounts so each worker holds its own distinct JWT token.")
+        step += 1
 
     if waf_flagged_proxies:
         print(f" Step {step}: ISOLATE FLAGGED PROXIES")

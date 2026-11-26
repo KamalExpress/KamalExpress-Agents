@@ -79,5 +79,24 @@ def pre_stage_fleet():
     print("=" * 70)
 
 
+def set_scan_mode(scan_mode: str = None, scan_strategy: str = None):
+    payload = {}
+    if scan_mode:
+        payload["scan_mode"] = scan_mode
+    if scan_strategy:
+        payload["scan_date_strategy"] = scan_strategy
+    if not payload:
+        return
+    print("=" * 70)
+    print(f" [COCKPIT] UPDATING FLEET SCAN CONFIG: {payload}")
+    print("=" * 70)
+    try:
+        res = default_client.post("/api/settings/operational-mode", json=payload)
+        print(f"[SUCCESS] Updated live scan settings: {res}")
+    except Exception as exc:
+        print(f"[ERROR] Failed to update scan settings: {exc}")
+    print("=" * 70)
+
+
 if __name__ == "__main__":
     run_fleet_overview()
