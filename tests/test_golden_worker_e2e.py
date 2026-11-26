@@ -683,3 +683,41 @@ async def test_scaled_5_workers_simultaneous_e2e():
     for c in clients:
         refreshed = get_client_by_id(c.id)
         assert refreshed is not None and refreshed.status == "BOOKED"
+
+
+def test_service_guard_halts_on_zero_active_proxies_and_recovers():
+    """Governance must automatically halt all operations when 0/N active proxies remain and auto-recover on fresh ingest."""
+    from agents.appointments.proxy import ProxyManager
+    from agents.appointments.service_guard import service_guard
+
+    prev_halted = service_guard._is_halted
+    prev_proxy_ok = service_guard._proxy_ok
+    prev_proxy_reason = service_guard._proxy_reason
+    prev_cap_ok = service_guard._capsolver_ok
+
+    try:
+        service_guard._is_halted = False
+        service_guard._proxy_ok = True
+        service_guard._capsolver_ok = True
+        service_guard._proxy_reason = ""
+
+        pm = ProxyManager()
+        with patch("agents.appointments.proxy.record_proxy_result"), \
+             patch("agents.appointments.proxy.get_active_proxies", return_value=[]), \
+             patch("agents.appointments.proxy.get_all_proxies", return_value=[{"id": 1}, {"id": 2}]):
+            pm.mark_proxy_failed("http://u:p@gr.decodo.com:30001", error="Imperva WAF", log_event=False)
+
+        can_run, reason = service_guard.can_proceed()
+        assert can_run is False
+        assert "0/2 active" in reason
+
+        # Ingesting fresh proxies clears the governance halt
+        resumed = service_guard.clear_proxy_exhaustion_if_recovered(active_count=10)
+        assert resumed is True
+        can_run_after, _ = service_guard.can_proceed()
+        assert can_run_after is True
+    finally:
+        service_guard._is_halted = prev_halted
+        service_guard._proxy_ok = prev_proxy_ok
+        service_guard._proxy_reason = prev_proxy_reason
+        service_guard._capsolver_ok = prev_cap_ok

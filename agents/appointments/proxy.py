@@ -94,16 +94,24 @@ class ProxyManager:
                 ProxyManager._allocated_proxies.discard(proxy_url)
             clean = proxy_url.split("@")[-1]
             logger.warning(f"[proxy] [RETIRED] Proxy {clean} permanently disabled after failure (will not be reused).")
+            active_proxies = len(get_active_proxies())
+            total = len(get_all_proxies())
             if error and ("407" in str(error) or "traffic limit" in str(error).lower() or "access denied" in str(error).lower()):
                 try:
                     from .service_guard import service_guard
                     service_guard.mark_proxy_failed(f"Residential proxy traffic quota reached ({error})")
                 except Exception:
                     pass
+            elif total > 0 and active_proxies == 0:
+                try:
+                    from .service_guard import service_guard
+                    service_guard.mark_proxy_failed(
+                        f"All residential proxies exhausted (0/{total} active). Operations halted to protect VPS IP; add fresh sticky proxies to resume."
+                    )
+                except Exception:
+                    pass
             if log_event:
                 from .db import log_system_event
-                active_proxies = len(get_active_proxies())
-                total = len(get_all_proxies())
                 log_system_event(
                     level="WARNING",
                     category="PROXY",

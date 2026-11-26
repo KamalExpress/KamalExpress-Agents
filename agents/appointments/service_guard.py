@@ -119,12 +119,28 @@ class ServiceGuard:
         self._log_event_to_db("CAPSOLVER_EXHAUSTED", self._capsolver_reason, level="ERROR")
 
     def mark_proxy_failed(self, error_desc: str) -> None:
-        """Called reactively when proxy returns 407 or traffic limit exceeded."""
+        """Called reactively when proxy returns 407, traffic limit exceeded, or 0 active proxies remain."""
         self._proxy_ok = False
-        self._proxy_reason = f"Residential proxy error: {error_desc} (Purchase traffic at https://dashboard.decodo.com)"
+        self._proxy_reason = f"Residential proxy error: {error_desc} (Purchase/manage proxies at https://dashboard.decodo.com)"
         self._is_halted = True
-        logger.error(f"[service_guard]  Proxy guard tripped: {self._proxy_reason}")
+        logger.error(f"[service_guard] Proxy guard tripped: {self._proxy_reason}")
         self._log_event_to_db("PROXY_EXHAUSTED", self._proxy_reason, level="ERROR")
+
+    def clear_proxy_exhaustion_if_recovered(self, active_count: int) -> bool:
+        """Clear a proxy-pool exhaustion halt once fresh active proxies are ingested."""
+        if active_count <= 0:
+            return False
+        was_halted = self._is_halted
+        if not self._proxy_ok:
+            self._proxy_ok = True
+            self._proxy_reason = ""
+            self._is_halted = not (self._capsolver_ok and self._proxy_ok)
+            if was_halted and not self._is_halted:
+                msg = f"Fresh residential proxies ingested ({active_count} active). Governance halt cleared; operations resumed."
+                logger.info(f"[service_guard] {msg}")
+                self._log_event_to_db("SERVICES_RESTORED", msg, level="SUCCESS")
+                return True
+        return False
 
     # ── Verification (Manual Button & 3-5m Periodic Recovery) ───────────
 

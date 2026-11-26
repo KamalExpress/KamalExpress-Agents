@@ -2535,6 +2535,12 @@ async def add_proxies_endpoint(
 
     added = add_proxies_bulk(lines)
     stats = get_proxy_stats()
+    if stats.get("active", 0) > 0:
+        try:
+            from agents.appointments.service_guard import service_guard
+            service_guard.clear_proxy_exhaustion_if_recovered(int(stats["active"]))
+        except Exception:
+            pass
     return {
         "success": True,
         "added": added,
