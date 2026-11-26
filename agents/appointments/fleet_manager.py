@@ -1031,6 +1031,7 @@ class GVCFleetManager:
                     category="SLOT_DISCOVERY",
                     worker_name=persona,
                 )
+                from .calendar_service import operational_calendar
                 probe_dates, _ = operational_calendar.resolve_worker_scan_dates(
                     visa_type=visa_type,
                     target_date_from=client.preferred_date_start or None,
@@ -1080,7 +1081,7 @@ class GVCFleetManager:
                     }
                 else:
                     # BLITZ DROP MODE: Resolve a strictly valid future operational date (never use stale past dates)
-                    from .calendar_service import calendar_service
+                    from .calendar_service import operational_calendar
                     today_date = datetime.utcnow().date()
 
                     def _parse_dmy(val: Optional[str]):
@@ -1108,7 +1109,7 @@ class GVCFleetManager:
                         chosen_dt = today_date + timedelta(days=1)
 
                     # Snap to the first valid operational weekday >= chosen_dt for this visa_type
-                    valid_month_dates = calendar_service.get_valid_dates_for_month(chosen_dt.month, chosen_dt.year, str(visa_type))
+                    valid_month_dates = operational_calendar.get_valid_dates_for_month(chosen_dt.month, chosen_dt.year, str(visa_type))
                     snapped_str = None
                     for d_str in valid_month_dates:
                         d_obj = _parse_dmy(d_str)
