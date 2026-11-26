@@ -149,32 +149,22 @@ class GVCAuthSolver:
                         "quarantine_seconds": 900,
                     }
 
-                # Check for genuine Incapsula anti-bot challenge block
-                page_html = page.content().lower()
+                # Only abort pre-flight on hard HTTP 403/472 blocks (GVCW embeds Imperva iframe even on valid HTTP 200 sessions)
                 status_code = resp.status if resp else 200
-                has_incap_iframe = (
-                    page.locator("iframe#main-iframe").count() > 0
-                    or page.locator("iframe[src*='incapsula']").count() > 0
-                )
-                has_incident = (
-                    "incident id" in page_html
-                    or "access denied" in page_html
-                    or "request unsuccessful" in page_html
-                )
                 is_status_blocked = status_code in (403, 472)
 
-                if has_incap_iframe or has_incident or is_status_blocked:
+                if is_status_blocked:
                     browser.close()
-                    logger.warning(f"[gvc_auth] [PRE-FLIGHT BLOCKED] Imperva Incapsula WAF challenge detected on proxy {clean_proxy}. Quarantining 60m.")
+                    logger.warning(f"[gvc_auth] [PRE-FLIGHT BLOCKED] HTTP {status_code} WAF block detected on proxy {clean_proxy}. Quarantining 60m.")
                     return {
                         "clear": False,
                         "is_waf": True,
-                        "error": "Imperva Incapsula anti-bot challenge on target origin",
+                        "error": f"HTTP {status_code} Imperva WAF block on target origin",
                         "quarantine_seconds": 3600,
                     }
 
                 browser.close()
-                logger.info(f"[gvc_auth] [PRE-FLIGHT PASSED] Target origin is clean on {clean_proxy}! Proceeding to CAPTCHA solve.")
+                logger.info(f"[gvc_auth] [PRE-FLIGHT PASSED] Proxy {clean_proxy} reached target origin (HTTP {status_code}). Proceeding to CAPTCHA solve.")
                 return {"clear": True}
         except Exception as e:
             logger.error(f"[gvc_auth] Pre-flight exception on proxy {proxy}: {e}")
@@ -251,30 +241,8 @@ class GVCAuthSolver:
                     except Exception:
                         pass
 
-                # Check if page is blocked by genuine Incapsula anti-bot challenge
-                page_html = page.content().lower()
-                has_incap_iframe = (
-                    page.locator("iframe#main-iframe").count() > 0
-                    or page.locator("iframe[src*='incapsula']").count() > 0
-                )
-                has_incident = (
-                    "incident id" in page_html
-                    or "access denied" in page_html
-                    or "request unsuccessful" in page_html
-                )
-                if has_incap_iframe or has_incident:
-                    cookies = {c["name"]: c["value"] for c in context.cookies()}
-                    browser.close()
-                    logger.warning(f"[gvc_auth] Imperva Incapsula anti-bot challenge detected on target origin ({target_url}).")
-                    return {
-                        "status": 472,
-                        "is_waf_challenge": True,
-                        "error": "Imperva Incapsula anti-bot challenge detected on target origin.",
-                        "text": "iframe id=\"main-iframe\" - Incapsula anti-bot challenge",
-                        "cookies": cookies
-                    }
-
-                # Execute login directly inside page execution context
+                # Execute login directly inside page execution context (matches proven standalone-flow handshake)
+                # Do not abort prematurely on DOM iframe#main-iframe; let /api/v1/auth/login response determine outcome.
                 js_login = """
                 async (args) => {
                     try {
