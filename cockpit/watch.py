@@ -85,7 +85,7 @@ def run_watchdog(
     auto_recover: bool = False,
     otp_alert_seconds: int = 60,
     stalled_worker_seconds: int = 300,
-    stuck_client_seconds: int = 300,
+    stuck_client_seconds: int = 360,
     proxy_floor: int = 50,
     capsolver_floor: float = 2.0,
 ) -> Dict[str, List[str]]:

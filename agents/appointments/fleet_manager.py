@@ -518,7 +518,7 @@ class AccountWorkerInstance:
                         )
 
                         max_otp_attempts = 3
-                        otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
+                        otp_timeout = max(90.0, float(get_system_setting("otp_wait_timeout_seconds", "90") or "90"))
                         otp_code = None
 
                         # Launch concurrent reCAPTCHA solving during OTP wait window for zero-latency strike
@@ -549,7 +549,7 @@ class AccountWorkerInstance:
                                     account_id=self.account_id,
                                     worker_name=persona,
                                 )
-                            otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
+                            otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=270.0)
                             if otp_code:
                                 record_booking_step(
                                     client_id=client.id, step_number=6, step_name="OTP Dispatch & Capture",
@@ -1137,7 +1137,7 @@ class GVCFleetManager:
 
             # 4 & 5. Trigger OTP with Auto-Resend / Re-trigger Loop (up to 3 attempts, 60s each)
             max_otp_attempts = 3
-            otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
+            otp_timeout = max(90.0, float(get_system_setting("otp_wait_timeout_seconds", "90") or "90"))
             otp_code = None
 
             # Launch concurrent reCAPTCHA solving during OTP wait window for zero-latency strike
@@ -1168,7 +1168,7 @@ class GVCFleetManager:
                         account_id=account_id,
                         worker_name=persona,
                     )
-                otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
+                otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=270.0)
                 if otp_code:
                     self.log_event(
                         f"[SUCCESS] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {target_date} {target_time}.",
@@ -1407,7 +1407,7 @@ class GVCFleetManager:
         vac_name = vac_meta.get("name", f"VAC {vac_id}")
 
         max_otp_attempts = 3
-        otp_timeout = float(get_system_setting("otp_wait_timeout_seconds", "60") or "60")
+        otp_timeout = max(90.0, float(get_system_setting("otp_wait_timeout_seconds", "90") or "90"))
         otp_code = None
 
         for otp_attempt in range(1, max_otp_attempts + 1):
@@ -1428,7 +1428,7 @@ class GVCFleetManager:
                     account_id=account_id,
                     worker_name=persona,
                 )
-            otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=90.0)
+            otp_code = await wait_for_otp(phone=target_phone, timeout=otp_timeout, max_age_seconds=270.0)
             if otp_code:
                 self.log_event(
                     f"[SUCCESS] [QUICK BOOK] Operator '{persona}' received OTP '{otp_code}' on SIM {masked_sim} for Client #{client.id} ({client.first_name} {client.last_name}) for {vac_name} ({visa_label}) on {slot_date} {slot_time}.",
