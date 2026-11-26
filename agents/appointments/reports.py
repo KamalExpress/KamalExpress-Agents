@@ -195,6 +195,13 @@ def build_fleet_rollup_data(
             })
 
     # Compute coverage-gap advisories (queued clients whose preferred VAC + visa_type has 0 active authenticated scouts)
+    # Any active authenticated SLOT_CHECKER dynamically scouts all queued (vac_id, visa_type) pairs.
+    has_universal_checker = any(
+        a.get("is_authenticated")
+        and a.get("is_worker_active")
+        and str(a.get("account_role", "HYBRID")).upper() == "SLOT_CHECKER"
+        for a in fleet_accounts
+    )
     covered_pairs = {
         (str(a.get("vac_id") or ""), str(a.get("visa_type") or ""))
         for a in fleet_accounts
@@ -208,7 +215,7 @@ def build_fleet_rollup_data(
 
     coverage_gaps = []
     for (q_vac, q_visa), q_count in sorted(queued_by_pair.items()):
-        if (q_vac, q_visa) not in covered_pairs:
+        if not has_universal_checker and (q_vac, q_visa) not in covered_pairs:
             coverage_gaps.append({
                 "vac_id": q_vac,
                 "vac_label": _vac_label(q_vac),

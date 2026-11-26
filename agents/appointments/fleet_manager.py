@@ -84,6 +84,20 @@ class SlotDiscoveryCache:
                 return None
             return entry["slots"]
 
+    def get_any_open(self) -> Optional[tuple[str, str, List[AvailableSlot]]]:
+        """Return (vac_id, visa_type, slots) for any unexpired bucket with genuine open slots."""
+        now_ts = time.time()
+        with self._lock:
+            for key, entry in self._cache.items():
+                if now_ts - entry["timestamp"] > entry["ttl"]:
+                    continue
+                slots = entry.get("slots") or []
+                if any(getattr(s, "available_capacity", 0) > 0 for s in slots):
+                    parts = key.split(":", 1)
+                    if len(parts) == 2:
+                        return parts[0], parts[1], slots
+        return None
+
     def set(self, vac_id: str, visa_type: str, slots: List[AvailableSlot], ttl: int = 180) -> None:
         key = f"{vac_id}:{visa_type}"
         with self._lock:
@@ -300,8 +314,33 @@ class AccountWorkerInstance:
                         await asyncio.sleep(10)
                         continue
 
-                vac_id = acc.get("target_vac_id", "138")
-                visa_type = acc.get("target_visa_type", "26")
+                vac_id = str(acc.get("target_vac_id", "138"))
+                visa_type = str(acc.get("target_visa_type", "26"))
+
+                # For SLOT_CHECKER workers, dynamically rotate across ALL active (vac_id, visa_type)
+                # buckets demanded by QUEUED clients so 2 checkers can cover every center & visa type.
+                if role == "SLOT_CHECKER":
+                    try:
+                        from .db import get_all_clients
+                        q_pairs = sorted({
+                            (str(c.vac_id or "138"), str(c.visa_type or "26"))
+                            for c in get_all_clients(status="QUEUED")
+                        })
+                        if q_pairs:
+                            rot = self.account_id % len(q_pairs)
+                            ordered_pairs = q_pairs[rot:] + q_pairs[:rot]
+                            chosen_pair = None
+                            for p_vac, p_visa in ordered_pairs:
+                                p_cache = slot_cache.get(vac_id=p_vac, visa_type=p_visa)
+                                if p_cache is None or any(getattr(s, "available_capacity", 0) > 0 for s in p_cache):
+                                    chosen_pair = (p_vac, p_visa)
+                                    break
+                            if not chosen_pair:
+                                chosen_pair = ordered_pairs[0]
+                            vac_id, visa_type = chosen_pair
+                    except Exception as mp_err:
+                        logger.debug(f"[fleet_worker #{self.account_id}] Multi-bucket pair resolution note: {mp_err}")
+
                 vac_meta = GVC_VACS.get(str(vac_id), GVC_VACS.get("138", {"name": f"VAC {vac_id}"}))
 
                 # 2. Check Shared Cache for Discovered Open Slots First
@@ -311,9 +350,15 @@ class AccountWorkerInstance:
                 if cached_slots and any(s.available_capacity > 0 for s in cached_slots):
                     slots = cached_slots
                 elif role == "BOOKER":
-                    self._last_status = "HOT_STANDBY (Pre-Staged Booker)"
-                    await asyncio.sleep(3)
-                    continue
+                    # BOOKER workers can wake up for ANY open (vac_id, visa_type) drop in shared cache
+                    any_open = slot_cache.get_any_open()
+                    if any_open:
+                        vac_id, visa_type, slots = any_open
+                        vac_meta = GVC_VACS.get(str(vac_id), GVC_VACS.get("138", {"name": f"VAC {vac_id}"}))
+                    else:
+                        self._last_status = "HOT_STANDBY (Pre-Staged Booker)"
+                        await asyncio.sleep(3)
+                        continue
                 else:
                     # SLOT_CHECKER or HYBRID scanning
                     from .calendar_service import operational_calendar
