@@ -33,7 +33,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import AIMessage, HumanMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from config.settings import get_settings
 from providers import get_provider
@@ -1050,6 +1050,8 @@ async def update_client_endpoint(client_id: int, client: ClientProfile, user: di
         ("vac_city", "VAC City"),
         ("preferred_date_start", "Start Date"),
         ("preferred_date_end", "End Date"),
+        ("target_dates", "Target Dates"),
+        ("target_times", "Target Times"),
         ("status", "Status"),
         ("notes", "Notes"),
         ("owner_username", "Owner"),
@@ -1080,6 +1082,96 @@ async def update_client_endpoint(client_id: int, client: ClientProfile, user: di
         "client_id": client_id,
         "changes": diff_dict,
         "message": f"Client #{client_id} ({client.first_name} {client.last_name}) updated successfully.",
+    }
+
+
+class BulkTargetsRequest(BaseModel):
+    client_ids: Optional[List[int]] = None
+    vac_id: Optional[str] = None
+    visa_type: Optional[str] = None
+    set_vac_id: Optional[str] = None
+    set_visa_type: Optional[str] = None
+    target_dates: List[str] = Field(default_factory=list)
+    target_times: List[str] = Field(default_factory=list)
+    distribute: bool = True
+
+
+@app.post("/api/clients/bulk-targets")
+async def bulk_set_client_targets(req: BulkTargetsRequest, user: dict = Depends(get_current_user)):
+    """Bulk-assign priority target_dates and target_times (with optional round-robin distribution) to QUEUED clients."""
+    from agents.appointments.calendar_service import operational_calendar
+    from agents.appointments.portals.gvc import GVC_VACS
+
+    is_admin = user.get("role") == "admin"
+    username = user.get("username", "staff")
+    all_q = get_all_clients(status="QUEUED", owner_username=None if is_admin else username, is_admin=is_admin)
+
+    target_id_set = set(req.client_ids or [])
+    clean_dates = [d.strip() for d in req.target_dates if d and d.strip()]
+    clean_times = [t.strip() for t in req.target_times if t and t.strip()]
+
+    updated = []
+    skipped = []
+    for idx, cl in enumerate(all_q):
+        if target_id_set and cl.id not in target_id_set:
+            continue
+        if req.vac_id and str(cl.vac_id) != str(req.vac_id):
+            continue
+        if req.visa_type and str(cl.visa_type) != str(req.visa_type):
+            continue
+
+        eff_visa = str(req.set_visa_type or cl.visa_type or "26").strip()
+        eff_vac = str(req.set_vac_id or cl.vac_id or "137").strip()
+        if eff_vac not in ("137", "138"):
+            eff_vac = cl.vac_id or "137"
+
+        # Filter dates strictly to valid operational weekdays for the effective visa type
+        valid_dates = [d for d in clean_dates if operational_calendar.is_valid_date(d, eff_visa)]
+        if clean_dates and not valid_dates:
+            skipped.append({"id": cl.id, "reason": f"No valid operational weekdays for Type {eff_visa}"})
+            continue
+
+        if req.distribute and len(valid_dates) > 1:
+            d_off = idx % len(valid_dates)
+            assigned_dates = valid_dates[d_off:] + valid_dates[:d_off]
+        else:
+            assigned_dates = list(valid_dates)
+
+        if req.distribute and len(clean_times) > 1:
+            t_off = idx % len(clean_times)
+            assigned_times = clean_times[t_off:] + clean_times[:t_off]
+        else:
+            assigned_times = list(clean_times)
+
+        cl.vac_id = eff_vac
+        cl.vac_city = GVC_VACS.get(eff_vac, {}).get("city", cl.vac_city or "Islamabad")
+        cl.visa_type = eff_visa
+        cl.target_dates = ",".join(assigned_dates)
+        cl.target_times = ",".join(assigned_times)
+        if assigned_dates and not cl.preferred_date_start:
+            cl.preferred_date_start = assigned_dates[0]
+        update_client(cl.id, cl)
+        updated.append({
+            "id": cl.id,
+            "name": f"{cl.first_name} {cl.last_name}".strip(),
+            "vac_id": cl.vac_id,
+            "visa_type": cl.visa_type,
+            "target_dates": cl.target_dates,
+            "target_times": cl.target_times,
+        })
+
+    log_system_event(
+        level="INFO",
+        category="QUEUE",
+        message=f"Staff '{username}' bulk-updated targeted dates/times on {len(updated)} queued client(s) (dates={','.join(clean_dates)}).",
+        details={"updated_count": len(updated), "skipped_count": len(skipped), "dates": clean_dates, "times": clean_times},
+    )
+    return {
+        "success": True,
+        "updated_count": len(updated),
+        "skipped_count": len(skipped),
+        "updated": updated,
+        "skipped": skipped,
     }
 
 

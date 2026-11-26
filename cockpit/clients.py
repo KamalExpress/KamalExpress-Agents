@@ -104,3 +104,40 @@ def reassign_clients_owner(
     if missing:
         print(f"[WARNING] Not found in live queue: {', '.join(missing)}")
     print(f"[SUMMARY] Reassigned {updated_count} client(s) to '{target_owner}'.")
+
+
+def bulk_set_targets(
+    target_dates: str,
+    target_times: Optional[str] = None,
+    vac_id: Optional[str] = None,
+    visa_type: Optional[str] = None,
+    set_vac_id: Optional[str] = None,
+    set_visa_type: Optional[str] = None,
+    ids: Optional[List[int]] = None,
+    distribute: bool = True,
+):
+    """Bulk-assign priority target_dates and target_times via /api/clients/bulk-targets."""
+    dates_list = [d.strip() for d in target_dates.split(",") if d.strip()]
+    times_list = [t.strip() for t in (target_times or "09:00,09:30,10:00,10:30,11:00,11:30").split(",") if t.strip()]
+    payload = {
+        "client_ids": ids or None,
+        "vac_id": vac_id,
+        "visa_type": visa_type,
+        "set_vac_id": set_vac_id,
+        "set_visa_type": set_visa_type,
+        "target_dates": dates_list,
+        "target_times": times_list,
+        "distribute": distribute,
+    }
+    res = default_client.post("/api/clients/bulk-targets", json=payload)
+    if not res.get("success"):
+        print(f"[ERROR] Bulk target update failed: {res}")
+        return
+    for row in res.get("updated", []):
+        print(
+            f"[SUCCESS] Client #{row['id']} {row['name']}: VAC={row['vac_id']} Type={row['visa_type']} "
+            f"| Dates={row['target_dates']} | Times={row['target_times']}"
+        )
+    for row in res.get("skipped", []):
+        print(f"[SKIPPED] Client #{row['id']}: {row['reason']}")
+    print(f"[SUMMARY] Updated {res.get('updated_count', 0)} client(s), skipped {res.get('skipped_count', 0)}.")

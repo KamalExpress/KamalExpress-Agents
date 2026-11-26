@@ -166,3 +166,107 @@ def test_staff_client_ownership_isolation(tmp_path: Path):
     admin_list = get_all_clients(owner_username="admin", is_admin=True, db_path=db_file)
     assert len(admin_list) == 3
     assert get_queue_stats(owner_username="admin", is_admin=True, db_path=db_file)["TOTAL"] == 3
+
+
+def test_tier0_exact_target_date_priority(tmp_path: Path):
+    from agents.appointments.db import get_client_by_id
+    db_file = tmp_path / "tier0_targets.db"
+    init_db(db_file)
+
+    # Client 1 queued FIRST with broad date range only (no target_dates)
+    c_broad = _make_client("PBROAD1", "BroadClient", vac_id="138", pref_start="01/12/2026", pref_end="31/12/2026")
+    c_broad.visa_type = "2"
+    id_broad = add_client(c_broad, db_path=db_file)
+
+    # Client 2 queued SECOND with exact target_dates & target_times
+    c_exact = _make_client("PEXACT2", "ExactClient", vac_id="138", pref_start="01/12/2026", pref_end="31/12/2026")
+    c_exact.visa_type = "2"
+    c_exact.target_dates = "10/12/2026,11/12/2026"
+    c_exact.target_times = "09:30,10:00"
+    id_exact = add_client(c_exact, db_path=db_file)
+
+    persisted = get_client_by_id(id_exact, db_path=db_file)
+    assert persisted is not None
+    assert persisted.target_dates == "10/12/2026,11/12/2026"
+    assert persisted.target_times == "09:30,10:00"
+
+    # Slot opens on 10/12/2026 at VAC 138 (Type 2) -> must claim ExactClient FIRST via Tier 0!
+    claimed1, tier1 = claim_next_client_flexible_vac(
+        destination="Greece", visa_type="2", vac_id="138", slot_date="10/12/2026", db_path=db_file
+    )
+    assert claimed1 is not None and claimed1.id == id_exact
+    assert tier1 == "EXACT_TARGET_DATE"
+
+    # Next slot on 10/12/2026 -> falls through to BroadClient via Tier 1
+    claimed2, tier2 = claim_next_client_flexible_vac(
+        destination="Greece", visa_type="2", vac_id="138", slot_date="10/12/2026", db_path=db_file
+    )
+    assert claimed2 is not None and claimed2.id == id_broad
+    assert tier2 == "PREFERRED_VAC_DATE"
+
+
+def test_bulk_targets_api_round_robin_and_weekday_filter(tmp_path: Path, monkeypatch):
+    from api import main as api_main
+    from agents.appointments import db as app_db
+
+    db_file = tmp_path / "bulk_targets.db"
+    init_db(db_file)
+    monkeypatch.setattr(
+        api_main,
+        "get_all_clients",
+        lambda *a, **kw: app_db.get_all_clients(*a, db_path=db_file, **kw),
+    )
+    monkeypatch.setattr(
+        api_main,
+        "update_client",
+        lambda cid, profile, *a, **kw: app_db.update_client(cid, profile, db_path=db_file),
+    )
+    monkeypatch.setattr(api_main, "log_system_event", lambda *a, **kw: None)
+
+    c1 = _make_client("PBLK01", "ClientOne", vac_id="137")
+    c2 = _make_client("PBLK02", "ClientTwo", vac_id="138")
+    c3 = _make_client("PBLK03", "ClientThree", vac_id="138")
+    id1 = add_client(c1, db_path=db_file)
+    id2 = add_client(c2, db_path=db_file)
+    id3 = add_client(c3, db_path=db_file)
+
+    api_main.app.dependency_overrides[api_main.get_current_user] = lambda: {
+        "id": 1, "username": "admin", "role": "admin"
+    }
+    try:
+        client = TestClient(api_main.app)
+        # Include an invalid Monday (07/12/2026) for Type 2 alongside valid Thu/Fri dates
+        resp = client.post(
+            "/api/clients/bulk-targets",
+            json={
+                "target_dates": ["03/12/2026", "04/12/2026", "07/12/2026", "10/12/2026", "11/12/2026"],
+                "target_times": ["09:00", "09:30", "10:00"],
+                "set_vac_id": "138",
+                "set_visa_type": "2",
+                "distribute_slots": True,
+                "only_queued": True,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["updated_count"] == 3
+
+        # Verify each client received VAC 138, Visa Type 2, filtered valid Thu/Fri dates only (no Monday 07/12/2026),
+        # and distinct rotated primary (date, time)
+        u1 = app_db.get_client_by_id(id1, db_path=db_file)
+        u2 = app_db.get_client_by_id(id2, db_path=db_file)
+        u3 = app_db.get_client_by_id(id3, db_path=db_file)
+        assert all(u.vac_id == "138" and u.visa_type == "2" for u in (u1, u2, u3))
+        for u in (u1, u2, u3):
+            dates_set = set(u.target_dates.split(","))
+            assert dates_set == {"03/12/2026", "04/12/2026", "10/12/2026", "11/12/2026"}
+            assert "07/12/2026" not in dates_set
+        primary_pairs = [
+            (u.target_dates.split(",")[0], u.target_times.split(",")[0])
+            for u in (u1, u2, u3)
+        ]
+        assert len(set(primary_pairs)) == 3
+    finally:
+        api_main.app.dependency_overrides.pop(api_main.get_current_user, None)
+

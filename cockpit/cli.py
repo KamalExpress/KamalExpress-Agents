@@ -72,11 +72,18 @@ def main():
     report_parser.add_argument("--save", type=str, default=None, help="Optional file path to save the .md report locally")
 
     # clients
-    clients_parser = subparsers.add_parser("clients", help="List live clients or reassign staff ownership")
+    clients_parser = subparsers.add_parser("clients", help="List live clients, reassign ownership, or bulk-set target dates/times")
     clients_parser.add_argument("--contacts", action="store_true", help="List phone numbers and emails grouped by staff owner")
     clients_parser.add_argument("--set-start-date", type=str, default=None, help="Set preferred_date_start (DD/MM/YYYY) on all clients")
+    clients_parser.add_argument("--set-targets", type=str, default=None, help="Comma-separated priority target dates (DD/MM/YYYY,DD/MM/YYYY)")
+    clients_parser.add_argument("--times", type=str, default="09:00,09:30,10:00,10:30,11:00,11:30", help="Comma-separated preferred slot times (HH:MM)")
+    clients_parser.add_argument("--vac", type=str, default=None, help="Filter clients by current VAC ID (137 or 138)")
+    clients_parser.add_argument("--visa-type", type=str, default=None, help="Filter clients by current Visa Type (26 or 2)")
+    clients_parser.add_argument("--set-vac", type=str, default=None, help="Optionally update client VAC ID (137 or 138) during bulk target set")
+    clients_parser.add_argument("--set-visa", type=str, default=None, help="Optionally update client Visa Type (26 or 2) during bulk target set")
+    clients_parser.add_argument("--no-distribute", action="store_true", help="Do not rotate primary date/time round-robin across clients")
     clients_parser.add_argument("--set-owner", type=str, default=None, help="Target staff username to assign")
-    clients_parser.add_argument("--ids", type=int, nargs="*", default=None, help="Client IDs to reassign")
+    clients_parser.add_argument("--ids", type=int, nargs="*", default=None, help="Client IDs to target/reassign")
     clients_parser.add_argument("--names", type=str, nargs="*", default=None, help="Full client names to reassign")
 
     # watch
@@ -127,7 +134,19 @@ def main():
     elif args.command == "report":
         run_report(client_id=args.client, save_path=args.save, export_all=args.export_all)
     elif args.command == "clients":
-        if args.set_owner:
+        if args.set_targets:
+            from cockpit.clients import bulk_set_targets
+            bulk_set_targets(
+                target_dates=args.set_targets,
+                target_times=args.times,
+                vac_id=args.vac,
+                visa_type=args.visa_type,
+                set_vac_id=args.set_vac,
+                set_visa_type=args.set_visa,
+                ids=args.ids,
+                distribute=not args.no_distribute,
+            )
+        elif args.set_owner:
             reassign_clients_owner(owner=args.set_owner, ids=args.ids, names=args.names)
         elif args.set_start_date:
             set_clients_start_date(args.set_start_date)

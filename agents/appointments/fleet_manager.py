@@ -361,6 +361,43 @@ class AccountWorkerInstance:
                         offset = (self.account_id * 3) % len(scan_dates)
                         scan_dates = scan_dates[offset:] + scan_dates[:offset]
 
+                    # Priority-first prepend: put explicit valid target_dates from QUEUED clients at the front of scan_dates
+                    try:
+                        from .db import get_all_clients
+                        today_d = datetime.utcnow().date()
+                        q_all = get_all_clients(status="QUEUED")
+                        priority_dates: List[str] = []
+                        seen_pd = set()
+                        # Prefer clients matching this exact (vac_id, visa_type), then any client matching visa_type
+                        ordered_q = [
+                            c for c in q_all
+                            if str(c.visa_type) == str(visa_type) and str(c.vac_id) == str(vac_id)
+                        ] + [
+                            c for c in q_all
+                            if str(c.visa_type) == str(visa_type) and str(c.vac_id) != str(vac_id)
+                        ]
+                        for c in ordered_q:
+                            raw_td = getattr(c, "target_dates", "") or ""
+                            for tok in str(raw_td).split(","):
+                                d_tok = tok.strip()
+                                if not d_tok or d_tok in seen_pd:
+                                    continue
+                                try:
+                                    d_obj = datetime.strptime(d_tok, "%d/%m/%Y").date()
+                                except ValueError:
+                                    continue
+                                if d_obj >= today_d and operational_calendar.is_valid_date(d_tok, str(visa_type)):
+                                    seen_pd.add(d_tok)
+                                    priority_dates.append(d_tok)
+                        if priority_dates:
+                            if len(priority_dates) > 1:
+                                p_off = self.account_id % len(priority_dates)
+                                priority_dates = priority_dates[p_off:] + priority_dates[:p_off]
+                            remaining = [d for d in scan_dates if d not in seen_pd]
+                            scan_dates = priority_dates + remaining
+                    except Exception as pd_err:
+                        logger.debug(f"[fleet_worker #{self.account_id}] Priority target_dates lookup note: {pd_err}")
+
                     self._last_status = f"POLLING_SLOTS ({scan_month or scan_dates[0]})"
                     self._total_scans += 1
                     self._last_checked = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1039,6 +1076,20 @@ class GVCFleetManager:
                 )
                 if not probe_dates:
                     probe_dates = [client.preferred_date_start]
+                # Prepend client's own explicit target_dates so Book Now / Blitz checks them first
+                client_td = [t.strip() for t in str(getattr(client, "target_dates", "") or "").split(",") if t.strip()]
+                if client_td:
+                    today_d = datetime.utcnow().date()
+                    valid_ctd = []
+                    for d_tok in client_td:
+                        try:
+                            if datetime.strptime(d_tok, "%d/%m/%Y").date() >= today_d and operational_calendar.is_valid_date(d_tok, str(visa_type)):
+                                if d_tok not in valid_ctd:
+                                    valid_ctd.append(d_tok)
+                        except ValueError:
+                            continue
+                    if valid_ctd:
+                        probe_dates = valid_ctd + [d for d in probe_dates if d not in valid_ctd]
                 slots = []
                 for p_idx, p_date in enumerate(probe_dates):
                     p_slots = await driver.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=p_date)
@@ -1099,9 +1150,19 @@ class GVCFleetManager:
                     blitz_dt = _parse_dmy(blitz_raw)
                     client_start_dt = _parse_dmy(client.preferred_date_start)
 
-                    # Prefer valid future blitz_date only if >= today; otherwise use client's preferred_date_start (>= today)
+                    # Priority 1: Client's own first valid future target_dates entry
+                    client_target_dt = None
+                    for tok in str(getattr(client, "target_dates", "") or "").split(","):
+                        dt_cand = _parse_dmy(tok.strip())
+                        if dt_cand and dt_cand >= today_date and operational_calendar.is_valid_date(dt_cand.strftime("%d/%m/%Y"), str(visa_type)):
+                            client_target_dt = dt_cand
+                            break
+
+                    # Priority 2: Valid future global blitz_date -> Priority 3: client preferred_date_start
                     chosen_dt = None
-                    if blitz_dt and blitz_dt >= today_date:
+                    if client_target_dt:
+                        chosen_dt = client_target_dt
+                    elif blitz_dt and blitz_dt >= today_date:
                         chosen_dt = blitz_dt
                     elif client_start_dt and client_start_dt >= today_date:
                         chosen_dt = client_start_dt
@@ -1118,8 +1179,9 @@ class GVCFleetManager:
                             break
                     target_date = snapped_str or chosen_dt.strftime("%d/%m/%Y")
 
+                    client_times = [t.strip() for t in str(getattr(client, "target_times", "") or "").split(",") if t.strip()]
                     blitz_time = get_system_setting("blitz_target_time", "")
-                    target_time = blitz_time or "09:30"
+                    target_time = (client_times[0] if client_times else "") or blitz_time or "09:30"
                     target_slot_id = "0"
                     self.log_event(
                         f"[BLITZ DROP STRIKE] Direct booking strike enabled (Availability Check: OFF). Striking GVC for Client #{client.id} ({client.first_name} {client.last_name}) at {vac_name} ({visa_label}) on target date {target_date} {target_time}...",
@@ -1130,10 +1192,33 @@ class GVCFleetManager:
                     )
             else:
                 target_slot: Optional[AvailableSlot] = None
-                for s in available_slots:
-                    if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
-                        target_slot = s
-                        break
+                client_target_dates = [d.strip() for d in str(getattr(client, "target_dates", "") or "").split(",") if d.strip()]
+                client_target_times = [t.strip() for t in str(getattr(client, "target_times", "") or "").split(",") if t.strip()]
+
+                # Priority 1: Exact target_date + exact target_time
+                if client_target_dates and client_target_times:
+                    for s in available_slots:
+                        if s.date in client_target_dates and s.time in client_target_times:
+                            target_slot = s
+                            break
+                # Priority 2: Exact target_date
+                if not target_slot and client_target_dates:
+                    for s in available_slots:
+                        if s.date in client_target_dates:
+                            target_slot = s
+                            break
+                # Priority 3: Date range + preferred target_time
+                if not target_slot and client_target_times:
+                    for s in available_slots:
+                        if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end) and s.time in client_target_times:
+                            target_slot = s
+                            break
+                # Priority 4: Preferred date range -> first available slot
+                if not target_slot:
+                    for s in available_slots:
+                        if _matches_date_range(s.date, client.preferred_date_start, client.preferred_date_end):
+                            target_slot = s
+                            break
                 if not target_slot:
                     target_slot = available_slots[0]
                 target_date = target_slot.date

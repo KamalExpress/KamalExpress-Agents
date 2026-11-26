@@ -38,6 +38,8 @@ class ClientProfile(BaseModel):
     
     preferred_date_start: Optional[str] = Field(default=None, description="Earliest desired appointment date (DD/MM/YYYY)")
     preferred_date_end: Optional[str] = Field(default=None, description="Latest desired appointment date (DD/MM/YYYY)")
+    target_dates: Optional[str] = Field(default="", description="Comma-separated priority target dates (DD/MM/YYYY)")
+    target_times: Optional[str] = Field(default="", description="Comma-separated preferred slot times (HH:MM)")
     
     status: Literal["QUEUED", "IN_PROGRESS", "BOOKED", "FAILED", "PAUSED"] = Field(default="QUEUED")
     booking_reference: Optional[str] = Field(default=None, description="Embassy booking reference number / ARN")

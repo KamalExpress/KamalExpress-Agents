@@ -283,6 +283,14 @@ def init_db(db_path: Path = DB_PATH) -> None:
                     conn.execute("ALTER TABLE otp_records ADD COLUMN category TEXT DEFAULT 'spam';")
                 except Exception:
                     pass
+                try:
+                    conn.execute("ALTER TABLE client_queue ADD COLUMN target_dates TEXT DEFAULT '';")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE client_queue ADD COLUMN target_times TEXT DEFAULT '';")
+                except Exception:
+                    pass
 
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS gvc_portal_accounts (
@@ -527,6 +535,8 @@ def row_to_client(row: sqlite3.Row) -> ClientProfile:
         vac_city=row["vac_city"] or "Islamabad",
         preferred_date_start=row["preferred_date_start"],
         preferred_date_end=row["preferred_date_end"],
+        target_dates=(row["target_dates"] if "target_dates" in keys and row["target_dates"] else ""),
+        target_times=(row["target_times"] if "target_times" in keys and row["target_times"] else ""),
         status=row["status"] or "QUEUED",
         booking_reference=row["booking_reference"],
         booked_date=row["booked_date"],
@@ -553,9 +563,9 @@ def add_client(client: ClientProfile, db_path: Path = DB_PATH) -> int:
                         passport_issue_date, passport_issue_place, gender, gender_id,
                         nationality, nationality_id, phone_number, phone_prefix_id, email,
                         destination, visa_type, vac_id, vac_city, preferred_date_start,
-                        preferred_date_end, status, notes, owner_username, created_at
+                        preferred_date_end, target_dates, target_times, status, notes, owner_username, created_at
                     ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     ON CONFLICT(passport_number) DO UPDATE SET
                         first_name=excluded.first_name,
@@ -577,6 +587,8 @@ def add_client(client: ClientProfile, db_path: Path = DB_PATH) -> int:
                         vac_city=excluded.vac_city,
                         preferred_date_start=excluded.preferred_date_start,
                         preferred_date_end=excluded.preferred_date_end,
+                        target_dates=excluded.target_dates,
+                        target_times=excluded.target_times,
                         status=excluded.status,
                         notes=excluded.notes,
                         owner_username=COALESCE(NULLIF(client_queue.owner_username, ''), excluded.owner_username)
@@ -586,7 +598,9 @@ def add_client(client: ClientProfile, db_path: Path = DB_PATH) -> int:
                     client.gender, client.gender_id, client.nationality, client.nationality_id,
                     client.phone_number, client.phone_prefix_id, client.email,
                     client.destination, client.visa_type, client.vac_id, client.vac_city,
-                    client.preferred_date_start, client.preferred_date_end, client.status,
+                    client.preferred_date_start, client.preferred_date_end,
+                    (client.target_dates or "").strip(), (client.target_times or "").strip(),
+                    client.status,
                     client.notes, (client.owner_username or "admin").strip(), client.created_at or datetime.utcnow().isoformat()
                 ))
                 client_id = cursor.lastrowid
@@ -814,25 +828,49 @@ def claim_next_client_flexible_vac(
                 matching_row = None
                 match_tier = ""
 
-                # Tier 1: Preferred VAC + date range match
+                def _has_exact_target_date(row_obj, s_date: Optional[str]) -> bool:
+                    if not s_date:
+                        return False
+                    r_keys = row_obj.keys() if hasattr(row_obj, "keys") else []
+                    raw_td = (row_obj["target_dates"] if "target_dates" in r_keys else "") or ""
+                    if not raw_td:
+                        return False
+                    targets = {t.strip() for t in str(raw_td).split(",") if t.strip()}
+                    return str(s_date).strip() in targets
+
+                # Tier 0: Preferred VAC + exact target_dates match
                 for r in pref_rows:
-                    if _matches_date_range(slot_date, r["preferred_date_start"], r["preferred_date_end"]):
+                    if _has_exact_target_date(r, slot_date):
                         matching_row = r
-                        match_tier = "PREFERRED_VAC_DATE"
+                        match_tier = "EXACT_TARGET_DATE"
                         break
+
+                # Tier 1: Preferred VAC + date range match
+                if not matching_row:
+                    for r in pref_rows:
+                        if _matches_date_range(slot_date, r["preferred_date_start"], r["preferred_date_end"]):
+                            matching_row = r
+                            match_tier = "PREFERRED_VAC_DATE"
+                            break
 
                 # Tier 2: Preferred VAC + any date
                 if not matching_row and pref_rows:
                     matching_row = pref_rows[0]
                     match_tier = "PREFERRED_VAC_ANY_DATE"
 
-                # Tier 3: Fallback VAC (prefer date range match first, then FIFO)
+                # Tier 3: Fallback VAC (prefer exact target_dates, then date range, then FIFO)
                 if not matching_row and fallback_rows:
                     for r in fallback_rows:
-                        if _matches_date_range(slot_date, r["preferred_date_start"], r["preferred_date_end"]):
+                        if _has_exact_target_date(r, slot_date):
                             matching_row = r
                             match_tier = "FALLBACK_VAC"
                             break
+                    if not matching_row:
+                        for r in fallback_rows:
+                            if _matches_date_range(slot_date, r["preferred_date_start"], r["preferred_date_end"]):
+                                matching_row = r
+                                match_tier = "FALLBACK_VAC"
+                                break
                     if not matching_row:
                         matching_row = fallback_rows[0]
                         match_tier = "FALLBACK_VAC"
@@ -1526,6 +1564,8 @@ def update_client(client_id: int, client: ClientProfile, db_path: Path = DB_PATH
                         vac_city = ?,
                         preferred_date_start = ?,
                         preferred_date_end = ?,
+                        target_dates = ?,
+                        target_times = ?,
                         status = ?,
                         notes = ?,
                         owner_username = ?
@@ -1536,7 +1576,9 @@ def update_client(client_id: int, client: ClientProfile, db_path: Path = DB_PATH
                     client.gender or "Male", client.gender_id or "2", client.nationality or "Pakistani", client.nationality_id or "197",
                     client.phone_number, client.phone_prefix_id or "197", client.email,
                     client.destination or "Greece", client.visa_type or "26", client.vac_id or "137", client.vac_city or "Islamabad",
-                    client.preferred_date_start, client.preferred_date_end, client.status or "QUEUED",
+                    client.preferred_date_start, client.preferred_date_end,
+                    (client.target_dates or "").strip(), (client.target_times or "").strip(),
+                    client.status or "QUEUED",
                     client.notes or "", (client.owner_username or "admin").strip(), client_id
                 ))
                 logger.info(f"[db] Updated full client #{client_id}: {client.first_name} {client.last_name} ({client.passport_number})")

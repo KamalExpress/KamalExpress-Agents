@@ -1888,6 +1888,17 @@ How can I help you today?</div>
       </div>
     </div>
 
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Priority Target Dates (comma-separated DD/MM/YYYY)</label>
+        <input type="text" id="m-target-dates" placeholder="e.g. 03/12/2026,04/12/2026,10/12/2026,11/12/2026">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Preferred Slot Times (comma-separated HH:MM)</label>
+        <input type="text" id="m-target-times" placeholder="e.g. 09:00,09:30,10:00,10:30,11:00">
+      </div>
+    </div>
+
     <div class="form-group" style="margin-bottom:0;">
       <label>Notes / Comments</label>
       <input type="text" id="m-notes" placeholder="Optional notes or ARN">
@@ -2021,6 +2032,17 @@ How can I help you today?</div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Latest Slot Date (DD/MM/YYYY)</label>
         <input type="text" id="edit-client-preferred-end" placeholder="e.g. 30/10/2026 (Optional)">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Priority Target Dates (comma-separated DD/MM/YYYY)</label>
+        <input type="text" id="edit-client-target-dates" placeholder="e.g. 03/12/2026,04/12/2026,10/12/2026,11/12/2026">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Preferred Slot Times (comma-separated HH:MM)</label>
+        <input type="text" id="edit-client-target-times" placeholder="e.g. 09:00,09:30,10:00,10:30,11:00">
       </div>
     </div>
 
@@ -4114,6 +4136,8 @@ How can I help you today?</div>
       document.getElementById('edit-client-vac').value = c.vac_id || '138';
       document.getElementById('edit-client-preferred-start').value = c.preferred_date_start || '';
       document.getElementById('edit-client-preferred-end').value = c.preferred_date_end || '';
+      document.getElementById('edit-client-target-dates').value = c.target_dates || '';
+      document.getElementById('edit-client-target-times').value = c.target_times || '';
       document.getElementById('edit-client-notes').value = c.notes || '';
 
       document.getElementById('edit-client-modal').classList.add('active');
@@ -4157,6 +4181,8 @@ How can I help you today?</div>
       vac_city: document.getElementById('edit-client-vac').options[document.getElementById('edit-client-vac').selectedIndex].text.split(' ')[0],
       preferred_date_start: document.getElementById('edit-client-preferred-start').value.trim() || null,
       preferred_date_end: document.getElementById('edit-client-preferred-end').value.trim() || null,
+      target_dates: (document.getElementById('edit-client-target-dates')?.value || '').trim(),
+      target_times: (document.getElementById('edit-client-target-times')?.value || '').trim(),
       notes: document.getElementById('edit-client-notes').value.trim(),
     };
 
@@ -4580,6 +4606,8 @@ How can I help you today?</div>
       vac_city: document.getElementById('m-vac').options[document.getElementById('m-vac').selectedIndex].text.split(' ')[0],
       preferred_date_start: document.getElementById('m-preferred-start').value.trim() || null,
       preferred_date_end: document.getElementById('m-preferred-end').value.trim() || null,
+      target_dates: (document.getElementById('m-target-dates')?.value || '').trim(),
+      target_times: (document.getElementById('m-target-times')?.value || '').trim(),
       notes: document.getElementById('m-notes').value.trim(),
     };
 
