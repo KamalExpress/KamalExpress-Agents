@@ -115,6 +115,10 @@
       </div>
     </div>
     <div class="hdr-actions no-print">
+      <div class="btn" style="cursor:default; font-variant-numeric:tabular-nums;" title="Live Server Time (UTC) &amp; Pakistan Standard Time (PKT, UTC+5)">
+        <i data-lucide="clock" class="icon" style="color:var(--primary)"></i>
+        <span>UTC <b id="mon-utc-clock">--:--:--</b> | PKT <b id="mon-pkt-clock" style="color:var(--primary)">--:--:--</b></span>
+      </div>
       <button class="btn" id="btn-toggle-refresh" onclick="toggleAutoRefresh()">
         <span class="live-dot" id="refresh-dot"></span>
         <span id="refresh-label">Auto-Refresh: ON (5s)</span>
@@ -407,6 +411,20 @@
         console.error(err);
       }
     }
+
+    (function startDualClock() {
+      const fmtUtc = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const fmtPkt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      function tick() {
+        const now = new Date();
+        const u = document.getElementById('mon-utc-clock');
+        const p = document.getElementById('mon-pkt-clock');
+        if (u) u.textContent = fmtUtc.format(now);
+        if (p) p.textContent = fmtPkt.format(now);
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();
 
     lucide.createIcons();
     refreshAll();

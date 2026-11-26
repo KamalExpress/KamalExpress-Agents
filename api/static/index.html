@@ -582,6 +582,10 @@
       <i data-lucide="clock" class="icon"></i>
       <span>Queued: <b id="hdr-queued-count" style="color:var(--accent)">0</b></span>
     </div>
+    <div class="header-stat-pill" id="hdr-clock-pill" title="Live Server Time (UTC) &amp; Pakistan Standard Time (PKT, UTC+5)">
+      <i data-lucide="clock" class="icon"></i>
+      <span style="font-variant-numeric:tabular-nums; font-size:11.5px;">UTC <b id="hdr-utc-clock">--:--:--</b> <span style="color:var(--muted-foreground);">|</span> PKT <b id="hdr-pkt-clock" style="color:var(--primary)">--:--:--</b></span>
+    </div>
     <div class="header-stat-pill">
       <i data-lucide="check-circle-2" class="icon"></i>
       <span>Booked: <b id="hdr-booked-count" style="color:var(--success)">0</b></span>
@@ -5824,6 +5828,20 @@ How can I help you today?</div>
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+
+  (function startDualClock() {
+    const fmtUtc = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const fmtPkt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    function tick() {
+      const now = new Date();
+      const u = document.getElementById('hdr-utc-clock');
+      const p = document.getElementById('hdr-pkt-clock');
+      if (u) u.textContent = fmtUtc.format(now);
+      if (p) p.textContent = fmtPkt.format(now);
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
 </script>
 </body>
 </html>

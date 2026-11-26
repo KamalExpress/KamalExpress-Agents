@@ -1690,13 +1690,21 @@ def add_proxies_bulk(proxy_lines: List[str], db_path: Path = DB_PATH) -> int:
 
 
 def _auto_expire_quarantined_proxies(conn) -> int:
-    """Auto-restore proxies whose quarantine period has elapsed back to ACTIVE."""
+    """Auto-disable chronically failing proxies (fail_count > 3) and restore eligible expired quarantines."""
     now_str = datetime.utcnow().isoformat()
+    conn.execute("""
+        UPDATE proxies
+        SET status = 'DISABLED',
+            quarantined_until = NULL
+        WHERE status != 'DISABLED'
+          AND COALESCE(fail_count, 0) > 3
+    """)
     cursor = conn.execute("""
         UPDATE proxies
         SET status = 'ACTIVE',
             quarantined_until = NULL
         WHERE status = 'QUARANTINED'
+          AND COALESCE(fail_count, 0) <= 3
           AND (quarantined_until IS NULL OR quarantined_until <= ?)
     """, (now_str,))
     return cursor.rowcount
@@ -1729,6 +1737,7 @@ def get_active_proxies(db_path: Path = DB_PATH) -> List[dict]:
         rows = conn.execute("""
             SELECT * FROM proxies 
             WHERE status = 'ACTIVE' 
+              AND COALESCE(fail_count, 0) <= 3
               AND (quarantined_until IS NULL OR quarantined_until <= ?)
             ORDER BY fail_count ASC, last_used_at ASC, id ASC
         """, (now_str,)).fetchall()
@@ -1790,12 +1799,21 @@ def record_proxy_result(
 
 
 def reset_proxy_cooldowns(db_path: Path = DB_PATH) -> int:
-    """Reset all quarantined proxies back to ACTIVE."""
+    """Reset eligible quarantined/cooldown proxies (fail_count <= 3) back to ACTIVE and keep >3-failure proxies DISABLED."""
     with _lock:
         conn = get_connection(db_path)
         try:
             with conn:
-                cursor = conn.execute("UPDATE proxies SET status = 'ACTIVE', quarantined_until = NULL")
+                conn.execute("""
+                    UPDATE proxies
+                    SET status = 'DISABLED', quarantined_until = NULL
+                    WHERE COALESCE(fail_count, 0) > 3
+                """)
+                cursor = conn.execute("""
+                    UPDATE proxies
+                    SET status = 'ACTIVE', quarantined_until = NULL
+                    WHERE COALESCE(fail_count, 0) <= 3
+                """)
                 return cursor.rowcount
         finally:
             conn.close()
