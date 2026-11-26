@@ -549,6 +549,7 @@ class GVCAuthSolver:
                             "bearer_token": token,
                             "masked_token": token[:15] + "..." if len(token) > 15 else token,
                             "cookies": session_cookies,
+                            "proxy_url": chosen_proxy,
                             "source": "AUTO_SOLVER",
                             "message": f"Autonomous login successful for {email}.",
                         }

@@ -246,11 +246,14 @@ class AccountWorkerInstance:
                             account_id=self.account_id,
                         )
                         if login_res.get("success"):
+                            import json as _json
+                            if login_res.get("proxy_url"):
+                                self._driver._session_proxy = login_res["proxy_url"]
                             update_gvc_account_session(
                                 account_id=self.account_id,
                                 auth_token=login_res.get("auth_token", ""),
                                 bearer_token=login_res.get("bearer_token", ""),
-                                cookies_json=str(login_res.get("cookies", {})),
+                                cookies_json=_json.dumps(login_res.get("cookies", {})),
                                 is_authenticated=True,
                             )
                             self._last_status = "AUTHENTICATED"
@@ -343,10 +346,14 @@ class AccountWorkerInstance:
                         visa_type=visa_type,
                         target_date_from=acc.get("target_date_from") or None,
                         fallback_start_date=fallback_start,
-                        max_dates=6,
+                        max_dates=23,
                     )
                     if not scan_dates:
                         scan_dates = [acc.get("target_date_from") or (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")]
+                    elif len(scan_dates) > 1:
+                        # Spread full-month date coverage across workers so early/mid/late month are scanned concurrently
+                        offset = (self.account_id * 3) % len(scan_dates)
+                        scan_dates = scan_dates[offset:] + scan_dates[:offset]
 
                     self._last_status = f"POLLING_SLOTS ({scan_month or scan_dates[0]})"
                     self._total_scans += 1
@@ -1009,9 +1016,25 @@ class GVCFleetManager:
                     category="SLOT_DISCOVERY",
                     worker_name=persona,
                 )
-                slots = await driver.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=client.preferred_date_start)
-                if slots and any(s.available_capacity > 0 for s in slots):
-                    slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=90)
+                probe_dates, _ = operational_calendar.resolve_worker_scan_dates(
+                    visa_type=visa_type,
+                    target_date_from=client.preferred_date_start or None,
+                    max_dates=23,
+                )
+                if not probe_dates:
+                    probe_dates = [client.preferred_date_start]
+                slots = []
+                for p_idx, p_date in enumerate(probe_dates):
+                    p_slots = await driver.search_slots(vac_id=vac_id, visa_type=visa_type, date_from=p_date)
+                    p_status = getattr(driver, "last_search_status", {})
+                    if p_status.get("status") in ("UNAUTHENTICATED", "WAF_CHALLENGE"):
+                        break
+                    if p_slots and any(s.available_capacity > 0 for s in p_slots):
+                        slots = p_slots
+                        slot_cache.set(vac_id=vac_id, visa_type=visa_type, slots=slots, ttl=90)
+                        break
+                    if p_idx < len(probe_dates) - 1:
+                        await asyncio.sleep(1.0)
 
             # Check operational mode setting (Safe Mode vs Blitz Drop Mode)
             require_check_raw = get_system_setting("require_slot_availability_check", "true")

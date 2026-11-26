@@ -529,7 +529,14 @@ class GVCPortalDriver:
         # 1. Primary path: Direct Authenticated HTTP REST Request with Proxy via curl_cffi
         has_db_session = self._load_active_session_from_db()
         if has_db_session and self._bearer_token:
-            proxy = self.proxy_manager.ensure_healthy_proxy(self._session_proxy)
+            prev_proxy = self._session_proxy
+            proxy = self.proxy_manager.ensure_healthy_proxy(prev_proxy)
+            if proxy and prev_proxy and proxy != prev_proxy:
+                # Strip stale IP-bound Imperva cookies when rotating to a new proxy IP
+                self._session_cookies = {
+                    k: v for k, v in self._session_cookies.items()
+                    if not any(tag in k.lower() for tag in ("incap", "reese84", "nlbi_"))
+                }
             self._session_proxy = proxy
             url = f"{self.base_url}/api/v1/periodslot/slots"
             proxies = {"http": proxy, "https": proxy} if proxy else None
