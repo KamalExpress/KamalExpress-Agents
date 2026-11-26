@@ -57,6 +57,48 @@ from ..schemas import AvailableSlot, BookingResult, ClientProfile
 logger = logging.getLogger(__name__)
 
 
+def install_bandwidth_saver_route(page: Any, allow_app_js: bool = False) -> None:
+    """
+    Attach a Playwright route interceptor that cuts residential proxy bandwidth by >95%
+    (from ~25.7 MB uncompressed / ~7 MB wire per GVC page load down to <150 KB)
+    without interfering with Imperva WAF clearance (_Incapsula_Resource / reese84) or /api/ calls.
+    """
+    blocked_types = {"image", "media", "font", "stylesheet"}
+    tracker_hosts = ("google-analytics.com", "googletagmanager.com", "doubleclick.net", "facebook.net", "hotjar.com")
+    waf_allow_tokens = ("_incapsula_resource", "reese84", "incap", "imperva")
+
+    def _handler(route: Any) -> None:
+        try:
+            req = route.request
+            rtype = (req.resource_type or "").lower()
+            url_l = (req.url or "").lower()
+
+            if any(h in url_l for h in tracker_hosts):
+                route.abort()
+                return
+            if rtype in blocked_types:
+                route.abort()
+                return
+            if not allow_app_js:
+                # For WAF cookie refresh & in-browser /api/v1/periodslot/slots queries,
+                # block GVC's 18.7 MB Angular JS bundles and static asset JSONs while allowing
+                # Imperva WAF scripts and all /api/ endpoints.
+                if rtype == "script" and not any(tok in url_l for tok in waf_allow_tokens):
+                    route.abort()
+                    return
+                if ("/assets/" in url_l or "/i18n/" in url_l or "/static/" in url_l) and "/api/" not in url_l:
+                    route.abort()
+                    return
+            route.continue_()
+        except Exception:
+            try:
+                route.continue_()
+            except Exception:
+                pass
+
+    page.route("**/*", _handler)
+
+
 def clean_portal_error_text(text: Optional[str]) -> str:
     """Extract clean concise error summary from raw GVC / WAF responses (stripping raw HTML)."""
     if not text:
@@ -461,6 +503,7 @@ class GVCPortalDriver:
 
                     context = browser.new_context(**context_kwargs)
                     page = context.new_page()
+                    install_bandwidth_saver_route(page, allow_app_js=False)
 
                     # Apply Playwright Stealth evasion
                     try:
@@ -648,6 +691,7 @@ class GVCPortalDriver:
                                         ctx_kwargs["proxy"] = pconf
                                 context = browser.new_context(**ctx_kwargs)
                                 page = context.new_page()
+                                install_bandwidth_saver_route(page, allow_app_js=False)
                                 try:
                                     from playwright_stealth import Stealth
                                     Stealth().apply_stealth_sync(page)

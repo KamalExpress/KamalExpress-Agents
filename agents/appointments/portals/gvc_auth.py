@@ -117,6 +117,11 @@ class GVCAuthSolver:
 
                 context = browser.new_context(**ctx_kwargs)
                 page = context.new_page()
+                try:
+                    from .gvc import install_bandwidth_saver_route
+                    install_bandwidth_saver_route(page, allow_app_js=True)
+                except Exception:
+                    pass
 
                 try:
                     Stealth().apply_stealth_sync(page)
@@ -220,6 +225,11 @@ class GVCAuthSolver:
 
                 context = browser.new_context(**ctx_kwargs)
                 page = context.new_page()
+                try:
+                    from .gvc import install_bandwidth_saver_route
+                    install_bandwidth_saver_route(page, allow_app_js=True)
+                except Exception:
+                    pass
 
                 try:
                     Stealth().apply_stealth_sync(page)
