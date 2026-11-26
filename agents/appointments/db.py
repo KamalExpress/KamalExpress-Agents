@@ -2985,10 +2985,30 @@ def add_gvc_portal_account(account_data: dict, db_path: Path = DB_PATH) -> int:
             conn.close()
 
 
+def _auto_expire_account_cooldowns(conn) -> int:
+    """Auto-restore GVC portal accounts whose COOLDOWN period has elapsed back to ACTIVE."""
+    now_utc = datetime.utcnow().isoformat()
+    cur = conn.execute(
+        """
+        UPDATE gvc_portal_accounts
+        SET status = 'ACTIVE',
+            cooldown_until = NULL,
+            is_worker_active = 1
+        WHERE status = 'COOLDOWN'
+          AND (cooldown_until IS NULL OR cooldown_until <= ?)
+        """,
+        (now_utc,),
+    )
+    return cur.rowcount
+
+
 def get_gvc_portal_accounts(owner_username: Optional[str] = None, is_admin: bool = False, db_path: Path = DB_PATH) -> List[dict]:
     """Retrieve all GVC portal accounts (filtered by staff owner unless admin)."""
     conn = get_connection(db_path)
     try:
+        with _lock:
+            with conn:
+                _auto_expire_account_cooldowns(conn)
         if is_admin or not owner_username:
             cur = conn.execute("SELECT * FROM gvc_portal_accounts ORDER BY id ASC")
         else:
@@ -3057,6 +3077,9 @@ def get_gvc_portal_account_by_id(account_id: int, db_path: Path = DB_PATH) -> Op
     """Retrieve single GVC portal account by ID."""
     conn = get_connection(db_path)
     try:
+        with _lock:
+            with conn:
+                _auto_expire_account_cooldowns(conn)
         cur = conn.execute("SELECT * FROM gvc_portal_accounts WHERE id = ?", (account_id,))
         r = cur.fetchone()
         if not r:
@@ -3172,12 +3195,16 @@ def get_next_available_gvc_account(exclude_ids: Optional[List[int]] = None, db_p
     """
     Retrieve the next ACTIVE GVC portal account eligible for auto-login or slot checking.
     Strictly excludes PAUSED, DISABLED, BLOCKED accounts, and accounts currently in COOLDOWN.
+    Auto-restores expired COOLDOWN accounts back to ACTIVE before selection.
     Orders by least recently used (last_login_at ASC) for fair round-robin rotation.
     """
     exclude_ids = exclude_ids or []
     now_utc = datetime.utcnow().isoformat()
     conn = get_connection(db_path)
     try:
+        with _lock:
+            with conn:
+                _auto_expire_account_cooldowns(conn)
         query = """
             SELECT * FROM gvc_portal_accounts
             WHERE status = 'ACTIVE'
