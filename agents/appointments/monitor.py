@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import threading
 import time
 from datetime import datetime
@@ -282,7 +283,7 @@ class AutonomousSlotMonitor:
                         elif status_info.get("status") == "RATE_LIMITED":
                             backoff = status_info.get("retry_after", 10) + random.uniform(1.0, 2.5)
                             self.log_event(
-                                f"️ [Scan #{self._total_scans}] Imperva rate limit hit on {d_str}. Backing off {backoff:.1f}s...",
+                                f"[WARNING] [Scan #{self._total_scans}] Imperva rate limit hit on {d_str}. Backing off {backoff:.1f}s...",
                                 level="WARNING"
                             )
                             await asyncio.sleep(backoff)
