@@ -716,10 +716,10 @@ class AccountWorkerInstance:
                 else:
                     self._last_status = "IDLE (No Open Slots Detected)"
 
-                # Dynamic randomized polling interval: Bookers check in-memory cache every 3s;
+                # Dynamic randomized polling interval: Bookers check in-memory cache every 5-8s;
                 # Checkers/Hybrids poll at human-like random intervals between 30s and 180s (3 minutes)
                 import random as _random
-                sleep_interval = 3 if role == "BOOKER" else _random.uniform(30.0, 180.0)
+                sleep_interval = _random.uniform(5.0, 8.0) if role == "BOOKER" else _random.uniform(30.0, 180.0)
                 await asyncio.sleep(sleep_interval)
 
             except asyncio.CancelledError:
