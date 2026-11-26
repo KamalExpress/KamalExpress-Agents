@@ -156,6 +156,52 @@ def test_ast_no_undefined_names():
     assert not violations, "Undefined global names detected:\n" + "\n".join(violations)
 
 
+def test_architectural_single_source_of_truth_boundaries():
+    """
+    Hard mechanical guardrail enforcing `.agents/AGENTS.md` Rule #6:
+      1. `gvc.py` and `gvc_auth.py` MUST NOT launch Playwright directly (use `playwright_client.py`).
+      2. `fleet_manager.py` and `monitor.py` MUST NOT call `submit_booking(` or `trigger_booking_otp(`
+         directly (must delegate to `booking_engine.execute_booking()`).
+      3. `AccountWorkerInstance` MUST instantiate `GVCPortalDriver(strict_isolation=True)`.
+      4. `gvc.py` MUST NOT duplicate `digits.startswith("0092")` phone normalization (use `otp.normalize_phone`).
+    """
+    violations: List[str] = []
+
+    import re as _re
+
+    for rel in ("agents/appointments/portals/gvc.py", "agents/appointments/portals/gvc_auth.py"):
+        src = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        if _re.search(r"\bsync_playwright\b", src) or "chromium.launch" in src:
+            violations.append(
+                f"{rel}: direct Playwright launch found. Delegate to agents/appointments/portals/playwright_client.py."
+            )
+
+    for rel in ("agents/appointments/fleet_manager.py", "agents/appointments/monitor.py"):
+        src = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        if ".submit_booking(" in src:
+            violations.append(
+                f"{rel}: direct `.submit_booking(` call found. Delegate to agents/appointments/booking_engine.py:execute_booking()."
+            )
+        if ".trigger_booking_otp(" in src:
+            violations.append(
+                f"{rel}: direct `.trigger_booking_otp(` call found. Delegate to agents/appointments/booking_engine.py:execute_booking()."
+            )
+
+    fm_src = (REPO_ROOT / "agents/appointments/fleet_manager.py").read_text(encoding="utf-8")
+    if "GVCPortalDriver(strict_isolation=True)" not in fm_src:
+        violations.append(
+            "agents/appointments/fleet_manager.py: AccountWorkerInstance must construct GVCPortalDriver(strict_isolation=True)."
+        )
+
+    gvc_src = (REPO_ROOT / "agents/appointments/portals/gvc.py").read_text(encoding="utf-8")
+    if 'startswith("0092")' in gvc_src:
+        violations.append(
+            "agents/appointments/portals/gvc.py: duplicated phone normalization found. Use agents/appointments/otp.py:normalize_phone()."
+        )
+
+    assert not violations, "Architectural boundary violations detected:\n" + "\n".join(violations)
+
+
 # ── Step 2: Strict Per-Worker Session Isolation ───────────────────────────────
 
 

@@ -139,6 +139,13 @@ flowchart TD
   5. *Zero-Delay Final Submission:* Complete JSON payload submitted via `curl_cffi` (`chrome120` impersonation).
   6. *Confirmation & Audit Broadcast:* Booking reference extracted, `client_queue` updated to `BOOKED`, and `SUCCESS` event broadcast to UI Activity Stream.
 
+### G. Centralized Module Ownership & Strict Worker Isolation Boundaries
+To prevent cross-entrypoint drift and silent regressions, all booking and browser/WAF logic is centralized behind hard architectural boundaries (enforced by `tests/test_golden_worker_e2e.py::test_architectural_single_source_of_truth_boundaries`):
+- **Single Booking Pipeline (`agents/appointments/booking_engine.py`):** `AccountWorkerInstance._loop()`, `trigger_client_booking()`, `quick_book_slot()`, and `AutonomousSlotMonitor` ALL delegate Steps 4–8 (fresh `min_timestamp` OTP, concurrent reCAPTCHA, actual-slot VAC submission, ARN capture, 8-step audit, `.md` archival, and transient `QUEUED` revert) to `execute_booking()`.
+- **Single Stealth Playwright & WAF Engine (`agents/appointments/portals/playwright_client.py`):** All Playwright launches, residential proxy bindings, bandwidth-saver route interception (`>95%` savings), Imperva pre-flight probes, cookie refreshes, and in-browser API `fetch()` fallbacks (login, slot search, OTP trigger, booking submit) live here.
+- **Strict Per-Worker Session Isolation (`GVCPortalDriver(strict_isolation=True)`):** Every fleet worker binds its own `gvc_portal_accounts` JWT, cookies, and sticky proxy via `bind_account_session()` and physically refuses fallback to the legacy global `gvc_sessions` table. Live `cockpit doctor` audits `bound_jwt_subject` across active workers.
+- **Single Phone Normalizer (`agents/appointments/otp.py:normalize_phone`):** Imported and reused across `otp.py`, `gvc.py`, and workers.
+
 ---
 
 ## 3. Database Schema Overview (SQLite WAL)
