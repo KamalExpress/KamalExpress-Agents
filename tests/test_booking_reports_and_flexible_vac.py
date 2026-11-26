@@ -235,11 +235,11 @@ def test_bulk_targets_api_round_robin_and_weekday_filter(tmp_path: Path, monkeyp
     }
     try:
         client = TestClient(api_main.app)
-        # Include an invalid Monday (07/12/2026) for Type 2 alongside valid Thu/Fri dates
+        # Include a Saturday (19/12/2026) which must be rejected, and Monday (21/12/2026) which IS allowed for explicit Type 2 targets
         resp = client.post(
             "/api/clients/bulk-targets",
             json={
-                "target_dates": ["03/12/2026", "04/12/2026", "07/12/2026", "10/12/2026", "11/12/2026"],
+                "target_dates": ["03/12/2026", "04/12/2026", "19/12/2026", "21/12/2026", "10/12/2026", "11/12/2026"],
                 "target_times": ["09:00", "09:30", "10:00"],
                 "set_vac_id": "138",
                 "set_visa_type": "2",
@@ -252,7 +252,7 @@ def test_bulk_targets_api_round_robin_and_weekday_filter(tmp_path: Path, monkeyp
         assert body["success"] is True
         assert body["updated_count"] == 3
 
-        # Verify each client received VAC 138, Visa Type 2, filtered valid Thu/Fri dates only (no Monday 07/12/2026),
+        # Verify each client received VAC 138, Visa Type 2, Mon-Fri targets (including 21/12/2026, excluding Sat 19/12/2026),
         # and distinct rotated primary (date, time)
         u1 = app_db.get_client_by_id(id1, db_path=db_file)
         u2 = app_db.get_client_by_id(id2, db_path=db_file)
@@ -260,8 +260,8 @@ def test_bulk_targets_api_round_robin_and_weekday_filter(tmp_path: Path, monkeyp
         assert all(u.vac_id == "138" and u.visa_type == "2" for u in (u1, u2, u3))
         for u in (u1, u2, u3):
             dates_set = set(u.target_dates.split(","))
-            assert dates_set == {"03/12/2026", "04/12/2026", "10/12/2026", "11/12/2026"}
-            assert "07/12/2026" not in dates_set
+            assert dates_set == {"03/12/2026", "04/12/2026", "10/12/2026", "11/12/2026", "21/12/2026"}
+            assert "19/12/2026" not in dates_set
         primary_pairs = [
             (u.target_dates.split(",")[0], u.target_times.split(",")[0])
             for u in (u1, u2, u3)
@@ -269,4 +269,59 @@ def test_bulk_targets_api_round_robin_and_weekday_filter(tmp_path: Path, monkeyp
         assert len(set(primary_pairs)) == 3
     finally:
         api_main.app.dependency_overrides.pop(api_main.get_current_user, None)
+
+
+def test_date_state_classification_and_unreleased_reports(tmp_path: Path):
+    from agents.appointments.portals.gvc import parse_gvc_slots_payload
+    from agents.appointments.fleet_manager import fleet_manager
+
+    vac_meta = {"id": 138, "name": "Lahore VAC"}
+    tel = {}
+
+    # 1. UNRELEASED (returnobject: [])
+    parse_gvc_slots_payload({"code": "SUCCESS", "message": "", "returnobject": []}, "21/12/2026", vac_meta, "2", telemetry_collector=tel)
+    assert tel["date_state"] == "UNRELEASED"
+    assert tel["raw_count"] == 0
+
+    # 2. BOOKED_OUT (timetable rows present, all numofavailableslots == 0)
+    parse_gvc_slots_payload(
+        {"code": "SUCCESS", "returnobject": {"slots": [{"id": None, "starttime": "09:30", "isavailable": False, "isselectable": False, "numofavailableslots": 0}]}},
+        "03/12/2026", vac_meta, "2", telemetry_collector=tel,
+    )
+    assert tel["date_state"] == "BOOKED_OUT"
+    assert tel["booked_times"] == ["09:30"]
+
+    # 3. OPEN (id > 0, isavailable=True, isselectable=True, numofavailableslots > 0)
+    open_slots = parse_gvc_slots_payload(
+        {"code": "SUCCESS", "returnobject": {"slots": [{"id": 9901, "starttime": "10:00", "isavailable": True, "isselectable": True, "numofavailableslots": 2}]}},
+        "10/12/2026", vac_meta, "2", telemetry_collector=tel,
+    )
+    assert len(open_slots) == 1
+    assert tel["date_state"] == "OPEN"
+    assert tel["open_times"] == ["10:00"]
+
+    # 4. Reports surface Unreleased (Expected to Drop) dates in both client and fleet Markdown
+    db_file = tmp_path / "unrel_reports.db"
+    init_db(db_file)
+    c = _make_client("PUNREL1", "Tariq", vac_id="138")
+    c.visa_type = "2"
+    c.target_dates = "21/12/2026,24/12/2026"
+    cid = add_client(c, db_path=db_file)
+
+    fleet_manager.record_date_state("138", "2", "21/12/2026", {"state": "UNRELEASED", "total_slots": 0, "open_slots": 0})
+    fleet_manager.record_date_state("138", "2", "03/12/2026", {"state": "BOOKED_OUT", "total_slots": 5, "open_slots": 0})
+    try:
+        cdata = build_client_report_data(cid, db_path=db_file)
+        assert "21/12/2026" in cdata["client"]["unreleased_dates"]
+        cmd = render_client_report_markdown(cdata)
+        assert "Unreleased (Expected to Drop)" in cmd
+        assert "21/12/2026" in cmd
+
+        fdata = build_fleet_rollup_data(db_path=db_file)
+        fmd = render_fleet_rollup_markdown(fdata)
+        assert "Probed Date States (Unreleased / Expected to Drop vs Booked-Out)" in fmd
+        assert "21/12/2026" in fmd
+    finally:
+        fleet_manager._date_states.clear()
+
 

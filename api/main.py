@@ -1125,10 +1125,19 @@ async def bulk_set_client_targets(req: BulkTargetsRequest, user: dict = Depends(
         if eff_vac not in ("137", "138"):
             eff_vac = cl.vac_id or "137"
 
-        # Filter dates strictly to valid operational weekdays for the effective visa type
-        valid_dates = [d for d in clean_dates if operational_calendar.is_valid_date(d, eff_visa)]
+        # Allow explicit Mon-Fri target dates (Sat/Sun remain strictly rejected),
+        # enabling special drop days like Monday 21/12/2026 on Lahore National Type D.
+        from datetime import datetime as _dt
+        valid_dates = []
+        for d in clean_dates:
+            try:
+                parsed_d = _dt.strptime(d, "%d/%m/%Y").date()
+            except ValueError:
+                continue
+            if parsed_d.weekday() < 5:
+                valid_dates.append(d)
         if clean_dates and not valid_dates:
-            skipped.append({"id": cl.id, "reason": f"No valid operational weekdays for Type {eff_visa}"})
+            skipped.append({"id": cl.id, "reason": f"No valid Mon-Fri weekdays for Type {eff_visa}"})
             continue
 
         if req.distribute and len(valid_dates) > 1:
@@ -1404,10 +1413,15 @@ async def get_hot_slots_endpoint(
     visa_type: Optional[str] = Query(None),
     user: dict = Depends(get_current_user),
 ):
-    """Retrieve active unexpired hot slots from database."""
+    """Retrieve active unexpired hot slots and probed date states (UNRELEASED/BOOKED_OUT/OPEN)."""
     from agents.appointments.db import get_active_hot_slots
+    from agents.appointments.fleet_manager import fleet_manager
     hot = get_active_hot_slots(vac_id=vac_id, visa_type=visa_type)
-    return {"total": len(hot), "slots": hot}
+    return {
+        "total": len(hot),
+        "slots": hot,
+        "date_states": fleet_manager.get_date_states(vac_id=vac_id, visa_type=visa_type),
+    }
 
 
 class QuickBookSlotRequest(BaseModel):

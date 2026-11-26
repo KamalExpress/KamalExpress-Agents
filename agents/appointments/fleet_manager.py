@@ -130,6 +130,7 @@ class AccountWorkerInstance:
         self._last_checked_date: Optional[str] = None
         self._last_checked_dates: List[str] = []
         self._last_checked_times: List[str] = []
+        self._last_date_states: Dict[str, Dict[str, Any]] = {}
         self._total_scans = 0
         self._total_booked = 0
         self._is_pre_staged = False
@@ -172,6 +173,9 @@ class AccountWorkerInstance:
             "last_checked_date": self._last_checked_date,
             "last_checked_dates": list(self._last_checked_dates),
             "last_checked_times": list(self._last_checked_times),
+            "last_date_states": dict(self._last_date_states),
+            "unreleased_dates": sorted(d for d, info in self._last_date_states.items() if info.get("state") == "UNRELEASED"),
+            "booked_out_dates": sorted(d for d, info in self._last_date_states.items() if info.get("state") == "BOOKED_OUT"),
             "total_scans": self._total_scans,
             "total_booked": acc.get("total_booked_count", 0),
         }
@@ -386,15 +390,18 @@ class AccountWorkerInstance:
                                     d_obj = datetime.strptime(d_tok, "%d/%m/%Y").date()
                                 except ValueError:
                                     continue
-                                if d_obj >= today_d and operational_calendar.is_valid_date(d_tok, str(visa_type)):
+                                # Explicit staff-configured target_dates are allowed on any Mon-Fri weekday
+                                # (Sat/Sun remain strictly blocked), enabling special drop days like Mon 21/12 on Type 2.
+                                if d_obj >= today_d and d_obj.weekday() < 5:
                                     seen_pd.add(d_tok)
                                     priority_dates.append(d_tok)
                         if priority_dates:
                             if len(priority_dates) > 1:
                                 p_off = self.account_id % len(priority_dates)
                                 priority_dates = priority_dates[p_off:] + priority_dates[:p_off]
-                            remaining = [d for d in scan_dates if d not in seen_pd]
-                            scan_dates = priority_dates + remaining
+                            # Target-dates-only mode when queued clients have explicit target_dates:
+                            # eliminates ~70% proxy burn on non-target dates and probes drop dates 3x faster.
+                            scan_dates = priority_dates
                     except Exception as pd_err:
                         logger.debug(f"[fleet_worker #{self.account_id}] Priority target_dates lookup note: {pd_err}")
 
@@ -419,6 +426,19 @@ class AccountWorkerInstance:
                         status_info = getattr(self._driver, "last_search_status", {})
                         if status_info.get("status") in ("UNAUTHENTICATED", "WAF_CHALLENGE"):
                             break
+                        if status_info.get("status") == "SUCCESS":
+                            tel = getattr(self._driver, "last_telemetry", None) or {}
+                            d_state = tel.get("date_state") or ("OPEN" if probe_slots else "UNRELEASED")
+                            state_rec = {
+                                "state": d_state,
+                                "total_slots": int(tel.get("raw_count", 0) or 0),
+                                "open_slots": int(tel.get("verified_count", 0) or 0),
+                                "booked_times": list(tel.get("booked_times") or [])[:12],
+                                "open_times": list(tel.get("open_times") or [])[:12],
+                                "updated_at_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            }
+                            self._last_date_states[probe_date] = state_rec
+                            fleet_manager.record_date_state(vac_id, visa_type, probe_date, state_rec)
                         if probe_slots and any(s.available_capacity > 0 for s in probe_slots):
                             slots.extend(probe_slots)
                             self._last_checked_times = [
@@ -802,6 +822,21 @@ class GVCFleetManager:
         self._activity_logs: List[dict] = []
         self._in_flight_manual_workers: set[int] = set()
         self._manual_worker_rr_index: int = 0
+        self._date_states: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+    def record_date_state(self, vac_id: str, visa_type: str, date_str: str, state_record: Dict[str, Any]) -> None:
+        """Record latest UNRELEASED / BOOKED_OUT / OPEN state for a probed (vac_id, visa_type, date)."""
+        pair_key = f"VAC {vac_id} / Type {visa_type}"
+        with self._lock:
+            self._date_states.setdefault(pair_key, {})[date_str] = dict(state_record)
+
+    def get_date_states(self, vac_id: Optional[str] = None, visa_type: Optional[str] = None) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        """Return probed date states grouped by 'VAC <id> / Type <type>'."""
+        with self._lock:
+            if vac_id and visa_type:
+                key = f"VAC {vac_id} / Type {visa_type}"
+                return {key: dict(self._date_states.get(key, {}))} if key in self._date_states else {}
+            return {k: dict(v) for k, v in self._date_states.items()}
 
     def log_event(
         self,
@@ -929,6 +964,7 @@ class GVCFleetManager:
             "authenticated_accounts_count": sum(1 for a in account_telemetries if a.get("is_authenticated")),
             "pre_staged_count": sum(1 for a in account_telemetries if a.get("is_pre_staged")),
             "accounts": account_telemetries,
+            "date_states": self.get_date_states(),
             "activity_logs": self.get_recent_logs(50),
         }
 

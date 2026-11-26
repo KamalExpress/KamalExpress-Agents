@@ -251,8 +251,24 @@ def parse_gvc_slots_payload(
         )
 
     if telemetry_collector is not None:
+        booked_times = [
+            str(item.get("starttime")).strip()
+            for item in slot_items
+            if isinstance(item, dict) and item.get("starttime") and not (item.get("isavailable") is True and int(item.get("numofavailableslots") or 0) > 0)
+        ]
+        open_times = [s.time for s in found_slots if getattr(s, "time", None)]
+        if len(found_slots) > 0:
+            date_state = "OPEN"
+        elif len(slot_items) > 0:
+            date_state = "BOOKED_OUT"
+        else:
+            date_state = "UNRELEASED"
+        telemetry_collector["date"] = default_date
+        telemetry_collector["date_state"] = date_state
         telemetry_collector["raw_count"] = len(slot_items)
         telemetry_collector["verified_count"] = len(found_slots)
+        telemetry_collector["booked_times"] = booked_times
+        telemetry_collector["open_times"] = open_times
         telemetry_collector["rejections"] = rejection_stats
 
     return found_slots

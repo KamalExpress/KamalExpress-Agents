@@ -225,6 +225,7 @@ def build_fleet_rollup_data(
     return {
         "generated_at_utc": now_utc,
         "agents": fleet_accounts,
+        "date_states": fleet_tel.get("date_states", {}),
         "governance": governance,
         "queue_counts": counts,
         "clients": client_summaries,
@@ -270,6 +271,17 @@ def build_client_report_data(client_id: int, db_path: Path = DB_PATH) -> Optiona
 
     # For QUEUED clients without per-client step rows yet, synthesize live Steps 1-3 from real DB & fleet telemetry
     live_step_overrides: Dict[int, dict] = {}
+    client_unreleased_dates: List[str] = []
+    client_booked_out_dates: List[str] = []
+    try:
+        from .fleet_manager import fleet_manager as _fm_ds
+        pair_key = f"VAC {client.vac_id or '138'} / Type {client.visa_type or '26'}"
+        pair_states = (_fm_ds.get_date_states(vac_id=str(client.vac_id or "138"), visa_type=str(client.visa_type or "26")) or {}).get(pair_key, {})
+        client_unreleased_dates = sorted(d for d, info in pair_states.items() if info.get("state") == "UNRELEASED")
+        client_booked_out_dates = sorted(d for d, info in pair_states.items() if info.get("state") == "BOOKED_OUT")
+    except Exception:
+        pass
+
     if client.status == "QUEUED" and not latest_by_num:
         try:
             from .fleet_manager import fleet_manager
@@ -336,12 +348,18 @@ def build_client_report_data(client_id: int, db_path: Path = DB_PATH) -> Optiona
                 else:
                     date_desc = agent.get("target_date_from") or "Pending"
                 times_desc = ", ".join(checked_times[:5]) if checked_times else "None open"
+                if not client_unreleased_dates and agent.get("unreleased_dates"):
+                    client_unreleased_dates = list(agent.get("unreleased_dates") or [])
+                if not client_booked_out_dates and agent.get("booked_out_dates"):
+                    client_booked_out_dates = list(agent.get("booked_out_dates") or [])
+                unrel_desc = f" | Unreleased (Expected to Drop): {', '.join(client_unreleased_dates)}" if client_unreleased_dates else ""
+                booked_desc = f" | Booked-Out: {', '.join(client_booked_out_dates)}" if client_booked_out_dates else ""
                 live_step_overrides[3] = {
                     "status": "PASSED" if scans > 0 else "WAITING",
                     "time_utc": _format_utc_time(agent.get("last_checked")),
                     "summary": (
                         f"Scans={scans} on VAC {agent.get('vac_id')} (Type {agent.get('visa_type')}) | "
-                        f"Date(s): {date_desc} | Slot Time(s): {times_desc} | {agent.get('last_status', 'IDLE')}"
+                        f"Date(s): {date_desc} | Slot Time(s): {times_desc}{unrel_desc}{booked_desc} | {agent.get('last_status', 'IDLE')}"
                     ),
                     "error_message": agent.get("last_error") or "None",
                 }
@@ -417,6 +435,10 @@ def build_client_report_data(client_id: int, db_path: Path = DB_PATH) -> Optiona
             "booking_reference": client.booking_reference or "",
             "booked_date": client.booked_date or "",
             "booked_time": client.booked_time or "",
+            "target_dates": getattr(client, "target_dates", "") or "",
+            "target_times": getattr(client, "target_times", "") or "",
+            "unreleased_dates": client_unreleased_dates,
+            "booked_out_dates": client_booked_out_dates,
             "raw_confirmation_path": client.raw_confirmation_path or "",
             "notes": client.notes or "",
         },
@@ -467,6 +489,26 @@ def render_fleet_rollup_markdown(data: Dict[str, Any]) -> str:
         for g in gaps:
             lines.append(f"- **[ADVISORY]** {g['message']}")
 
+    date_states = data.get("date_states") or {}
+    if date_states:
+        lines.extend([
+            "",
+            "## Probed Date States (Unreleased / Expected to Drop vs Booked-Out)",
+            "",
+            "| Center / Visa Type | Unreleased (Expected to Drop) | Booked-Out (Full) | Open (Live Slots) |",
+            "| :--- | :--- | :--- | :--- |",
+        ])
+        for pair_key, dates_map in sorted(date_states.items()):
+            if not isinstance(dates_map, dict):
+                continue
+            unrel = sorted(d for d, info in dates_map.items() if info.get("state") == "UNRELEASED")
+            bkd = sorted(d for d, info in dates_map.items() if info.get("state") == "BOOKED_OUT")
+            opn = sorted(d for d, info in dates_map.items() if info.get("state") == "OPEN")
+            lines.append(
+                f"| **{pair_key}** | {', '.join(unrel) if unrel else '—'} | "
+                f"{', '.join(bkd) if bkd else '—'} | {', '.join(opn) if opn else '—'} |"
+            )
+
     lines.extend([
         "",
         "## 3. Client Queue Status",
@@ -501,6 +543,9 @@ def render_client_report_markdown(data: Dict[str, Any]) -> str:
         f"| **Overall Status** | `[{c['status']}]` |",
         f"| **Booking Reference** | `{c['booking_reference'] or 'Pending'}` |",
         f"| **Booked Slot** | `{(c['booked_date'] + ' ' + c['booked_time']).strip() if c['booked_date'] else 'Pending'}` |",
+        f"| **Target Dates / Times** | `{c.get('target_dates') or 'Auto'} / {c.get('target_times') or 'Any'}` |",
+        f"| **Unreleased (Expected to Drop)** | `{', '.join(c.get('unreleased_dates') or []) or 'None observed yet'}` |",
+        f"| **Booked-Out Dates** | `{', '.join(c.get('booked_out_dates') or []) or 'None observed yet'}` |",
         "",
         "## 8-Step Booking Lifecycle",
         "",
