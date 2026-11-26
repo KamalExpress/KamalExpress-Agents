@@ -229,3 +229,19 @@ python booker.py --drop --target-month "10/2026"
 ================================================================================
 [18:10:34.500] Process finished with exit code 0.
 ```
+
+---
+
+## 6. HAR-Verified `PUT /api/v1/periodslot/slots` Date-State Classification (2026-11-26)
+Verified directly against live GVC World traffic in `logs/hars/date_state_probe_20261126_133316.har`.
+
+GVC returns `HTTP 200`, `"code": "SUCCESS"`, and `"message": ""` for both unreleased and booked-out dates. The UI message *"You cannot book an appointment on this date. Please choose another date."* is rendered client-side when `returnobject.slots` is empty.
+
+| State | Exact `PUT /api/v1/periodslot/slots` JSON Signature | Detection Rule |
+| :--- | :--- | :--- |
+| **`OPEN`** | `returnobject.slots` has `>= 1` row with `id > 0`, `isavailable == true`, `isselectable == true`, `numofavailableslots > 0` | Genuine bookable drop live |
+| **`BOOKED_OUT`** | `returnobject.slots` is non-empty (e.g. 12 rows with real `periodid` and 15-min `starttime` timetable), all rows have `id: null`, `isavailable: false`, `numofavailableslots: 0` | Timetable published and sold out |
+| **`UNRELEASED`** | `returnobject: []` or `returnobject: {"slots": []}` (0 rows, no `periodid`) on a `Mon-Fri` weekday | Expected-to-drop date; surfaced in Agent Reports & Cockpit |
+| **`CLOSED_WEEKEND`** | Byte-for-byte identical to `UNRELEASED` (`slots: []`, `paidAmount: 0.0`, fee fields `null`) on `Sat/Sun` | Disambiguated via `weekday >= 5` |
+
+* **Per-IP Burst Rate-Limit Cap:** Live probing confirmed GVC triggers `HTTP 429 Rate Limit Exceeded` after ~20 consecutive `PUT /api/v1/periodslot/slots` queries from a single IP. Workers therefore use **Target-Dates-Only probing** whenever queued clients define explicit `target_dates`, keeping cycles well under the 20-query burst ceiling and cutting proxy burn by ~70%.

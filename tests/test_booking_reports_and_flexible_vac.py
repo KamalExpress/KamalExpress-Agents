@@ -278,17 +278,22 @@ def test_date_state_classification_and_unreleased_reports(tmp_path: Path):
     vac_meta = {"id": 138, "name": "Lahore VAC"}
     tel = {}
 
-    # 1. UNRELEASED (returnobject: [])
+    # 1. UNRELEASED (Mon-Fri with returnobject: [] or slots: [])
     parse_gvc_slots_payload({"code": "SUCCESS", "message": "", "returnobject": []}, "21/12/2026", vac_meta, "2", telemetry_collector=tel)
     assert tel["date_state"] == "UNRELEASED"
     assert tel["raw_count"] == 0
 
-    # 2. BOOKED_OUT (timetable rows present, all numofavailableslots == 0)
+    # 1b. CLOSED_WEEKEND (Sun 06/12/2026 has identical slots: [] payload, disambiguated by weekday)
+    parse_gvc_slots_payload({"code": "SUCCESS", "message": "", "returnobject": {"slots": []}}, "06/12/2026", vac_meta, "2", telemetry_collector=tel)
+    assert tel["date_state"] == "CLOSED_WEEKEND"
+
+    # 2. BOOKED_OUT (timetable rows with periodid present, all numofavailableslots == 0)
     parse_gvc_slots_payload(
-        {"code": "SUCCESS", "returnobject": {"slots": [{"id": None, "starttime": "09:30", "isavailable": False, "isselectable": False, "numofavailableslots": 0}]}},
+        {"code": "SUCCESS", "returnobject": {"slots": [{"id": None, "periodid": 15005, "starttime": "09:30", "isavailable": False, "isselectable": False, "numofavailableslots": 0}]}},
         "03/12/2026", vac_meta, "2", telemetry_collector=tel,
     )
     assert tel["date_state"] == "BOOKED_OUT"
+    assert tel["period_id"] == 15005
     assert tel["booked_times"] == ["09:30"]
 
     # 3. OPEN (id > 0, isavailable=True, isselectable=True, numofavailableslots > 0)

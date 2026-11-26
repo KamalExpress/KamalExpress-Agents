@@ -257,14 +257,26 @@ def parse_gvc_slots_payload(
             if isinstance(item, dict) and item.get("starttime") and not (item.get("isavailable") is True and int(item.get("numofavailableslots") or 0) > 0)
         ]
         open_times = [s.time for s in found_slots if getattr(s, "time", None)]
+        period_id = next((item.get("periodid") for item in slot_items if isinstance(item, dict) and item.get("periodid")), None)
+        is_weekend = False
+        if default_date:
+            for _fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+                try:
+                    is_weekend = datetime.strptime(str(default_date).strip(), _fmt).weekday() >= 5
+                    break
+                except ValueError:
+                    continue
         if len(found_slots) > 0:
             date_state = "OPEN"
         elif len(slot_items) > 0:
             date_state = "BOOKED_OUT"
+        elif is_weekend:
+            date_state = "CLOSED_WEEKEND"
         else:
             date_state = "UNRELEASED"
         telemetry_collector["date"] = default_date
         telemetry_collector["date_state"] = date_state
+        telemetry_collector["period_id"] = period_id
         telemetry_collector["raw_count"] = len(slot_items)
         telemetry_collector["verified_count"] = len(found_slots)
         telemetry_collector["booked_times"] = booked_times
