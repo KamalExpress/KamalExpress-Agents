@@ -445,13 +445,11 @@ class GVCPortalDriver:
                         except ImportError:
                             logger.warning("[gvc] playwright_stealth not found, WAF might still detect headless.")
 
-                    target_url = f"{self.base_url}/login"
+                    target_url = f"{self.base_url}/?lang=en_US"
                     logger.info(f"[gvc] Navigating to {target_url} to clear Imperva challenge...")
-                    page.goto(target_url, wait_until="commit", timeout=60000)
-
-                    username_selector = 'input[name="username"], input[type="email"], input[id*="user"], #email, form'
-                    page.wait_for_selector(username_selector, timeout=90000)
-                    logger.info("[gvc] Login form rendered! Imperva WAF challenge successfully bypassed.")
+                    page.goto(target_url, wait_until="load", timeout=35000)
+                    page.wait_for_timeout(3000)
+                    logger.info("[gvc] Portal origin loaded; extracting fresh Imperva clearance cookies.")
 
                     cookies = context.cookies()
                     for c in cookies:
@@ -591,28 +589,93 @@ class GVCPortalDriver:
                     )
                 )
 
-                # If WAF block, auto-refresh WAF cookies via Playwright and retry once
+                # If WAF block, clear Imperva in Playwright on /?lang=en_US and execute PUT /api/v1/periodslot/slots directly inside page context
                 if is_waf_block:
-                    logger.warning(f"[gvc] Imperva WAF challenge encountered on {proxy or 'direct'}. Auto-refreshing WAF cookies via Playwright...")
-                    await self.refresh_waf_cookies(proxy=proxy)
-                    try:
-                        if HAS_CURL_CFFI and AsyncSession:
-                            async with AsyncSession(impersonate="chrome120") as retry_session:
-                                resp = await retry_session.put(
-                                    url,
-                                    json=payload,
-                                    headers=self._get_headers(),
-                                    cookies=self._session_cookies,
-                                    proxies=proxies,
-                                    timeout=20,
+                    logger.warning(f"[gvc] Imperva WAF challenge encountered on {proxy or 'direct'}. Executing in-browser slot query via Playwright...")
+                    def _browser_slot_query_sync() -> Dict[str, Any]:
+                        try:
+                            from playwright.sync_api import sync_playwright
+                            from urllib.parse import urlparse
+                            with sync_playwright() as pw:
+                                browser = pw.chromium.launch(
+                                    headless=True,
+                                    args=[
+                                        "--disable-blink-features=AutomationControlled",
+                                        "--no-sandbox",
+                                        "--disable-dev-shm-usage",
+                                        "--disable-gpu",
+                                    ],
                                 )
-                                if hasattr(retry_session, "cookies"):
-                                    self._session_cookies.update(retry_session.cookies.get_dict())
-                        else:
-                            async with httpx.AsyncClient(cookies=self._session_cookies, proxy=proxy, timeout=20.0, follow_redirects=True) as client:
-                                resp = await client.put(url, json=payload, headers=self._get_headers())
-                        body_text = resp.text.strip()
-                        headers_str = str(getattr(resp, "headers", {})).lower()
+                                ctx_kwargs: Dict[str, Any] = {
+                                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                    "viewport": {"width": 1280, "height": 720},
+                                }
+                                if proxy:
+                                    parsed = urlparse(proxy)
+                                    if parsed.hostname:
+                                        pconf = {"server": f"http://{parsed.hostname}:{parsed.port}"}
+                                        if parsed.username:
+                                            pconf["username"] = parsed.username
+                                            pconf["password"] = parsed.password
+                                        ctx_kwargs["proxy"] = pconf
+                                context = browser.new_context(**ctx_kwargs)
+                                page = context.new_page()
+                                try:
+                                    from playwright_stealth import Stealth
+                                    Stealth().apply_stealth_sync(page)
+                                except Exception:
+                                    pass
+                                page.goto(f"{self.base_url}/?lang=en_US", wait_until="load", timeout=35000)
+                                page.wait_for_timeout(3000)
+                                auth_hdr = f"Bearer {self._bearer_token}" if self._bearer_token and not str(self._bearer_token).startswith("Bearer ") else str(self._bearer_token or "")
+                                js_put = """
+                                async (args) => {
+                                    try {
+                                        const res = await fetch('/api/v1/periodslot/slots', {
+                                            method: 'PUT',
+                                            headers: {
+                                                'Content-Type': 'application/json; charset=UTF-8',
+                                                'Accept': 'application/json, text/plain, */*',
+                                                'X-Requested-With': 'XMLHttpRequest',
+                                                'Authorization': args.auth
+                                            },
+                                            body: JSON.stringify(args.payload)
+                                        });
+                                        const text = await res.text();
+                                        return { status: res.status, text: text };
+                                    } catch (err) {
+                                        return { status: 0, text: '', error: String(err) };
+                                    }
+                                }
+                                """
+                                res_dict = page.evaluate(js_put, {"auth": auth_hdr, "payload": payload})
+                                fresh_cookies = {c["name"]: c["value"] for c in context.cookies()}
+                                browser.close()
+                                if not isinstance(res_dict, dict):
+                                    res_dict = {"status": 0, "text": ""}
+                                res_dict["cookies"] = fresh_cookies
+                                return res_dict
+                        except Exception as bw_err:
+                            logger.warning(f"[gvc] Playwright in-browser slot query error: {bw_err}")
+                            return {"status": 0, "text": "", "cookies": {}}
+
+                    bw_res = await asyncio.to_thread(_browser_slot_query_sync)
+                    if bw_res.get("cookies"):
+                        self._session_cookies.update(bw_res["cookies"])
+                    bw_status = int(bw_res.get("status") or 0)
+                    bw_text = (bw_res.get("text") or "").strip()
+                    if bw_status > 0:
+                        class _ShimResp:
+                            def __init__(self, sc: int, txt: str):
+                                self.status_code = sc
+                                self.text = txt
+                                self.headers = {}
+                            def json(self):
+                                import json as _json
+                                return _json.loads(self.text) if self.text else {}
+                        resp = _ShimResp(bw_status, bw_text)
+                        body_text = bw_text
+                        headers_str = ""
                         is_unauthorized = (
                             resp.status_code == 401
                             or (resp.status_code == 200 and "unauthorized" in body_text.lower() and "login" in body_text.lower())
@@ -622,11 +685,9 @@ class GVCPortalDriver:
                             and (
                                 "_incapsula_resource" in body_text.lower()
                                 or (resp.status_code == 200 and body_text.lower().startswith("<html"))
-                                or (resp.status_code in [403, 502, 503, 504, 522] and ("_incapsula_resource" in body_text.lower() or "incapsula" in headers_str or "imperva" in headers_str))
+                                or resp.status_code in [403, 472]
                             )
                         )
-                    except Exception as re_err:
-                        logger.warning(f"[gvc] Retry after WAF refresh failed: {re_err}")
 
                 if is_unauthorized:
                     logger.warning(f"[gvc] Session token was rejected (HTTP 401 Unauthorized). Returning UNAUTHENTICATED so FleetManager re-authenticates the owning worker account.")
