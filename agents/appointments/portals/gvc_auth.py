@@ -127,15 +127,17 @@ class GVCAuthSolver:
                 clean_proxy = proxy.split("@")[-1] if proxy else "direct"
                 logger.info(f"[gvc_auth] [PRE-FLIGHT] Probing proxy {clean_proxy} on {target_url} (Zero CapSolver spend)...")
                 try:
-                    resp = page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
-                    # Allow Imperva client-side challenge to resolve and load real login form
-                    try:
-                        page.wait_for_selector(
-                            "input[name='username'], input[type='email'], input[name='email'], form, iframe#main-iframe",
-                            timeout=10000,
-                        )
-                    except Exception:
-                        pass
+                    resp = page.goto(target_url, wait_until="load", timeout=30000)
+                    # Let Imperva JS clearance script & any automatic reload complete (proven in standalone-flow)
+                    page.wait_for_timeout(3000)
+                    if page.locator("iframe#main-iframe").count() > 0:
+                        try:
+                            page.wait_for_selector(
+                                "input[name='username'], input[type='email'], input[name='email'], form",
+                                timeout=8000,
+                            )
+                        except Exception:
+                            pass
                 except Exception as net_err:
                     browser.close()
                     err_msg = str(net_err)
@@ -234,19 +236,20 @@ class GVCAuthSolver:
                 except Exception:
                     pass
 
-                # Warm up session and let Incapsula JS challenge resolve on origin
+                # Warm up session and let Incapsula JS challenge resolve on origin (proven in standalone-flow)
                 target_url = f"{self.base_url}/?lang=en_US"
                 logger.info(f"[gvc_auth] Navigating browser to {target_url} for WAF clearance...")
-                page.goto(target_url, wait_until="domcontentloaded", timeout=35000)
-                try:
-                    page.wait_for_selector(
-                        "input[name='username'], input[type='email'], input[name='email'], form, iframe#main-iframe",
-                        timeout=10000,
-                    )
-                    # Allow Imperva JS clearance cookies (incap_ses / reese84) to settle before login POST
-                    page.wait_for_timeout(1500)
-                except Exception:
-                    pass
+                page.goto(target_url, wait_until="load", timeout=35000)
+                page.wait_for_timeout(3000)
+                if page.locator("iframe#main-iframe").count() > 0:
+                    try:
+                        page.wait_for_selector(
+                            "input[name='username'], input[type='email'], input[name='email'], form",
+                            timeout=8000,
+                        )
+                        page.wait_for_timeout(1500)
+                    except Exception:
+                        pass
 
                 # Check if page is blocked by genuine Incapsula anti-bot challenge
                 page_html = page.content().lower()
@@ -463,7 +466,7 @@ class GVCAuthSolver:
 
             try:
                 # 1. Origin is clean; solve reCAPTCHA v2 on the login page via CapSolver
-                page_url = f"{self.base_url}/login"
+                page_url = f"{self.base_url}/?lang=en_US"
                 captcha_token = await self.captcha_solver.solve_recaptcha_v2(self.sitekey, page_url)
                 if not captcha_token:
                     logger.warning(f"[gvc_auth] Captcha solving returned empty on attempt {attempt}.")
